@@ -192,7 +192,7 @@ static void handle(cJSON *m)
         lvgl_port_unlock();
     } else if (!strcmp(t, "icon")) {
         static uint8_t *ibuf;
-        if (!ibuf) ibuf = heap_caps_malloc(64 * 64 * 3, MALLOC_CAP_SPIRAM);
+        if (!ibuf) ibuf = heap_caps_malloc(64 * 64 * 3, MALLOC_CAP_SPIRAM); // icons are 48x48 RGB565A8
         const char *data = str(m, "data");
         size_t n = ibuf && data ? b64decode(data, ibuf, 64 * 64 * 3) : 0;
         lvgl_port_lock(0);

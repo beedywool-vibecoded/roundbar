@@ -1964,7 +1964,7 @@ static lv_obj_t *card(lv_obj_t *parent, int w)
 // ---- page: windows --------------------------------------------------------------------------
 
 static struct {
-    lv_obj_t *ring, *title;
+    lv_obj_t *ring;
 } win_w;
 
 static void window_event(lv_event_t *e)
@@ -1979,38 +1979,47 @@ static void build_windows(lv_obj_t *tile)
     lv_obj_set_size(win_w.ring, LCD_W, LCD_H);
     lv_obj_center(win_w.ring);
     lv_obj_remove_flag(win_w.ring, LV_OBJ_FLAG_CLICKABLE);
-    win_w.title = text(tile, F.body, P.on_sv, usb_host_listening() ? "" : "Connect the PC");
-    lv_obj_set_width(win_w.title, 160);
-    lv_label_set_long_mode(win_w.title, LV_LABEL_LONG_DOT);
-    lv_obj_center(win_w.title);
+    if (!usb_host_listening()) {
+        lv_obj_t *l = text(win_w.ring, F.body, P.on_sv, "Connect the PC");
+        lv_obj_center(l);
+    }
 }
 
-static char win_ids[8][16];
+static char win_ids[9][16];
 
+static lv_obj_t *window_button(int k, cJSON *w, int size, bool center)
+{
+    strlcpy(win_ids[k], jstr(w, "id") ?: "", sizeof(win_ids[0]));
+    lv_color_t bg = center ? P.pc : P.schh;
+    lv_obj_t *b = mask_button(win_w.ring, center ? SH_SQUARE : SH_CIRCLE, size, bg);
+    lv_obj_t *ic = app_icon(b, jstr(w, "icon"), "select_window", center ? P.on_pc : P.on_surface,
+                            center ? 320 : (size >= 82 ? 280 : 240));
+    lv_obj_center(ic);
+    lv_obj_add_event_cb(b, window_event, LV_EVENT_CLICKED, win_ids[k]);
+    return b;
+}
+
+// Same layout as shortcut pages: the most recent window you're not in is the big
+// center button (a quick "switch back"), the next most recent ones fill the ring.
 void ui_windows(cJSON *list)
 {
     if (!win_w.ring) return;
     lv_obj_clean(win_w.ring);
-    int n = LV_MIN(cJSON_GetArraySize(list), 8);
+    int total = cJSON_GetArraySize(list);
+    // list[0] is the focused window (most recent); it's already in use
+    int first = total > 1 ? 1 : 0;
+    cJSON *center = cJSON_GetArrayItem(list, first);
+    int n = LV_MIN(total - first - 1, 8);
+    if (n < 0) n = 0;
+    int size = n <= 4 ? 92 : n <= 6 ? 82 : 72;
+    int radius = n <= 4 ? 110 : n <= 6 ? 120 : 128;
     for (int i = 0; i < n; i++) {
-        cJSON *w = cJSON_GetArrayItem(list, i);
-        strlcpy(win_ids[i], jstr(w, "id") ?: "", sizeof(win_ids[0]));
-        int16_t ang = (int16_t)(270 + i * 360 / LV_MAX(n, 1)) % 360;
-        lv_obj_t *b = box(win_w.ring);
-        lv_obj_set_size(b, 72, 72);
-        lv_obj_set_style_radius(b, 36, 0);
-        lv_obj_set_style_bg_color(b, i == 0 ? P.pc : P.schh, 0);
-        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
-        lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_style_bg_color(b, lv_color_mix(lv_color_white(), P.schh, 30), LV_STATE_PRESSED);
-        squish_on_press(b, 72);
-        lv_obj_align(b, LV_ALIGN_CENTER, 124 * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, 124 * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
-        lv_obj_t *ic = app_icon(b, jstr(w, "icon"), "select_window", P.on_surface, 256);
-        lv_obj_center(ic);
-        lv_obj_add_event_cb(b, window_event, LV_EVENT_CLICKED, win_ids[i]);
+        int16_t ang = (int16_t)(270 + i * 360 / n) % 360;
+        lv_obj_t *b = window_button(i + 1, cJSON_GetArrayItem(list, first + 1 + i), size, false);
+        lv_obj_align(b, LV_ALIGN_CENTER, radius * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, radius * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
     }
-    cJSON *first = cJSON_GetArrayItem(list, 0);
-    lv_label_set_text(win_w.title, first ? (jstr(first, "title") ?: "") : "No windows");
+    if (center) lv_obj_center(window_button(0, center, 112, true));
+    else lv_obj_center(text(win_w.ring, F.body, P.on_sv, "No windows"));
 }
 
 // ---- page: mixer ----------------------------------------------------------------------------
@@ -2072,23 +2081,23 @@ void ui_mixer(cJSON *m)
         lv_obj_remove_flag(c, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_style_pad_all(c, 10, 0);
         lv_obj_t *ib = box(c);
-        lv_obj_set_size(ib, 44, 44);
-        lv_obj_set_style_radius(ib, 22, 0);
+        lv_obj_set_size(ib, 48, 48);
+        lv_obj_set_style_radius(ib, 24, 0);
         lv_obj_set_style_bg_color(ib, muted ? P.ec : P.schh, 0);
         lv_obj_set_style_bg_opa(ib, LV_OPA_COVER, 0);
         lv_obj_add_flag(ib, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_t *ic = muted ? text(ib, F.icon_s, P.on_ec, theme_icon("volume_off"))
-                             : app_icon(ib, jstr(a, "icon"), "music_note", P.on_surface, 256); // native size: crisp
+                             : app_icon(ib, jstr(a, "icon"), "music_note", P.on_surface, 213); // 40 px in a 48 px circle
         lv_obj_center(ic);
         lv_obj_add_event_cb(ib, mixer_mute_event, LV_EVENT_CLICKED, mix_w.ids[k]);
         lv_obj_t *nm = text(c, F.label, P.on_surface, jstr(a, "name") ?: "");
         lv_obj_set_width(nm, 180);
         lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
         lv_obj_set_style_text_align(nm, LV_TEXT_ALIGN_LEFT, 0);
-        lv_obj_align(nm, LV_ALIGN_TOP_LEFT, 54, 0);
+        lv_obj_align(nm, LV_ALIGN_TOP_LEFT, 58, 2);
         lv_obj_t *sl = lv_slider_create(c);
         lv_obj_set_size(sl, 176, 10);
-        lv_obj_align(sl, LV_ALIGN_TOP_LEFT, 56, 28);
+        lv_obj_align(sl, LV_ALIGN_TOP_LEFT, 60, 30);
         lv_slider_set_range(sl, 0, 100);
         cJSON *v = cJSON_GetObjectItem(a, "vol");
         lv_slider_set_value(sl, cJSON_IsNumber(v) ? v->valueint : 0, LV_ANIM_OFF);
@@ -2208,15 +2217,21 @@ static void np_fill(void)
         strlcpy(np_ids[i], jstr(n, "id") ?: "", sizeof(np_ids[0]));
         lv_obj_t *c = card(np_col, 270);
         lv_obj_remove_flag(c, LV_OBJ_FLAG_GESTURE_BUBBLE);
-        lv_obj_t *ic = app_icon(c, jstr(n, "icon"), "notifications", P.on_sv, 180);
-        lv_obj_align(ic, LV_ALIGN_TOP_LEFT, -2, -4);
+        // small app icon + app name on one line, then title and body below
+        lv_obj_t *ib = box(c);
+        lv_obj_set_size(ib, 20, 20);
+        lv_obj_align(ib, LV_ALIGN_TOP_LEFT, 0, 0);
+        lv_obj_remove_flag(ib, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_t *ic = app_icon(ib, jstr(n, "icon"), "notifications", P.on_sv, 107); // 20 px
+        if (lv_obj_check_type(ic, &lv_label_class)) lv_obj_set_style_text_font(ic, F.label, 0);
+        lv_obj_center(ic);
         lv_obj_t *app = text(c, F.label, P.on_sv, jstr(n, "app") ?: "");
-        lv_obj_align(app, LV_ALIGN_TOP_LEFT, 40, 0);
+        lv_obj_align(app, LV_ALIGN_TOP_LEFT, 30, 2);
         lv_obj_t *ti = text(c, F.body, P.on_surface, jstr(n, "title") ?: "");
         lv_obj_set_width(ti, 246);
         lv_label_set_long_mode(ti, LV_LABEL_LONG_DOT);
         lv_obj_set_style_text_align(ti, LV_TEXT_ALIGN_LEFT, 0);
-        lv_obj_align(ti, LV_ALIGN_TOP_LEFT, 0, 26);
+        lv_obj_align(ti, LV_ALIGN_TOP_LEFT, 0, 30);
         const char *body = jstr(n, "body");
         if (body && body[0]) {
             lv_obj_t *bo = text(c, F.label, P.on_sv, body);
@@ -2224,7 +2239,7 @@ static void np_fill(void)
             lv_obj_set_style_max_height(bo, 38, 0);
             lv_label_set_long_mode(bo, LV_LABEL_LONG_DOT);
             lv_obj_set_style_text_align(bo, LV_TEXT_ALIGN_LEFT, 0);
-            lv_obj_align(bo, LV_ALIGN_TOP_LEFT, 0, 50);
+            lv_obj_align(bo, LV_ALIGN_TOP_LEFT, 0, 54);
         }
         lv_obj_add_event_cb(c, np_card_event, LV_EVENT_SHORT_CLICKED, np_ids[i]);
         lv_obj_add_event_cb(c, np_card_event, LV_EVENT_GESTURE, np_ids[i]);

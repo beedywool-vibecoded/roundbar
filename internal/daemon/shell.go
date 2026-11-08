@@ -60,8 +60,8 @@ func (d *Daemon) sendWindows() {
 		log.Printf("windows: %v", err)
 		return
 	}
-	if len(ws) > 8 {
-		ws = ws[:8]
+	if len(ws) > 10 { // focused + center + up to 8 on the ring
+		ws = ws[:10]
 	}
 	for i := range ws {
 		ws[i].Title = clip(ws[i].Title, 48)

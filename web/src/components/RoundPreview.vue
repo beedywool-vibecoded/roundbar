@@ -337,10 +337,20 @@ const mixer = computed(() => {
 const WINDOW_ICONS = ['public', 'terminal', 'folder', 'code', 'chat', 'music_note']
 const windows = computed(() => {
   if (props.page.type !== 'windows') return null
-  return WINDOW_ICONS.map((icon, i) => {
-    const [x, y] = at(116, 270 + i * 60)
-    return { icon, x, y, on: i === 0 }
-  })
+  // Like the device: the most recent window you're not in is the center button,
+  // the next ones sit on the ring (radial-page sizes), no text.
+  const ring = WINDOW_ICONS.slice(1)
+  const n = ring.length
+  const size = n <= 4 ? 92 : n <= 6 ? 82 : 72
+  const radius = n <= 4 ? 110 : n <= 6 ? 120 : 128
+  return {
+    center: WINDOW_ICONS[0]!,
+    size,
+    ring: ring.map((icon, i) => {
+      const [x, y] = at(radius, 270 + (i * 360) / n)
+      return { icon, x, y }
+    }),
+  }
 })
 const CLIPS = [
   { text: 'Meeting moved to 15:30', when: 'Just now' },
@@ -597,11 +607,12 @@ const dots = computed(() => {
 
       <!-- Windows -->
       <template v-else-if="windows">
-        <g v-for="w in windows" :key="w.icon">
-          <circle :cx="w.x" :cy="w.y" r="36" :fill="w.on ? p.primaryContainer : p.surfaceContainerHighest" />
-          <text class="sym" :x="w.x" :y="w.y" font-size="32" :fill="w.on ? p.onPrimaryContainer : p.onSurface">{{ w.icon }}</text>
+        <g v-for="w in windows.ring" :key="w.icon">
+          <circle :cx="w.x" :cy="w.y" :r="windows.size / 2" :fill="p.surfaceContainerHighest" />
+          <text class="sym" :x="w.x" :y="w.y" font-size="36" :fill="p.onSurface">{{ w.icon }}</text>
         </g>
-        <text class="txt" y="0" font-size="22" font-weight="700" :fill="p.onSurface">Firefox</text>
+        <path :d="buttonPath('square', 0, 0, 112)" :fill="p.primaryContainer" />
+        <text class="sym" x="0" y="0" font-size="52" :fill="p.onPrimaryContainer">{{ windows.center }}</text>
       </template>
 
       <!-- Clipboard -->

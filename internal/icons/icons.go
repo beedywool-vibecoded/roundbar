@@ -3,7 +3,9 @@
 package icons
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"image"
 	"image/draw"
 	_ "image/jpeg"
@@ -12,6 +14,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -22,7 +25,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-const Size = 40
+const Size = 48
 
 var (
 	mu    sync.Mutex
@@ -40,7 +43,48 @@ func roots() []string {
 	return r
 }
 
-// find returns the best file for an icon name: big PNGs first, then SVG.
+var (
+	themeOnce sync.Once
+	themes    []string
+)
+
+// themeChain: the icon theme set in GNOME, the themes it inherits, then the fallbacks.
+func themeChain() []string {
+	themeOnce.Do(func() {
+		seen := map[string]bool{}
+		var add func(string)
+		add = func(t string) {
+			if t == "" || seen[t] {
+				return
+			}
+			seen[t] = true
+			themes = append(themes, t)
+			for _, root := range roots() {
+				raw, err := os.ReadFile(filepath.Join(root, t, "index.theme"))
+				if err != nil {
+					continue
+				}
+				for _, line := range strings.Split(string(raw), "\n") {
+					if v, ok := strings.CutPrefix(strings.TrimSpace(line), "Inherits="); ok {
+						for _, p := range strings.Split(v, ",") {
+							add(strings.TrimSpace(p))
+						}
+					}
+				}
+				break
+			}
+		}
+		if out, err := exec.Command("gsettings", "get", "org.gnome.desktop.interface", "icon-theme").Output(); err == nil {
+			add(strings.Trim(strings.TrimSpace(string(out)), "'"))
+		}
+		for _, t := range []string{"hicolor", "Adwaita", "breeze"} {
+			add(t)
+		}
+	})
+	return themes
+}
+
+// find returns the best file for an icon name in the user's icon theme first.
 func find(name string) string {
 	if filepath.IsAbs(name) {
 		if _, err := os.Stat(name); err == nil {
@@ -48,15 +92,16 @@ func find(name string) string {
 		}
 		return ""
 	}
-	themes := []string{"hicolor", "Adwaita", "breeze"}
 	sizes := []string{"64x64", "48x48", "128x128", "96x96", "256x256", "32x32", "512x512"}
-	for _, root := range roots() {
-		for _, th := range themes {
+	for _, th := range themeChain() {
+		for _, root := range roots() {
 			for _, sz := range sizes {
 				for _, cat := range []string{"apps", "status", "devices"} {
-					p := filepath.Join(root, th, sz, cat, name+".png")
-					if _, err := os.Stat(p); err == nil {
-						return p
+					for _, ext := range []string{".svg", ".png"} { // themes like Papirus keep SVGs in sized dirs
+						p := filepath.Join(root, th, sz, cat, name+ext)
+						if _, err := os.Stat(p); err == nil {
+							return p
+						}
 					}
 				}
 			}
@@ -85,6 +130,15 @@ func find(name string) string {
 
 func load(path string) image.Image {
 	if strings.HasSuffix(path, ".svg") {
+		// librsvg renders icon themes exactly (opacity, CSS classes); oksvg is the fallback.
+		if bin, err := exec.LookPath("rsvg-convert"); err == nil {
+			out, err := exec.Command(bin, "-w", fmt.Sprint(Size*2), "-h", fmt.Sprint(Size*2), path).Output()
+			if err == nil {
+				if img, _, err := image.Decode(bytes.NewReader(out)); err == nil {
+					return img
+				}
+			}
+		}
 		f, err := os.Open(path)
 		if err != nil {
 			return nil
