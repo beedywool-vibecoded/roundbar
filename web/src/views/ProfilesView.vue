@@ -5,7 +5,7 @@ import Icon from '@/components/Icon.vue'
 import M3Dialog from '@/components/M3Dialog.vue'
 import RoundPreview from '@/components/RoundPreview.vue'
 import TextField from '@/components/TextField.vue'
-import { ID_RE, duplicateProfile, newPage, slug, uniqueId } from '@/lib/model'
+import { ID_RE, duplicateProfile, matchesAny, matchesEntry, newPage, slug, uniqueId } from '@/lib/model'
 import { PRESETS } from '@/lib/presets'
 import { toast } from '@/lib/ui'
 import { config, focusKeys, isNew, issuesUnder, live, profilePalette } from '@/lib/store'
@@ -71,7 +71,7 @@ const idError = computed(() => {
   return null
 })
 function openCreate() {
-  const unmatched = focused.value.length && !profiles.value.some((p) => focused.value.some((k) => p.match.includes(k)))
+  const unmatched = focused.value.length && !profiles.value.some((p) => matchesAny(p.match, focused.value))
   newName.value = unmatched ? (live.status?.focus?.name ?? '') : ''
   newId.value = ''
   idEdited.value = false
@@ -87,7 +87,8 @@ function create() {
   if (p) {
     const built = p.build()
     profiles.value.push({ id, name: newName.value.trim(), ...built })
-    if (p.setup) toast(p.setup)
+    if (p.setup)
+      toast(p.setup, false, p.id === 'obs' && !live.status?.obs?.connected ? { label: 'Set up OBS', run: () => router.push('/device#obs') } : null)
   } else {
     profiles.value.push({ id, name: newName.value.trim(), match, pages: [newPage('radial', [])] })
   }
@@ -131,7 +132,7 @@ function create() {
               <code class="plain">{{ p.id }}</code> · {{ p.pages.length }} page{{ p.pages.length > 1 ? 's' : '' }}
             </div>
             <div v-if="p.match.length" class="chips">
-              <span v-for="m in p.match.slice(0, 4)" :key="m" class="chip chip-outline" :class="{ focused: focused.includes(m) }">{{ m }}</span>
+              <span v-for="m in p.match.slice(0, 4)" :key="m" class="chip chip-outline" :class="{ focused: focused.some((k) => matchesEntry(m, k)) }">{{ m }}</span>
               <span v-if="p.match.length > 4" class="chip chip-outline">+{{ p.match.length - 4 }}</span>
             </div>
             <div v-else-if="p.id !== 'default'" class="small warn-text">No window matches it yet</div>

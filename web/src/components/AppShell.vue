@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Icon from './Icon.vue'
 import M3Shape from './M3Shape.vue'
 import ShapeLoader from './ShapeLoader.vue'
-import { config, daemonUp, dirty, discard, issues, live, save, saving } from '@/lib/store'
+import { canRedo, canUndo, config, daemonUp, dirty, discard, issues, live, redo, save, saving, undo } from '@/lib/store'
 import { confirm } from '@/lib/ui'
 
 const route = useRoute()
@@ -29,6 +29,30 @@ async function revert() {
   const ok = await confirm({ title: 'Discard changes?', body: 'Every edit since the last save is lost.', action: 'Discard', danger: true })
   if (ok) discard()
 }
+
+// Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo and redo config edits, except while typing in a text
+// field, where the browser's own undo of the text wins.
+const TEXT_INPUTS = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'number'])
+function typing(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false
+  if (t.isContentEditable || t instanceof HTMLTextAreaElement) return true
+  return t instanceof HTMLInputElement && TEXT_INPUTS.has(t.type)
+}
+function onKey(e: KeyboardEvent) {
+  if (e.defaultPrevented || !(e.ctrlKey || e.metaKey) || e.altKey || !config.value || saving.value) return
+  if (typing(e.target) || document.querySelector('dialog[open]')) return
+  const k = e.key.toLowerCase()
+  if (k === 'z' && !e.shiftKey) {
+    e.preventDefault()
+    undo()
+  } else if ((k === 'z' && e.shiftKey) || (k === 'y' && !e.shiftKey)) {
+    e.preventDefault()
+    redo()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
 
 // Ring of dots on the cookie: the round controller
 const DOTS = Array.from({ length: 6 }, (_, k) => {
@@ -73,6 +97,14 @@ const DOTS = Array.from({ length: 6 }, (_, k) => {
         <template v-if="config">
           <span v-if="dirty && issues.length" class="chip issues" v-tip="issues[0] ? `${issues[0].message} (${issues[0].path})` : ''">
             <Icon name="warning" :size="16" /> {{ issues.length }} to fix
+          </span>
+          <span class="history">
+            <button class="icon-btn st" type="button" aria-label="Undo" :disabled="!canUndo || saving" v-tip="`Undo (${mod}Z)`" @click="undo">
+              <Icon name="undo" :size="20" />
+            </button>
+            <button class="icon-btn st" type="button" aria-label="Redo" :disabled="!canRedo || saving" v-tip="`Redo (${mod}Shift+Z)`" @click="redo">
+              <Icon name="redo" :size="20" />
+            </button>
           </span>
           <button v-if="dirty" class="btn btn-text st" type="button" :disabled="saving" @click="revert">Discard</button>
           <button class="btn btn-filled st save" type="button" :disabled="!dirty || saving" @click="save">
@@ -208,6 +240,13 @@ const DOTS = Array.from({ length: 6 }, (_, k) => {
 }
 .save {
   min-width: 112px;
+}
+.history {
+  display: inline-flex;
+  gap: 2px;
+}
+.history .icon-btn {
+  border: none;
 }
 .spacer {
   flex: 1;

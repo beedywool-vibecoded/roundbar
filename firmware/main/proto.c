@@ -303,6 +303,10 @@ static void handle(cJSON *m)
         else if (str(m, "text")) usb_hid(HID_TEXT, str(m, "text"), id);
         else if (str(m, "media")) usb_hid(HID_MEDIA, str(m, "media"), id);
         else ack(id, false, "nothing to type");
+    } else if (!strcmp(t, "perf")) {
+        lvgl_port_lock(0);
+        ui_perf(num(m, "ms", 2000));
+        lvgl_port_unlock();
     } else if (!strcmp(t, "screenshot")) {
         send_screenshot();
     } else if (!strcmp(t, "bootloader")) {

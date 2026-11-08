@@ -9,6 +9,8 @@ import NumField from '@/components/NumField.vue'
 import ImageList from '@/components/ImageList.vue'
 import DiscordCard from '@/components/DiscordCard.vue'
 import FirmwareCard from '@/components/FirmwareCard.vue'
+import ObsCard from '@/components/ObsCard.vue'
+import BackupCard from '@/components/BackupCard.vue'
 import type { ImageBinding } from '@/lib/assets'
 import { LIMITS, PAGE_TYPES, ROTATIONS } from '@/lib/model'
 import { config, daemonUp, findProfile, issuesUnder, live } from '@/lib/store'
@@ -16,11 +18,12 @@ import type { EdgeDoubleTap, KeyboardLayout } from '@/lib/types'
 
 const dev = computed(() => config.value!.device)
 
-// Linked from page editors: /device#discord, /device#firmware
+// Linked from page editors: /device#discord, /device#obs, /device#firmware, /device#backup
+const ANCHORS = ['discord', 'obs', 'firmware', 'backup']
 const route = useRoute()
 onMounted(async () => {
   const id = route.hash.slice(1)
-  if (id !== 'discord' && id !== 'firmware') return
+  if (!ANCHORS.includes(id)) return
   await nextTick()
   setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250)
 })
@@ -136,6 +139,8 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
         </section>
 
         <FirmwareCard />
+        <ObsCard />
+        <BackupCard />
 
       </div>
 

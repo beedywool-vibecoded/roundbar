@@ -122,13 +122,16 @@ type Button struct {
 }
 
 type Action struct {
-	Type   string `json:"type"`
-	Keys   string `json:"keys,omitempty"`
-	Text   string `json:"text,omitempty"`
-	Cmd    string `json:"cmd,omitempty"`
-	Page   string `json:"page,omitempty"`
-	Target string `json:"target,omitempty"`
-	Steps  []Step `json:"steps,omitempty"`
+	Type    string `json:"type"`
+	Keys    string `json:"keys,omitempty"`
+	Text    string `json:"text,omitempty"`
+	Cmd     string `json:"cmd,omitempty"`
+	Page    string `json:"page,omitempty"`
+	Target  string `json:"target,omitempty"`
+	Steps   []Step `json:"steps,omitempty"`
+	Request string `json:"request,omitempty"` // obs
+	Scene   string `json:"scene,omitempty"`   // obs SetScene
+	Input   string `json:"input,omitempty"`   // obs ToggleMute
 }
 
 type Step struct {
@@ -390,7 +393,7 @@ func (pg *Page) validate(pp string, pageIDs map[string]bool) error {
 				return fail(pp+".shapes."+k, "unknown shape %q", v)
 			}
 		}
-	case "mixer", "windows", "clipboard", "discord":
+	case "mixer", "windows", "clipboard", "discord", "obs", "game":
 	case "clock":
 		if !oneOf(pg.Style, "", "analog", "digital") {
 			return fail(pp+".style", "must be analog or digital")
@@ -536,6 +539,14 @@ func (a *Action) validate(ap string, pageIDs map[string]bool) error {
 		if !oneOf(a.Cmd, "toggle", "mute", "unmute") {
 			return fail(ap+".cmd", "must be toggle, mute or unmute")
 		}
+	case "obs":
+		if !oneOf(a.Request, "ToggleRecord", "ToggleRecordPause", "ToggleStream", "SaveReplayBuffer", "ToggleVirtualCam",
+			"StudioTransition", "SetScene", "ToggleMute") {
+			return fail(ap+".request", "unknown OBS request %q", a.Request)
+		}
+		if a.Request == "SetScene" && strings.TrimSpace(a.Scene) == "" {
+			return fail(ap+".scene", "name the scene to switch to")
+		}
 	case "macro":
 		if len(a.Steps) == 0 || len(a.Steps) > 32 {
 			return fail(ap+".steps", "need 1..32 steps")
@@ -576,5 +587,5 @@ func (a *Action) validate(ap string, pageIDs map[string]bool) error {
 
 // RunsOnDaemon tells whether the device hands this action to the PC.
 func (a *Action) RunsOnDaemon() bool {
-	return oneOf(a.Type, "command", "open", "mic", "macro")
+	return oneOf(a.Type, "command", "open", "mic", "macro", "obs")
 }

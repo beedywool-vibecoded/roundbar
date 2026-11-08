@@ -7,10 +7,10 @@ import TextField from './TextField.vue'
 import KeyRecorder from './KeyRecorder.vue'
 import ShapeLoader from './ShapeLoader.vue'
 import { api } from '@/lib/api'
-import { ACTION_TYPES, LIMITS, MEDIA_CMDS, MIC_CMDS, checkAction, defaultAction, validText, type Issue } from '@/lib/model'
+import { ACTION_TYPES, LIMITS, MEDIA_CMDS, MIC_CMDS, OBS_DEFAULT_INPUT, OBS_REQUESTS, checkAction, defaultAction, validText, type Issue } from '@/lib/model'
 import { comboFromEvent, formatCombo, heldMods, modifierOf, type Modifier } from '@/lib/keys'
-import { config, daemonUp } from '@/lib/store'
-import type { Action, ActionType, MediaCmd, MicCmd, Page, Step } from '@/lib/types'
+import { config, daemonUp, live } from '@/lib/store'
+import type { Action, ActionType, MediaCmd, MicCmd, ObsRequest, Page, Step } from '@/lib/types'
 import { run, toast } from '@/lib/ui'
 
 const model = defineModel<Action>({ required: true })
@@ -36,6 +36,18 @@ const a = computed(() => model.value as unknown as Record<string, string>)
 function set(field: string, v: unknown) {
   model.value = { ...model.value, [field]: v } as Action
 }
+// OBS: each request carries only its own field
+function setObsRequest(r: ObsRequest) {
+  const prev = model.value.type === 'obs' ? model.value : null
+  const next: Action = { type: 'obs', request: r }
+  if (r === 'SetScene') next.scene = prev?.scene ?? obsStatus.value?.current ?? ''
+  if (r === 'ToggleMute') next.input = prev?.input || OBS_DEFAULT_INPUT
+  model.value = next
+}
+const obsStatus = computed(() => live.status?.obs)
+const sceneSuggestions = computed(() => (obsStatus.value?.connected ? (obsStatus.value.scenes ?? []).filter((s) => s !== a.value.scene) : []))
+const inputSuggestions = computed(() => ['Mic/Aux', 'Desktop Audio'].filter((x) => x !== a.value.input))
+
 const steps = computed(() => (model.value.type === 'macro' ? model.value.steps : []))
 function setSteps(s: Step[]) {
   if (model.value.type === 'macro') model.value = { ...model.value, steps: s }
@@ -244,6 +256,51 @@ function test() {
       @update:model-value="set('cmd', $event as MicCmd)"
     />
 
+    <template v-else-if="type === 'obs'">
+      <M3Select :model-value="a.request as ObsRequest" :options="OBS_REQUESTS" label="OBS request" @update:model-value="setObsRequest($event as ObsRequest)" />
+      <template v-if="a.request === 'SetScene'">
+        <TextField
+          :model-value="a.scene ?? ''"
+          label="Scene"
+          placeholder="Scene name, as in OBS"
+          :error="!a.scene?.trim() ? 'Name the OBS scene to switch to' : null"
+          @update:model-value="set('scene', $event)"
+        />
+        <div v-if="sceneSuggestions.length" class="obs-sugg">
+          <span class="muted small">Scenes in OBS</span>
+          <div class="chips">
+            <button v-for="sc in sceneSuggestions" :key="sc" type="button" class="fchip st" @click="set('scene', sc)">
+              {{ sc }}
+            </button>
+          </div>
+        </div>
+        <p v-else-if="!obsStatus?.connected" class="muted small" style="margin: 0">
+          Connect OBS on the <RouterLink to="/device#obs">Device page</RouterLink> to pick from your scenes.
+        </p>
+      </template>
+      <template v-else-if="a.request === 'ToggleMute'">
+        <TextField
+          :model-value="a.input ?? ''"
+          label="Audio source"
+          :placeholder="OBS_DEFAULT_INPUT"
+          :error="!a.input?.trim() ? 'Name the OBS audio source to mute' : null"
+          help="The source name as shown in the OBS audio mixer"
+          @update:model-value="set('input', $event)"
+        />
+        <div class="chips">
+          <button v-for="inp in inputSuggestions" :key="inp" type="button" class="fchip st" @click="set('input', inp)">
+            {{ inp }}
+          </button>
+        </div>
+      </template>
+      <p class="muted small" style="margin: 0">
+        Sent to OBS over its WebSocket, so it works even when OBS isn't focused.
+        <template v-if="!obsStatus?.connected">
+          <RouterLink to="/device#obs">Set up OBS</RouterLink> once on the Device page.
+        </template>
+      </p>
+    </template>
+
     <div v-else-if="type === 'macro'" class="macro">
       <ol v-if="steps.length" class="steps">
         <li v-for="(s, i) in steps" :key="i" class="step">
@@ -439,6 +496,14 @@ function test() {
 .rec-chip {
   color: var(--error);
   border-color: color-mix(in srgb, var(--error) 50%, transparent);
+}
+.obs-sugg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ae a {
+  color: var(--primary);
 }
 .add-steps {
   display: flex;

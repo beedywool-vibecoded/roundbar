@@ -10,6 +10,7 @@ import (
 	"github.com/beedywool-vibecoded/roundbar/internal/config"
 	"github.com/beedywool-vibecoded/roundbar/internal/discord"
 	"github.com/beedywool-vibecoded/roundbar/internal/ipc"
+	"github.com/beedywool-vibecoded/roundbar/internal/obs"
 )
 
 func (d *Daemon) serveSocket() {
@@ -75,6 +76,9 @@ func (d *Daemon) handle(c net.Conn) {
 				continue
 			}
 			_ = enc.Encode(ok)
+		case "perf": // performance probe: the device logs its frame times
+			d.send(map[string]any{"t": "perf", "ms": 1500})
+			_ = enc.Encode(ok)
 		case "screenshot":
 			png, err := d.screenshot()
 			if err != nil {
@@ -82,6 +86,21 @@ func (d *Daemon) handle(c net.Conn) {
 				continue
 			}
 			_ = enc.Encode(map[string]any{"png": png}) // base64 in JSON
+		case "obs": // save OBS WebSocket settings from the configurator
+			var cr obs.Creds
+			if err := json.Unmarshal(req.Action, &cr); err != nil {
+				_ = enc.Encode(map[string]string{"error": "bad OBS settings"})
+				continue
+			}
+			if err := obs.SaveCreds(&cr); err != nil {
+				_ = enc.Encode(map[string]string{"error": err.Error()})
+				continue
+			}
+			select {
+			case d.obsKick <- struct{}{}:
+			default:
+			}
+			_ = enc.Encode(ok)
 		case "discord": // save Discord app credentials from the configurator
 			var cr struct {
 				ClientID     string `json:"clientId"`

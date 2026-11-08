@@ -2,7 +2,7 @@
 // daemon status. Edits stay local until Save.
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { ApiError, api, streamStatus } from './api'
-import { normalize, starterConfig, syncProfilePalette, validate, type Issue } from './model'
+import { matchesAny, normalize, starterConfig, syncProfilePalette, validate, type Issue } from './model'
 import { devicePalette, seed, validHex } from './theme'
 import type { Config, Palette, Profile, Status } from './types'
 import { toast } from './ui'
@@ -25,8 +25,85 @@ export function focusKeys(): string[] {
   return [f?.id, f?.class].filter((x): x is string => !!x).map((x) => x.toLowerCase())
 }
 
+// Does a profile's match list catch the focused window? Entries may hold `*` wildcards.
+export function matchesFocus(match: string[]): boolean {
+  const keys = focusKeys()
+  return keys.length > 0 && matchesAny(match, keys)
+}
+
 const json = computed(() => (config.value ? JSON.stringify(config.value) : ''))
 export const dirty = computed(() => !!config.value && json.value !== saved.value)
+
+// ---- undo / redo of unsaved edits ----
+// Snapshots are JSON strings (deep copies). A burst of changes (typing, a slider drag) settles
+// for HISTORY_SETTLE_MS before it becomes one step. Cleared on load and after save.
+const HISTORY_MAX = 50
+const HISTORY_SETTLE_MS = 600
+const past = shallowRef<string[]>([])
+const future = shallowRef<string[]>([])
+// The state the newest step leads to; edits after it are pending until they settle
+let committed = ''
+const pending = ref(false)
+let settleTimer: ReturnType<typeof setTimeout> | undefined
+
+function settle() {
+  clearTimeout(settleTimer)
+  settleTimer = undefined
+  pending.value = false
+  const now = json.value
+  if (!now || now === committed) return
+  if (committed) past.value = [...past.value, committed].slice(-HISTORY_MAX)
+  committed = now
+}
+
+watch(json, (now) => {
+  if (now === committed) {
+    // Back where the last step left off (or an undo / redo just applied)
+    clearTimeout(settleTimer)
+    settleTimer = undefined
+    pending.value = false
+    return
+  }
+  if (future.value.length) future.value = []
+  pending.value = true
+  clearTimeout(settleTimer)
+  settleTimer = setTimeout(settle, HISTORY_SETTLE_MS)
+})
+
+function resetHistory() {
+  clearTimeout(settleTimer)
+  settleTimer = undefined
+  pending.value = false
+  past.value = []
+  future.value = []
+  committed = json.value
+}
+
+export const canUndo = computed(() => past.value.length > 0 || pending.value)
+export const canRedo = computed(() => future.value.length > 0 && !pending.value)
+
+function apply(snapshot: string) {
+  committed = snapshot
+  config.value = JSON.parse(snapshot) as Config
+}
+
+export function undo() {
+  if (pending.value) settle()
+  const prev = past.value[past.value.length - 1]
+  if (prev === undefined) return
+  past.value = past.value.slice(0, -1)
+  future.value = [...future.value, committed]
+  apply(prev)
+}
+
+export function redo() {
+  if (pending.value) return
+  const next = future.value[future.value.length - 1]
+  if (next === undefined) return
+  future.value = future.value.slice(0, -1)
+  past.value = [...past.value, committed].slice(-HISTORY_MAX)
+  apply(next)
+}
 export const issues = computed<Issue[]>(() => (config.value ? validate(config.value, iconSet.value) : []))
 
 export function issuesUnder(prefix: string): Issue[] {
@@ -56,6 +133,7 @@ export async function loadAll() {
     saved.value = cfg.config ? JSON.stringify(c) : ''
     isNew.value = !cfg.config
     config.value = c
+    resetHistory()
     if (cfg.fileError) toast(`The config file is invalid, showing defaults: ${cfg.fileError}`, true)
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
@@ -85,6 +163,7 @@ export async function save(): Promise<boolean> {
     // Show what the server wrote, unless the user kept editing during the request
     if (JSON.stringify(config.value) === sent) config.value = written
     saved.value = JSON.stringify(written)
+    resetHistory()
     isNew.value = false
     toast('Saved. The daemon sends it to the device.')
     return true

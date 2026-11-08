@@ -34,6 +34,25 @@ function sample(): Config {
       },
     ],
   })
+  c.profiles.push({
+    id: 'games',
+    name: 'Games',
+    match: ['steam_app_*'],
+    pages: [
+      { id: 'game', type: 'game', title: 'Game' },
+      { id: 'obs', type: 'obs', title: 'OBS' },
+      {
+        id: 'stream',
+        type: 'radial',
+        title: 'Stream',
+        center: { id: 'b9', icon: 'videocam', label: 'Record', color: 'error', tap: { type: 'obs', request: 'ToggleRecord' } },
+        buttons: [
+          { id: 'b1', icon: 'mic_off', label: 'Mute mic', color: 'error', tap: { type: 'obs', request: 'ToggleMute', input: 'Mic/Aux' } },
+          { id: 'b2', icon: 'grid_view', label: 'BRB', color: 'secondary', tap: { type: 'obs', request: 'SetScene', scene: 'BRB' } },
+        ],
+      },
+    ],
+  })
   return c
 }
 const status: Status = {
@@ -46,11 +65,13 @@ const status: Status = {
     { id: 'code', name: 'Visual Studio Code', class: 'code' },
     { id: 'org.gnome.nautilus', name: 'Files', class: 'org.gnome.nautilus' },
     { id: 'spotify', name: 'Spotify', class: 'spotify' },
+    { id: 'steam_app_1145360', name: 'Hades', class: 'steam_app_1145360' },
     { id: 'org.gnome.console', name: 'Console', class: 'kgx' },
   ],
   view: { profile: 'default', page: 'main', kind: 'radial', awake: true },
   extension: true,
   discord: { connected: false },
+  obs: { connected: false },
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -121,6 +142,30 @@ export async function handle(method: string, path: string, body?: unknown): Prom
       }, 1500)
       return { ok: true }
     }
+    case 'POST /api/obs': {
+      const b = body as { host?: string; port?: number; password?: string }
+      if (!b.host || !b.port) throw new ApiError('host and port are required', 400)
+      if (b.password === 'wrong') {
+        status.obs = { connected: false, error: 'authentication failed: wrong password' }
+        listeners.forEach((l) => l({ ...status }))
+        return { ok: true }
+      }
+      setTimeout(() => {
+        status.obs = { connected: true, recording: false, streaming: true, scenes: ['Main', 'BRB', 'Game', 'Chat', 'Ending'], current: 'Main' }
+        listeners.forEach((l) => l({ ...status }))
+      }, 1200)
+      return { ok: true }
+    }
+    case 'GET /api/backup':
+      await wait(400)
+      return fakeZip(JSON.stringify(cfg ?? starterConfig(), null, 2))
+    case 'POST /api/restore': {
+      if (!(body instanceof Blob) || body.size < 4) throw new ApiError('not a zip file', 400)
+      const sig = new Uint8Array(await body.slice(0, 2).arrayBuffer())
+      if (sig[0] !== 0x50 || sig[1] !== 0x4b) throw new ApiError('not a zip file', 400)
+      await wait(600)
+      return { ok: true }
+    }
     case 'POST /api/run':
       console.info('run', body)
       return { ok: true }
@@ -176,4 +221,39 @@ export function streamStatus(on: (s: Status) => void): () => void {
     clearInterval(timer)
     listeners.delete(on)
   }
+}
+
+// A real (stored, uncompressed) zip holding config.json, so the download opens in an archive tool.
+function fakeZip(text: string): Blob {
+  const data = new TextEncoder().encode(text)
+  const name = new TextEncoder().encode('config.json')
+  let crc = ~0
+  for (const b of data) {
+    crc ^= b
+    for (let k = 0; k < 8; k++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+  }
+  crc = ~crc >>> 0
+  const local = new DataView(new ArrayBuffer(30))
+  local.setUint32(0, 0x04034b50, true)
+  local.setUint16(4, 20, true)
+  local.setUint32(14, crc, true)
+  local.setUint32(18, data.length, true)
+  local.setUint32(22, data.length, true)
+  local.setUint16(26, name.length, true)
+  const central = new DataView(new ArrayBuffer(46))
+  central.setUint32(0, 0x02014b50, true)
+  central.setUint16(4, 20, true)
+  central.setUint16(6, 20, true)
+  central.setUint32(16, crc, true)
+  central.setUint32(20, data.length, true)
+  central.setUint32(24, data.length, true)
+  central.setUint16(28, name.length, true)
+  const centralAt = 30 + name.length + data.length
+  const end = new DataView(new ArrayBuffer(22))
+  end.setUint32(0, 0x06054b50, true)
+  end.setUint16(8, 1, true)
+  end.setUint16(10, 1, true)
+  end.setUint32(12, 46 + name.length, true)
+  end.setUint32(16, centralAt, true)
+  return new Blob([local, name, data, central, name, end], { type: 'application/zip' })
 }

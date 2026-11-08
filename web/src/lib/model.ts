@@ -11,6 +11,7 @@ import {
   type Config,
   type DialSource,
   type MediaSettings,
+  type ObsRequest,
   type Page,
   type PageType,
   type MediaButton,
@@ -82,6 +83,8 @@ export const PAGE_TYPES: { value: PageType; label: string; icon: string; hint: s
   { value: 'windows', label: 'Windows', icon: 'select_window', hint: 'Switch between open windows' },
   { value: 'clipboard', label: 'Clipboard', icon: 'content_paste', hint: 'Paste from your recent copies' },
   { value: 'discord', label: 'Discord voice', icon: 'headset_mic', hint: "Your voice channel: who's talking, mute and deafen" },
+  { value: 'obs', label: 'OBS', icon: 'videocam', hint: 'Live OBS: record button and your scenes' },
+  { value: 'game', label: 'Game', icon: 'sports_esports', hint: "The game you're playing: art, session time, GPU load" },
   { value: 'image', label: 'Image', icon: 'image', hint: 'A picture, a GIF, or a slideshow of pictures' },
   {
     value: 'touchpad',
@@ -109,7 +112,20 @@ export const ACTION_TYPES: { value: ActionType; label: string; icon: string; hin
   { value: 'open', label: 'Open', icon: 'open_in_new', hint: 'Open a URL, file or .desktop app' },
   { value: 'mic', label: 'Microphone', icon: 'mic', hint: 'Mute or unmute the default source' },
   { value: 'macro', label: 'Macro', icon: 'done_all', hint: 'Several steps in a row' },
+  { value: 'obs', label: 'OBS', icon: 'videocam', hint: 'Record, stream, scenes and mutes, even when OBS is not focused' },
 ]
+
+export const OBS_REQUESTS: { value: ObsRequest; label: string }[] = [
+  { value: 'ToggleRecord', label: 'Toggle recording' },
+  { value: 'ToggleRecordPause', label: 'Pause/resume recording' },
+  { value: 'ToggleStream', label: 'Toggle streaming' },
+  { value: 'SaveReplayBuffer', label: 'Save replay' },
+  { value: 'ToggleVirtualCam', label: 'Toggle virtual camera' },
+  { value: 'StudioTransition', label: 'Studio mode transition' },
+  { value: 'SetScene', label: 'Switch scene' },
+  { value: 'ToggleMute', label: 'Toggle mute' },
+]
+export const OBS_DEFAULT_INPUT = 'Mic/Aux'
 
 export const MEDIA_CMDS = [
   { value: 'play_pause', label: 'Play / pause' },
@@ -224,6 +240,8 @@ export function defaultAction(type: ActionType, pages: Page[] = []): Action {
       return { type, cmd: 'toggle' }
     case 'macro':
       return { type, steps: [] }
+    case 'obs':
+      return { type, request: 'ToggleRecord' }
   }
 }
 
@@ -257,6 +275,10 @@ export function newPage(type: PageType, taken: string[]): Page {
       return { id, type, title: 'Clipboard' }
     case 'discord':
       return { id, type, title: 'Discord' }
+    case 'obs':
+      return { id, type, title: 'OBS' }
+    case 'game':
+      return { id, type, title: 'Game' }
     case 'image':
       return { id, type, title: 'Image', images: [] }
     case 'touchpad':
@@ -371,6 +393,30 @@ export function syncProfilePalette(p: Profile, mode: ThemeMode) {
   else if (validHex(p.seed)) p.palette = devicePalette(p.seed, mode)
 }
 
+// ---- profile match entries ----
+
+// An app id or window class, lowercase; `*` matches any run of characters ("steam_app_*").
+export function matchError(m: string): string | null {
+  if (typeof m !== 'string' || !m.trim()) return 'Match entries cannot be empty'
+  if (m !== m.toLowerCase()) return 'Window classes are lowercase'
+  return null
+}
+
+const patternCache = new Map<string, RegExp>()
+export function matchesEntry(entry: string, key: string): boolean {
+  if (!entry.includes('*')) return entry === key
+  let re = patternCache.get(entry)
+  if (!re) {
+    re = new RegExp(`^${entry.split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`)
+    patternCache.set(entry, re)
+  }
+  return re.test(key)
+}
+// Does a profile's match list catch any of these (lowercased) window keys?
+export function matchesAny(match: string[], keys: string[]): boolean {
+  return match.some((m) => keys.some((k) => matchesEntry(m, k)))
+}
+
 // ---- validation ----
 
 export interface Issue {
@@ -425,6 +471,11 @@ export function checkAction(a: Action, pages: Page[], path: string, out: Issue[]
       if (!a.steps.length) out.push({ path, message: 'The macro has no steps' })
       if (a.steps.length > LIMITS.steps) out.push({ path, message: `At most ${LIMITS.steps} steps` })
       a.steps.forEach((s, i) => checkStep(s, `${path}.steps[${i}]`, out))
+      break
+    case 'obs':
+      if (!OBS_REQUESTS.some((r) => r.value === a.request)) out.push({ path, message: `Unknown OBS request "${a.request}"` })
+      else if (a.request === 'SetScene' && !a.scene?.trim()) out.push({ path: `${path}.scene`, message: 'Name the OBS scene to switch to' })
+      else if (a.request === 'ToggleMute' && !a.input?.trim()) out.push({ path: `${path}.input`, message: 'Name the OBS audio source to mute' })
       break
   }
 }
@@ -526,6 +577,8 @@ function checkPage(pg: Page, pages: Page[], icons: Set<string>, path: string, ou
     case 'windows':
     case 'clipboard':
     case 'discord':
+    case 'obs':
+    case 'game':
       break
     case 'touchpad':
       if (pg.speed != null && !(Number.isInteger(pg.speed) && pg.speed >= 1 && pg.speed <= 10))
@@ -571,7 +624,8 @@ export function validate(c: Config, icons: Set<string>): Issue[] {
           if (typeof p.palette[r] !== 'string' || !validHex(p.palette[r])) out.push({ path: `${path}.palette.${r}`, message: `Palette role ${r} must be a #RRGGBB color` })
     }
     p.match.forEach((m, j) => {
-      if (m !== m.toLowerCase() || !m.trim()) out.push({ path: `${path}.match[${j}]`, message: 'Window classes are lowercase' })
+      const e = matchError(m)
+      if (e) out.push({ path: `${path}.match[${j}]`, message: e })
     })
     if (p.pages.length < 1 || p.pages.length > LIMITS.pages)
       out.push({ path: `${path}.pages`, message: `A profile has 1 to ${LIMITS.pages} pages` })
@@ -647,5 +701,11 @@ export function describeAction(a: Action | undefined, pages: Page[] = []): strin
       return `Mic: ${MIC_CMDS.find((m) => m.value === a.cmd)?.label.toLowerCase() ?? a.cmd}`
     case 'macro':
       return `${a.steps.length} step macro`
+    case 'obs': {
+      const label = OBS_REQUESTS.find((r) => r.value === a.request)?.label ?? a.request
+      if (a.request === 'SetScene') return a.scene ? `OBS: scene ${a.scene}` : 'OBS: no scene yet'
+      if (a.request === 'ToggleMute') return `OBS: mute ${a.input || OBS_DEFAULT_INPUT}`
+      return `OBS: ${label.toLowerCase()}`
+    }
   }
 }

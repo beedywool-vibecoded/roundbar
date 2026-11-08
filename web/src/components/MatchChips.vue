@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // App ids / window classes a profile matches, as input chips. The focused and recent apps
 // the daemon has seen are offered by app id; an entry matches a window's id or its class.
+// `*` is a wildcard: "steam_app_*" matches every Steam game.
 import { computed, ref } from 'vue'
 import Icon from './Icon.vue'
+import { matchesEntry } from '@/lib/model'
 import { live } from '@/lib/store'
 import type { App } from '@/lib/types'
 
@@ -10,13 +12,19 @@ const model = defineModel<string[]>({ required: true })
 const props = defineProps<{ takenBy: (id: string) => string | null }>()
 const draft = ref('')
 
+// One-click entries for families of windows
+const PATTERNS = [{ id: 'steam_app_*', label: 'Steam games', icon: 'sports_esports', tip: 'Every Steam game (steam_app_<id>)' }]
+const patterns = computed(() => PATTERNS.filter((p) => !model.value.includes(p.id)))
+// Already caught by a wildcard entry of this profile
+const coveredBy = (id: string) => model.value.find((m) => m !== id && m.includes('*') && matchesEntry(m, id)) ?? null
+
 const suggestions = computed(() => {
   const seen = new Set(model.value)
   const out: (App & { focused: boolean })[] = []
   const add = (a: App | null | undefined, focused: boolean) => {
     if (!a?.id) return
     const id = a.id.toLowerCase()
-    if (seen.has(id)) return
+    if (seen.has(id) || coveredBy(id)) return
     seen.add(id)
     out.push({ id, name: a.name, class: a.class, focused })
   }
@@ -53,6 +61,7 @@ function onKey(e: KeyboardEvent) {
       <span class="lbl">Apps (id or window class)</span>
       <span class="in wrap">
         <span v-for="m in model" :key="m" class="fchip on chip-in">
+          <Icon v-if="m.includes('*')" name="auto_awesome" :size="14" class="wild" />
           {{ m }}
           <span v-if="props.takenBy(m)" class="also" v-tip="`Also matched by ${props.takenBy(m)}, which comes first`"><Icon name="warning" :size="14" /></span>
           <button type="button" class="x" :aria-label="`Remove ${m}`" @click.prevent="remove(m)"><Icon name="close" :size="16" /></button>
@@ -60,6 +69,13 @@ function onKey(e: KeyboardEvent) {
         <input v-model="draft" placeholder="Type a class and press Enter" @keydown="onKey" @blur="commit" />
       </span>
     </label>
+    <p class="muted small" style="margin: 0">Use <code>*</code> as a wildcard, e.g. <code>steam_app_*</code> for every Steam game.</p>
+    <div v-if="patterns.length" class="chips">
+      <button v-for="p in patterns" :key="p.id" type="button" class="fchip st" v-tip="p.tip" @click="add(p.id)">
+        <Icon :name="p.icon" :size="16" />
+        {{ p.label }}
+      </button>
+    </div>
     <div v-if="suggestions.length" class="sugg">
       <span class="muted small">Seen recently</span>
       <div class="chips">
@@ -92,6 +108,9 @@ function onKey(e: KeyboardEvent) {
 }
 .chip-in {
   padding-right: 4px;
+}
+.wild {
+  opacity: 0.8;
 }
 .also {
   display: inline-grid;

@@ -11,9 +11,9 @@ import TextField from '@/components/TextField.vue'
 import M3Switch from '@/components/M3Switch.vue'
 import SeedPicker from '@/components/SeedPicker.vue'
 import { api } from '@/lib/api'
-import { CLOCK_DEFAULTS, ID_RE, LIMITS, PAGE_TYPES, TIMER_DEFAULTS, newPage, pageTypeInfo, pastePage, syncProfilePalette } from '@/lib/model'
+import { CLOCK_DEFAULTS, ID_RE, LIMITS, PAGE_TYPES, TIMER_DEFAULTS, matchesEntry, newPage, pageTypeInfo, pastePage, syncProfilePalette } from '@/lib/model'
 import { clipboardPage, copyPage } from '@/lib/clipboard'
-import { config, daemonUp, dirty, findProfile, focusKeys, issuesUnder, profileIndex, profilePalette } from '@/lib/store'
+import { config, daemonUp, dirty, findProfile, issuesUnder, matchesFocus, profileIndex, profilePalette } from '@/lib/store'
 import { SEEDS } from '@/lib/theme'
 import type { Page, PageType } from '@/lib/types'
 import { confirm, toast, toastError } from '@/lib/ui'
@@ -66,14 +66,14 @@ function commitId() {
   router.replace(`/profiles/${p.id}`)
 }
 
-// A class matched by an earlier profile never reaches this one.
+// A class matched by an earlier profile never reaches this one (wildcards included).
 function takenBy(cls: string): string | null {
   const list = config.value!.profiles
-  for (let i = 0; i < index.value; i++) if (list[i]!.match.includes(cls)) return list[i]!.name
+  for (let i = 0; i < index.value; i++) if (list[i]!.match.some((m) => m === cls || matchesEntry(m, cls))) return list[i]!.name
   return null
 }
 
-const focusMatches = computed(() => focusKeys().some((k) => profile.value?.match.includes(k)))
+const focusMatches = computed(() => !!profile.value && matchesFocus(profile.value.match))
 
 // ---- pages ----
 const adding = ref(false)
@@ -143,6 +143,10 @@ const pageSummary = (pg: Page) => {
       return 'Recent copies'
     case 'discord':
       return 'Voice channel controls'
+    case 'obs':
+      return 'Record button and live scenes'
+    case 'game':
+      return 'Focused game, session time, GPU'
     case 'timer':
       return `${(pg.minutes ?? TIMER_DEFAULTS.minutes).join(' / ')} min${pg.pomodoro ? ', Pomodoro' : ''}`
     case 'image':

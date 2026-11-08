@@ -72,6 +72,16 @@ export type EdgeDoubleTap = 'page' | 'quickSettings' | 'screenOff' | 'off'
 export type MediaCmd = 'play_pause' | 'next' | 'prev' | 'vol_up' | 'vol_down' | 'mute'
 export type MicCmd = 'toggle' | 'mute' | 'unmute'
 
+export type ObsRequest =
+  | 'ToggleRecord'
+  | 'ToggleRecordPause'
+  | 'ToggleStream'
+  | 'SaveReplayBuffer'
+  | 'ToggleVirtualCam'
+  | 'StudioTransition'
+  | 'SetScene'
+  | 'ToggleMute'
+
 export type Step = { keys: string } | { text: string } | { delay: number } | { command: string }
 
 export type Action =
@@ -83,6 +93,8 @@ export type Action =
   | { type: 'open'; target: string }
   | { type: 'mic'; cmd: MicCmd }
   | { type: 'macro'; steps: Step[] }
+  /** Through obs-websocket: `scene` for SetScene, `input` for ToggleMute */
+  | { type: 'obs'; request: ObsRequest; scene?: string; input?: string }
 
 export type ActionType = Action['type']
 
@@ -181,6 +193,12 @@ export interface ClipboardPage extends PageBase {
 export interface DiscordPage extends PageBase {
   type: 'discord'
 }
+export interface ObsPage extends PageBase {
+  type: 'obs'
+}
+export interface GamePage extends PageBase {
+  type: 'game'
+}
 export type Page =
   | RadialPage
   | MediaPage
@@ -192,6 +210,8 @@ export type Page =
   | WindowsPage
   | ClipboardPage
   | DiscordPage
+  | ObsPage
+  | GamePage
   | ImagePage
   | TouchpadPage
 export type PageType = Page['type']
@@ -258,6 +278,17 @@ export interface Status {
   extension?: boolean
   /** Discord RPC session of the daemon */
   discord?: DiscordStatus
+  /** obs-websocket session of the daemon */
+  obs?: ObsStatus
+}
+
+export interface ObsStatus {
+  connected: boolean
+  error?: string
+  recording?: boolean
+  streaming?: boolean
+  scenes?: string[]
+  current?: string
 }
 
 export interface DiscordStatus {

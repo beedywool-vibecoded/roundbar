@@ -2836,6 +2836,55 @@ static void power_tick(lv_timer_t *t)
     }
 }
 
+// ---- performance probe ({"t":"perf","ms":N}) ------------------------------------------------
+// Times every refresh for N ms, then reports frames, average and worst draw time.
+
+static struct {
+    bool on;
+    uint32_t until, frames, t0, sum, worst;
+} perf;
+
+static void perf_event(lv_event_t *e)
+{
+    if (!perf.on) return;
+    uint32_t now = lv_tick_get();
+    if (lv_event_get_code(e) == LV_EVENT_REFR_START) {
+        perf.t0 = now;
+        return;
+    }
+    uint32_t d = now - perf.t0;
+    perf.frames++;
+    perf.sum += d;
+    if (d > perf.worst) perf.worst = d;
+}
+
+static void perf_done(lv_timer_t *t)
+{
+    if (!perf.on || lv_tick_get() < perf.until) return;
+    perf.on = false;
+    char b[120];
+    uint32_t span = perf.until - (perf.until - (uint32_t)(uintptr_t)lv_timer_get_user_data(t));
+    snprintf(b, sizeof(b), "perf page=%s frames=%u avg=%ums worst=%ums fps=%.1f", jstr(pages[cur_page], "id") ?: "?",
+             (unsigned)perf.frames, (unsigned)(perf.frames ? perf.sum / perf.frames : 0), (unsigned)perf.worst,
+             span ? perf.frames * 1000.0f / span : 0);
+    proto_log(b);
+    lv_timer_delete(t);
+}
+
+void ui_perf(int ms)
+{
+    memset(&perf, 0, sizeof(perf));
+    perf.on = true;
+    perf.until = lv_tick_get() + ms;
+    static bool hooked;
+    if (!hooked) {
+        lv_display_add_event_cb(disp, perf_event, LV_EVENT_REFR_START, NULL);
+        lv_display_add_event_cb(disp, perf_event, LV_EVENT_REFR_READY, NULL);
+        hooked = true;
+    }
+    lv_timer_create(perf_done, 100, (void *)(uintptr_t)ms);
+}
+
 // ---- pull-down detector -----------------------------------------------------------------
 // Wraps the touch driver's read callback: a press that starts in the top band
 // and moves down opens quick settings, whatever widget is under the finger.

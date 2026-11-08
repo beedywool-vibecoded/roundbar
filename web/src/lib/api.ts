@@ -96,6 +96,16 @@ export const api = {
   updateFirmware: () => request<unknown>('POST', '/api/firmware/update'),
   // Stored by the daemon in ~/.config/roundbar/discord.json, never in the config
   connectDiscord: (clientId: string, clientSecret: string) => request<unknown>('POST', '/api/discord', { clientId, clientSecret }),
+  // Stored by the daemon in ~/.config/roundbar/obs.json, never in the config
+  connectObs: (host: string, port: number, password: string) => request<unknown>('POST', '/api/obs', { host, port, password }),
+  // A zip of config.json and every asset
+  backup: async (): Promise<Blob> => {
+    if (mockMode) return (await (await mockHandler())('GET', '/api/backup')) as Blob
+    return (await send('GET', '/api/backup')).blob()
+  },
+  // Replaces the config and assets with the zip's; reload the config afterwards
+  restore: (zip: Blob) =>
+    request<unknown>('POST', '/api/restore', zip.type === 'application/zip' ? zip : new Blob([zip], { type: 'application/zip' })),
   // The converted file, for thumbnails and previews
   asset: async (id: string): Promise<Blob> => {
     const path = `/api/assets/${encodeURIComponent(id)}`

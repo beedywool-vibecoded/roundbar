@@ -79,6 +79,9 @@ func Run(open bool) error {
 	mux.HandleFunc("POST /api/assets", s.auth(s.postAsset))
 	mux.HandleFunc("GET /api/firmware", s.auth(s.getFirmware))
 	mux.HandleFunc("POST /api/discord", s.auth(s.postDiscord))
+	mux.HandleFunc("POST /api/obs", s.auth(s.postObs))
+	mux.HandleFunc("GET /api/backup", s.auth(s.getBackup))
+	mux.HandleFunc("POST /api/restore", s.auth(s.postRestore))
 	mux.HandleFunc("POST /api/firmware/update", s.auth(s.postFirmware))
 	mux.HandleFunc("GET /api/assets/{id}", s.auth(s.getAsset))
 	mux.Handle("/", spa())
@@ -179,6 +182,21 @@ func (s *server) postDiscord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := ipc.Call(ipc.Request{Op: "discord", Action: body}, nil); err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error(), "")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"ok":true}`))
+}
+
+// postObs saves the OBS WebSocket settings (kept by the daemon in obs.json).
+func (s *server) postObs(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4096))
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, "bad body", "")
+		return
+	}
+	if err := ipc.Call(ipc.Request{Op: "obs", Action: body}, nil); err != nil {
 		jsonErr(w, http.StatusBadRequest, err.Error(), "")
 		return
 	}

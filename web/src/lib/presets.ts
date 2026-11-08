@@ -1,5 +1,5 @@
 // Ready-made profiles offered in "New profile".
-import type { Action, Button, Page, Profile } from '@/lib/types'
+import type { Action, Button, ObsRequest, Page, Profile } from '@/lib/types'
 
 export interface Preset {
   id: string
@@ -11,26 +11,22 @@ export interface Preset {
   build: () => Omit<Profile, 'id' | 'name'>
 }
 
-const keys = (k: string): Action => ({ type: 'keys', keys: k })
-const btn = (id: string, icon: string, label: string, color: Button['color'], k: string): Button => ({
+const obs = (request: ObsRequest, input?: string): Action => ({ type: 'obs', request, ...(input ? { input } : {}) })
+const btn = (id: string, icon: string, label: string, color: Button['color'], tap: Action): Button => ({
   id,
   icon,
   label,
   color,
-  tap: keys(k),
+  tap,
 })
-// OBS has no default hotkeys: Ctrl+Shift+Alt+F-keys are free everywhere, and each is
-// bound once in OBS (Settings → Hotkeys: click a field, tap the button on Roundbar).
-const obsKey = (n: number) => `ctrl+shift+alt+f${n}`
 
 export const PRESETS: Preset[] = [
   {
     id: 'obs',
     name: 'OBS',
     icon: 'videocam',
-    hint: 'Record, stream, scenes, mutes and screenshots for OBS Studio',
-    setup:
-      'In OBS, open Settings → Hotkeys, click the field of each action (e.g. "Start Recording"), then tap the matching button on Roundbar. The keys are Ctrl+Shift+Alt+F1 to F12.',
+    hint: 'Record, stream, live scenes and mutes for OBS Studio',
+    setup: "Set up OBS in Device → OBS once (WebSocket password); then the buttons work even when OBS isn't focused.",
     build: () => ({
       match: ['com.obsproject.studio', 'obs'],
       pages: [
@@ -38,28 +34,18 @@ export const PRESETS: Preset[] = [
           id: 'control',
           type: 'radial',
           title: 'OBS',
-          center: btn('record', 'videocam', 'Record', 'error', obsKey(1)),
+          center: btn('record', 'videocam', 'Record', 'error', obs('ToggleRecord')),
           buttons: [
-            btn('stream', 'cast', 'Stream', 'primary', obsKey(2)),
-            btn('pause', 'pause', 'Pause rec.', 'secondary', obsKey(3)),
-            btn('replay', 'history', 'Save replay', 'tertiary', obsKey(4)),
-            btn('shot', 'screenshot', 'Screenshot', 'surface', obsKey(5)),
-            btn('mic', 'mic_off', 'Mute mic', 'error', obsKey(6)),
-            btn('desktop', 'volume_off', 'Mute desktop', 'surface', obsKey(7)),
-            btn('vcam', 'live_tv', 'Virtual cam', 'secondary', obsKey(8)),
-            btn('transition', 'sync', 'Transition', 'primary', obsKey(9)),
+            btn('stream', 'cast', 'Stream', 'primary', obs('ToggleStream')),
+            btn('pause', 'pause', 'Pause rec.', 'secondary', obs('ToggleRecordPause')),
+            btn('replay', 'history', 'Save replay', 'tertiary', obs('SaveReplayBuffer')),
+            btn('mic', 'mic_off', 'Mute mic', 'error', obs('ToggleMute', 'Mic/Aux')),
+            btn('desktop', 'volume_off', 'Mute desktop', 'surface', obs('ToggleMute', 'Desktop Audio')),
+            btn('vcam', 'live_tv', 'Virtual cam', 'secondary', obs('ToggleVirtualCam')),
+            btn('transition', 'sync', 'Transition', 'primary', obs('StudioTransition')),
           ],
         } as Page,
-        {
-          id: 'scenes',
-          type: 'radial',
-          title: 'Scenes',
-          buttons: [
-            btn('scene1', 'grid_view', 'Scene 1', 'primary', obsKey(10)),
-            btn('scene2', 'dashboard', 'Scene 2', 'secondary', obsKey(11)),
-            btn('scene3', 'layers', 'Scene 3', 'tertiary', obsKey(12)),
-          ],
-        } as Page,
+        { id: 'scenes', type: 'obs', title: 'Scenes' } as Page,
         { id: 'stats', type: 'stats', title: 'System', items: ['cpu', 'gpu', 'ram', 'cpuTemp'] } as Page,
       ],
     }),

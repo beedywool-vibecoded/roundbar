@@ -12,6 +12,7 @@ import (
 	"image"
 	"log"
 	"os/exec"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +25,7 @@ import (
 	"github.com/beedywool-vibecoded/roundbar/internal/desktop"
 	"github.com/beedywool-vibecoded/roundbar/internal/device"
 	"github.com/beedywool-vibecoded/roundbar/internal/discord"
+	"github.com/beedywool-vibecoded/roundbar/internal/obs"
 	"github.com/beedywool-vibecoded/roundbar/internal/stats"
 )
 
@@ -70,6 +72,9 @@ type Daemon struct {
 
 	clockKick     chan struct{}
 	discord       *discord.Client
+	obs           *obs.Client
+	obsKick       chan struct{}
+	game          gameInfo
 	discordLive   discord.State // from Vesktop via DevTools
 	discordLiveAt time.Time
 	discordKick   chan struct{}
@@ -81,7 +86,7 @@ type Daemon struct {
 }
 
 func New() *Daemon {
-	return &Daemon{clockKick: make(chan struct{}, 1), discord: discord.New(), discordKick: make(chan struct{}, 1), iconsSent: map[string]bool{}, acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
+	return &Daemon{obs: obs.New(), obsKick: make(chan struct{}, 1), clockKick: make(chan struct{}, 1), discord: discord.New(), discordKick: make(chan struct{}, 1), iconsSent: map[string]bool{}, acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
 }
 
 func (d *Daemon) Run() error {
@@ -107,6 +112,8 @@ func (d *Daemon) Run() error {
 	go d.audioLoop()
 	go d.clockLoop()
 	go d.discord.Run(d.done, d.discordKick)
+	go d.obs.Run(d.done, d.obsKick)
+	go d.obsLoop()
 	cdp := &discord.CDP{OnState: d.setDiscordLive}
 	go cdp.Run(d.done, d.hasDiscordPage)
 	go d.discordLoop()
@@ -142,6 +149,7 @@ func (d *Daemon) deviceLoop() {
 		d.port = p
 		d.sentPro, d.lastVol, d.lastMic, d.artSent = "", "", "", ""
 		d.iconsSent = map[string]bool{}
+		d.game.artSent = ""
 		d.mu.Unlock()
 		d.notify()
 		_ = p.Send(map[string]any{"t": "hello"})
@@ -248,6 +256,16 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		if json.Unmarshal(m.Raw, &a) == nil {
 			go d.run(a.Action)
 		}
+	case "obsCmd":
+		var v struct {
+			Request, Scene, Input string
+		}
+		_ = json.Unmarshal(m.Raw, &v)
+		go func() {
+			if err := d.obs.Do(v.Request, v.Scene, v.Input); err != nil {
+				log.Printf("obs: %v", err)
+			}
+		}()
 	case "discordToggle":
 		var v struct {
 			What string `json:"what"`
@@ -341,6 +359,11 @@ func (d *Daemon) onView(v View) {
 		d.sendAudio()
 	case "dial":
 		d.sendAudio()
+	case "obs":
+		go d.sendObs()
+	case "game":
+		d.startStats([]string{"gpu", "gpuTemp", "cpuTemp"})
+		go d.sendGame()
 	default:
 		d.onShellView(v.Kind)
 	}
@@ -436,13 +459,29 @@ func (d *Daemon) onFocus(f desktop.Focus) {
 	}
 	d.mu.Unlock()
 	d.syncProfile(false)
+	d.trackGame(f)
 	d.notify()
+}
+
+// matches: exact app id / window class, or a "*" pattern like "steam_app_*".
+func matches(pattern string, f desktop.Focus) bool {
+	if pattern == f.ID || pattern == f.Class || pattern+".desktop" == f.ID {
+		return true
+	}
+	if strings.Contains(pattern, "*") {
+		for _, v := range []string{f.ID, f.Class} {
+			if ok, _ := path.Match(pattern, v); ok && v != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (d *Daemon) profileFor(f desktop.Focus) (string, string) {
 	for _, p := range d.cfg.Profiles {
 		for _, m := range p.Match {
-			if m == f.ID || m == f.Class || m+".desktop" == f.ID {
+			if matches(m, f) {
 				return p.ID, p.Name
 			}
 		}
@@ -721,6 +760,10 @@ func (d *Daemon) run(a config.Action) {
 				log.Printf("mic: %v", err)
 			}
 		}
+	case "obs":
+		if err := d.obs.Do(a.Request, a.Scene, a.Input); err != nil {
+			log.Printf("obs: %v", err)
+		}
 	case "macro":
 		for _, s := range a.Steps {
 			switch {
@@ -759,6 +802,7 @@ type Status struct {
 	View       View            `json:"view"`
 	Extension  bool            `json:"extension"`
 	Discord    discord.State   `json:"discord"`
+	OBS        obs.State       `json:"obs"`
 }
 
 type DeviceStatus struct {
@@ -779,7 +823,7 @@ func (d *Daemon) status() Status {
 	pid, _ := d.profileFor(d.focus)
 	rec := append([]desktop.Focus{}, d.recent...)
 	disc := d.discordStateLocked()
-	return Status{Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
+	return Status{OBS: d.obs.State(), Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
 }
 
 // notify wakes every socket watcher (coalesced per watcher).

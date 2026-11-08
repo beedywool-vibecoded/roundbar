@@ -32,3 +32,4 @@ void ui_clips(cJSON *list);
 void ui_notifs(cJSON *list);
 void ui_notif_toast(cJSON *n);
 void ui_discord(cJSON *state);
+void ui_perf(int ms); // measure frame times, report as a log line

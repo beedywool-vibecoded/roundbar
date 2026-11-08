@@ -369,6 +369,39 @@ const discord = computed(() => {
   })
 })
 
+// ---- obs: record button in the center, sample scenes on the ring ----
+const OBS_SCENES = ['Main', 'BRB', 'Game', 'Chat', 'End']
+const obs = computed(() => {
+  if (props.page.type !== 'obs') return null
+  // Five of six 60° slots, leaving 12 o'clock free for the streaming badge
+  return OBS_SCENES.map((name, i) => {
+    const [x, y] = at(128, 330 + i * 60)
+    return { name: ellipsize(name, 14, true, 60), x, y, on: i === 0 }
+  })
+})
+
+// ---- game: blurred art, name, session time, two small gauges ----
+const game = computed(() => {
+  if (props.page.type !== 'game') return null
+  const width = 10
+  const r = 104 / 2 - width / 2
+  const g = (key: string, x: number, v: number, value: string, caption: string, color: string) => ({
+    key,
+    x,
+    y: 62,
+    width,
+    track: arcPath(r, ARC_START, ARC_START + ARC_SWEEP),
+    ind: arcPath(r, ARC_START, valueAngle(v)),
+    value,
+    caption,
+    color,
+  })
+  return {
+    title: ellipsize('Game name', 22, true, 236),
+    gauges: [g('gpu', -60, 64, '64%', 'GPU', p.value.tertiary), g('gpuTemp', 60, 71, '71°', 'GPU °C', p.value.primary)],
+  }
+})
+
 // ---- image: full screen, cover or contain on the surface color ----
 const imagePage = computed(() => (props.page.type === 'image' ? props.page : null))
 const sliding = computed(() => {
@@ -434,6 +467,14 @@ const dots = computed(() => {
   <svg class="round" viewBox="-180 -180 360 360" role="img" :aria-label="`Preview of the ${page.type} page`">
     <defs>
       <clipPath :id="uid"><circle r="180" /></clipPath>
+      <template v-if="game">
+        <filter :id="`${uid}-blur`" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="36" /></filter>
+        <linearGradient :id="`${uid}-art`" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#1d2b4a" />
+          <stop offset="0.55" stop-color="#3b1f3f" />
+          <stop offset="1" stop-color="#120d16" />
+        </linearGradient>
+      </template>
     </defs>
     <g :clip-path="`url(#${uid})`">
       <circle r="180" :fill="p.surface" />
@@ -641,6 +682,40 @@ const dots = computed(() => {
         <text class="sym" x="44" y="6" font-size="34" :fill="p.onSurface">headphones</text>
         <circle cx="0" cy="78" r="24" :fill="p.error" />
         <text class="sym" x="0" y="78" font-size="24" :fill="p.surface">call_end</text>
+      </template>
+
+      <!-- OBS -->
+      <template v-else-if="obs">
+        <g v-for="sc in obs" :key="sc.name">
+          <circle :cx="sc.x" :cy="sc.y" r="36" :fill="sc.on ? p.primaryContainer : p.surfaceContainerHighest" />
+          <text class="txt" :x="sc.x" :y="sc.y" font-size="14" :font-weight="sc.on ? 700 : 400" :fill="sc.on ? p.onPrimaryContainer : p.onSurface">{{ sc.name }}</text>
+        </g>
+        <g transform="translate(0 -146)">
+          <rect x="-26" y="-11" width="52" height="22" rx="11" :fill="p.error" />
+          <text class="txt" x="0" y="0" font-size="12" font-weight="700" :fill="p.surface">LIVE</text>
+        </g>
+        <path :d="buttonPath('square', 0, 0, 112)" :fill="p.errorContainer" />
+        <text class="sym" x="0" y="-12" font-size="40" :fill="p.onErrorContainer">videocam</text>
+        <text class="txt num" x="0" y="28" font-size="16" font-weight="700" :fill="p.onErrorContainer">12:34</text>
+      </template>
+
+      <!-- Game -->
+      <template v-else-if="game">
+        <rect x="-180" y="-180" width="360" height="360" :fill="`url(#${uid}-art)`" />
+        <g :filter="`url(#${uid}-blur)`">
+          <circle cx="-70" cy="-80" r="90" fill="#4a6fa5" fill-opacity="0.7" />
+          <circle cx="90" cy="20" r="80" fill="#a5486f" fill-opacity="0.55" />
+          <circle cx="-20" cy="120" r="70" fill="#d08a3c" fill-opacity="0.35" />
+        </g>
+        <circle r="180" :fill="p.surface" fill-opacity="0.45" />
+        <text class="txt" y="-62" font-size="22" font-weight="700" :fill="p.onSurface">{{ game.title }}</text>
+        <text class="txt" y="-32" font-size="16" :fill="p.onSurfaceVariant">1 h 12 min</text>
+        <g v-for="g in game.gauges" :key="g.key" :transform="`translate(${g.x} ${g.y})`">
+          <path :d="g.track" fill="none" :stroke="p.surfaceContainerHighest" :stroke-width="g.width" stroke-linecap="round" />
+          <path :d="g.ind" fill="none" :stroke="g.color" :stroke-width="g.width" stroke-linecap="round" />
+          <text class="txt" y="-4" font-size="24" font-weight="700" :fill="p.onSurface">{{ g.value }}</text>
+          <text class="txt" y="20" font-size="12" :fill="p.onSurfaceVariant">{{ g.caption }}</text>
+        </g>
       </template>
 
       <!-- Touchpad -->

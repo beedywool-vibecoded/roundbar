@@ -74,7 +74,8 @@ the device keeps a copy in flash so it works without the daemon.
     {
       "id": "default",         // [a-z0-9-]{1,24}, unique. "default" must exist and is used when nothing matches.
       "name": "Default",
-      "match": [],             // window classes / app ids, lowercase, e.g. ["firefox", "org.mozilla.firefox"]
+      "match": [],             // window classes / app ids, lowercase, e.g. ["firefox", "org.mozilla.firefox"];
+                               // "*" is a wildcard: "steam_app_*" matches every Steam game
       "seed": "#386A20",       // optional: own color; the configurator also writes "palette" (same roles as theme.palette,
                                // SchemeTonalSpot for theme.mode). The device uses it for this profile's pages.
       "pages": [ /* Page, 1..8 */ ]
@@ -99,6 +100,8 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `windows` | – | icons of the open windows on a ring (most recent first, up to 8); tap focuses the window |
 | `clipboard` | – | the last 10 copied texts as a scrolling list; tap one to paste it into the focused app |
 | `discord` | – | your Discord voice channel: members around the ring (avatar, speaking = green ring, muted badge), big mute / deafen buttons, leave; "Not in a voice channel" otherwise. Needs a Discord application set up in the configurator (Device view). |
+| `obs` | – | live OBS (via obs-websocket): the center toggles recording (red rounded square + elapsed time while recording), the ring holds your OBS scenes (current one highlighted; tap to switch, up to 8), a small streaming badge at the top. Needs OBS set up in the configurator (Device view). |
+| `game` | – | the game in focus (Steam `steam_app_<id>` windows): blurred library art behind, game name, session time, GPU load and CPU/GPU temperatures |
 | `touchpad` | `speed?: number` (1..10, default 5) | the device acts as a USB mouse: drag moves the cursor, tap = left click, long-press = right click, double-tap then drag = drag & drop, sliding along the outer ring scrolls. A sideways swipe starting on the ring changes page; a downward swipe from the top of the ring opens quick settings. |
 | `image` | `images: string[]` (asset ids, 1..20; a `.gif` must be alone), `interval?: number` (seconds, 2..3600, default 8), `fit?: "cover"\|"contain"` (default cover) | full-screen picture; several stills cross-fade as a slideshow; a GIF plays |
 
@@ -128,6 +131,7 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `open` | `target: "https://…" \| "firefox.desktop"` (xdg-open / gtk-launch) | daemon |
 | `mic` | `cmd: "toggle"\|"mute"\|"unmute"` | daemon |
 | `macro` | `steps: Step[]` (≤ 32) | daemon (asks the device to type the key steps) |
+| `obs` | `request: "ToggleRecord"\|"ToggleRecordPause"\|"ToggleStream"\|"SaveReplayBuffer"\|"ToggleVirtualCam"\|"StudioTransition"\|"SetScene"\|"ToggleMute"`, `scene?` (SetScene), `input?` (ToggleMute, e.g. "Mic/Aux") | daemon, through obs-websocket: works without OBS focused |
 
 Step: `{ "keys": "ctrl+c" } | { "text": "…" } | { "delay": 250 } | { "command": "…" }`, delay ≤ 5000 ms.
 
@@ -178,6 +182,7 @@ partition (see §2).
 | `assets` | `have: [ids]`, `free` | reply to `assetsWant` |
 | `activate` | `id` | focus a window from a `windows` page |
 | `mixerSet` | `id`, `vol` (0..100) / `mixerMute`: `id` / `output`: `id` | per-app volume, mute, default output |
+| `obsCmd` | `request`, `scene?`, `input?` | from an `obs` page (record button, scene buttons) |
 | `discordToggle` | `what: "mute"\|"deaf"\|"leave"` | Discord voice controls |
 | `paste` | `i` | paste clipboard entry i (the daemon puts it on the clipboard, then the device types ctrl+v) |
 | `notifOpen` / `notifDismiss` | `id` / `notifClear` | act on notifications |
@@ -204,6 +209,9 @@ partition (see §2).
 | `time` | `epoch` (unix s), `offset` (local UTC offset, s), `zones: {tz: offset}` | on connect and every hour (DST); the device keeps time from it |
 | `weather` | `city`, `temp`, `code` (WMO), `hi`, `lo`, `units`, `day: bool` | on connect and every 30 min while a clock page can show |
 | `icon` | `name`, `w`, `h`, `data` (base64 RGB565A8: RGB565 LE plane then A8 plane) | app icons for mixer / windows / notifications, sent before the list that uses them; the device caches them by name until reboot |
+| `obs` | `connected`, `recording`, `paused`, `recTime` (s), `streaming`, `scenes: [string]`, `current` | while an `obs` page is visible, on change and every second while recording |
+| `game` | `name`, `appid`, `since` (unix s) | while a `game` page is visible; `{"t":"game","name":""}` when no game is focused |
+| `gameArt` | same fields as `cover` | blurred library art for `game` pages |
 | `windows` | `list: [{id, app, title, icon}]` | while a `windows` page is visible, on change |
 | `mixer` | `apps: [{id, name, icon, vol, muted}]` | while a `mixer` page is visible, on change |
 | `clips` | `list: [string]` (newest first, ≤ 10, each ≤ 200 chars) | while a `clipboard` page is visible, on change |
@@ -244,5 +252,8 @@ sent as `Authorization: Bearer <token>` on every API call.
 | GET | `/api/assets/<id>` | the converted file (for thumbnails and previews) |
 | GET | `/api/firmware` | `{repo, repoOk, idf, built, running}`: can this machine build & flash, and which version is built |
 | POST | `/api/firmware/update` | builds and flashes; progress comes as SSE `flash` events `{line}` then `{done, ok}` |
+| POST | `/api/obs` | `{host, port, password}` → stored by the daemon in `obs.json` (0600), then it connects; state in status `.obs: {connected, error, recording, streaming, scenes, current}` |
+| GET | `/api/backup` | a zip of `config.json` and every asset file (`assets/<id>`) |
+| POST | `/api/restore` | that zip (body, `application/zip`) → validated, assets written, config saved; `400 {error}` otherwise |
 | POST | `/api/discord` | `{clientId, clientSecret}` → stored by the daemon in `discord.json` (0600), then it connects; state in status `.discord` |
 | GET | `/api/events?t=<token>` | SSE: `status` events (same JSON as `/api/status`) whenever it changes. Token in the query because EventSource can't set headers. Also the liveness signal: the server exits 10 s after the last client is gone. |

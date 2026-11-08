@@ -363,6 +363,22 @@ function show() {
               </p>
             </div>
 
+            <div v-else-if="page.type === 'obs'" class="form" style="gap: 8px">
+              <p class="muted small" style="margin: 0">
+                Live OBS: the center starts and stops recording (with the elapsed time), the ring shows your OBS scenes with the current one highlighted (tap to switch, up to 8),
+                and a badge at the top while streaming. Nothing to set up on the page.
+              </p>
+              <p v-if="!live.status?.obs?.connected" class="warn-line small">
+                <Icon name="link_off" :size="16" />
+                <span>OBS isn't connected yet. <RouterLink to="/device#obs">Set it up on the Device page</RouterLink></span>
+              </p>
+            </div>
+
+            <p v-else-if="page.type === 'game'" class="muted small" style="margin: 0">
+              The game in focus (Steam games, <code>steam_app_*</code> windows): its library art blurred behind, the game name, how long you've been playing, GPU load and temperature.
+              Put it in a profile that matches <code>steam_app_*</code> so it shows up on its own. Nothing to set up.
+            </p>
+
             <p v-else-if="page.type === 'media'" class="muted small" style="margin: 0">
               Shows the current player (MPRIS) with previous, play / pause and next, and the volume on the edge arc.
             </p>
