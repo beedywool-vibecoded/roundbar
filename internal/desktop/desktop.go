@@ -1,9 +1,12 @@
-// Package desktop listens on the session bus for the focused app (published by the
-// roundbar GNOME Shell extension) and for MPRIS media players. Everything is
-// signal-driven: nothing here polls.
+// Package desktop follows the desktop for the daemon: MPRIS media players on
+// the session bus, and through a Shell backend picked for the running desktop
+// (GNOME extension, Hyprland, sway/i3, KWin, X11) the focused app, windows,
+// notifications and clipboard. Everything is event-driven: nothing here polls.
 package desktop
 
 import (
+	"log"
+	"os"
 	"strings"
 	"sync"
 
@@ -11,9 +14,6 @@ import (
 )
 
 const (
-	focusName  = "dev.roundbar.Focus"
-	focusPath  = "/dev/roundbar/Focus"
-	focusIface = "dev.roundbar.Focus"
 	mprisPath  = "/org/mpris/MediaPlayer2"
 	mprisIface = "org.mpris.MediaPlayer2.Player"
 	mprisPre   = "org.mpris.MediaPlayer2."
@@ -28,7 +28,7 @@ const (
 type Focus struct {
 	ID    string `json:"id"`    // lowercase app id without .desktop, or the window class
 	Name  string `json:"name"`  // human name
-	Class string `json:"class"` // lowercase WM_CLASS
+	Class string `json:"class"` // lowercase WM_CLASS / app_id
 }
 
 type Media struct {
@@ -40,6 +40,27 @@ type Media struct {
 	CanNext bool   `json:"canNext"`
 	CanPrev bool   `json:"canPrev"`
 	ArtURL  string `json:"artUrl"`
+}
+
+type Window struct {
+	ID    string `json:"id"`
+	App   string `json:"app"`
+	Title string `json:"title"`
+	Icon  string `json:"icon"`
+}
+
+type Notification struct {
+	ID    string `json:"id"`
+	App   string `json:"app"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Icon  string `json:"icon"`
+}
+
+// Info names the shell backend in use and what it can do.
+type Info struct {
+	Backend string `json:"backend"`
+	Caps
 }
 
 type player struct {
@@ -54,7 +75,9 @@ type player struct {
 }
 
 type Desktop struct {
-	conn *dbus.Conn
+	conn    *dbus.Conn
+	shell   Shell
+	backend string
 
 	FocusChanged chan Focus
 	MediaChanged chan struct{} // coalesced
@@ -78,9 +101,6 @@ func Connect() (*Desktop, error) {
 	d := &Desktop{conn: conn, FocusChanged: make(chan Focus, 4), MediaChanged: make(chan struct{}, 1), players: map[string]*player{},
 		WindowsChanged: make(chan struct{}, 1), ClipsChanged: make(chan struct{}, 1), NotifsChanged: make(chan struct{}, 1),
 		NotifNew: make(chan string, 4), LayoutChanged: make(chan struct{}, 1)}
-	if err := conn.AddMatchSignal(dbus.WithMatchInterface(focusIface), dbus.WithMatchObjectPath(focusPath)); err != nil {
-		return nil, err
-	}
 	if err := conn.AddMatchSignal(dbus.WithMatchInterface("org.freedesktop.DBus.Properties"), dbus.WithMatchMember("PropertiesChanged"),
 		dbus.WithMatchObjectPath(mprisPath), dbus.WithMatchArg(0, mprisIface)); err != nil {
 		return nil, err
@@ -104,10 +124,65 @@ func Connect() (*Desktop, error) {
 			}
 		}
 	}
+	d.backend = pick(os.Getenv)
+	d.shell = d.startShell(d.backend)
 	return d, nil
 }
 
-func (d *Desktop) Close() { d.conn.Close() }
+// startShell starts the backend for focus and windows, then fills in
+// notifications and clipboard from generic sources where it has none.
+func (d *Desktop) startShell(backend string) Shell {
+	var win Shell = none{}
+	var err error
+	switch backend {
+	case BackendGnome:
+		g, err := newGnome(d.conn, d)
+		if err != nil {
+			log.Printf("desktop: gnome: %v", err)
+			return none{}
+		}
+		return g
+	case BackendKDE:
+		win, err = newKDE(d.conn, d)
+	case BackendWayland:
+		win, err = newWayland(d, true)
+		if err != nil && os.Getenv("XDG_CURRENT_DESKTOP") == "" {
+			log.Printf("desktop: wayland: %v; trying the GNOME extension", err)
+			d.backend = BackendGnome
+			return d.startShell(BackendGnome)
+		}
+	case BackendX11:
+		win, err = newX11(d)
+	case BackendNone:
+	default:
+		log.Printf("desktop: unknown backend %q", backend)
+	}
+	if err != nil {
+		log.Printf("desktop: %s: %v", backend, err)
+		win = none{}
+	}
+	m := mix{win: win, notif: win, clip: win}
+	if !win.Caps().Notifications {
+		if n, err := newNotifyMonitor(d.conn, d, win); err != nil {
+			log.Printf("desktop: notifications: %v", err)
+		} else {
+			m.notif = n
+		}
+	}
+	if k, ok := win.(*kde); ok {
+		if c := k.klipper(); c != nil {
+			m.clip = c
+		}
+	}
+	if !m.clip.Caps().Clipboard && backend == BackendKDE && os.Getenv("WAYLAND_DISPLAY") != "" {
+		if c, err := newWayland(d, false); err == nil && c.Caps().Clipboard { // KWin speaks data control
+			m.clip = c
+		} else if c != nil {
+			c.Close()
+		}
+	}
+	return m
+}
 
 // KDELayoutIndex asks KDE which entry of its layout list is active.
 func (d *Desktop) KDELayoutIndex() (int, bool) {
@@ -116,25 +191,56 @@ func (d *Desktop) KDELayoutIndex() (int, bool) {
 	return int(i), err == nil
 }
 
-// CurrentFocus asks the extension directly (used at startup).
+func (d *Desktop) Close() {
+	d.shell.Close()
+	d.conn.Close()
+}
+
+// Info reports the backend and its capabilities.
+func (d *Desktop) Info() Info { return Info{Backend: d.backend, Caps: d.shell.Caps()} }
+
+// CurrentFocus asks the backend directly (used at startup).
 func (d *Desktop) CurrentFocus() (Focus, bool) {
-	var f Focus
-	err := d.conn.Object(focusName, focusPath).Call(focusIface+".Get", 0).Store(&f.ID, &f.Name, &f.Class)
+	f, err := d.shell.Focus()
 	return f, err == nil
+}
+
+func (d *Desktop) Windows() ([]Window, error)             { return d.shell.Windows() }
+func (d *Desktop) Activate(id string) error               { return d.shell.Activate(id) }
+func (d *Desktop) Notifications() ([]Notification, error) { return d.shell.Notifications() }
+
+// NotificationAction: "open" or "dismiss".
+func (d *Desktop) NotificationAction(id, action string) error {
+	return d.shell.NotificationAction(id, action)
+}
+func (d *Desktop) Clipboard() ([]string, error)   { return d.shell.Clipboard() }
+func (d *Desktop) SetClipboard(text string) error { return d.shell.SetClipboard(text) }
+
+// events from the backends
+
+func (d *Desktop) focus(f Focus) {
+	select {
+	case d.FocusChanged <- f:
+	default: // consumer is slow; it will get the next one
+	}
+}
+
+func (d *Desktop) windows() { kick(d.WindowsChanged) }
+func (d *Desktop) clips()   { kick(d.ClipsChanged) }
+
+func (d *Desktop) notif(id string) {
+	if id != "" {
+		select {
+		case d.NotifNew <- id:
+		default:
+		}
+	}
+	kick(d.NotifsChanged)
 }
 
 func (d *Desktop) loop(sig chan *dbus.Signal) {
 	for s := range sig {
 		switch {
-		case s.Name == focusIface+".Changed" && len(s.Body) >= 3:
-			f := Focus{}
-			f.ID, _ = s.Body[0].(string)
-			f.Name, _ = s.Body[1].(string)
-			f.Class, _ = s.Body[2].(string)
-			select {
-			case d.FocusChanged <- f:
-			default: // consumer is slow; it will get the next one
-			}
 		case s.Name == dconfIface+".Notify" && len(s.Body) >= 2:
 			prefix, _ := s.Body[0].(string)
 			changes, _ := s.Body[1].([]string)
@@ -149,18 +255,6 @@ func (d *Desktop) loop(sig chan *dbus.Signal) {
 			}
 		case strings.HasPrefix(s.Name, kdeKbdIface+"."):
 			kick(d.LayoutChanged)
-		case s.Name == focusIface+".WindowsChanged":
-			kick(d.WindowsChanged)
-		case s.Name == focusIface+".ClipboardChanged":
-			kick(d.ClipsChanged)
-		case s.Name == focusIface+".NotificationsChanged":
-			if id, _ := s.Body[0].(string); id != "" {
-				select {
-				case d.NotifNew <- id:
-				default:
-				}
-			}
-			kick(d.NotifsChanged)
 		case s.Name == "org.freedesktop.DBus.NameOwnerChanged" && len(s.Body) == 3:
 			name, _ := s.Body[0].(string)
 			oldOwner, _ := s.Body[1].(string)
@@ -177,7 +271,7 @@ func (d *Desktop) loop(sig chan *dbus.Signal) {
 			if newOwner != "" {
 				go d.addPlayer(name)
 			}
-		case s.Name == "org.freedesktop.DBus.Properties.PropertiesChanged" && len(s.Body) >= 2:
+		case s.Name == "org.freedesktop.DBus.Properties.PropertiesChanged" && len(s.Body) >= 2 && s.Path == mprisPath:
 			changed, _ := s.Body[1].(map[string]dbus.Variant)
 			d.mu.Lock()
 			p := d.players[s.Sender]
@@ -198,65 +292,6 @@ func kick(ch chan struct{}) {
 	default:
 	}
 }
-
-type Window struct {
-	ID    string `json:"id"`
-	App   string `json:"app"`
-	Title string `json:"title"`
-	Icon  string `json:"icon"`
-}
-
-type Notification struct {
-	ID    string `json:"id"`
-	App   string `json:"app"`
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	Icon  string `json:"icon"`
-}
-
-func (d *Desktop) shell(method string, args ...any) *dbus.Call {
-	return d.conn.Object(focusName, focusPath).Call(focusIface+"."+method, 0, args...)
-}
-
-// D-Bus structs (a(ssss)) decode into Go structs with matching fields, not [][]string.
-func (d *Desktop) Windows() ([]Window, error) {
-	var raw []struct{ ID, App, Title, Icon string }
-	if err := d.shell("Windows").Store(&raw); err != nil {
-		return nil, err
-	}
-	out := make([]Window, 0, len(raw))
-	for _, r := range raw {
-		out = append(out, Window{ID: r.ID, App: r.App, Title: r.Title, Icon: r.Icon})
-	}
-	return out, nil
-}
-
-func (d *Desktop) Activate(id string) error { return d.shell("Activate", id).Err }
-
-func (d *Desktop) Notifications() ([]Notification, error) {
-	var raw []struct{ ID, App, Title, Body, Icon string }
-	if err := d.shell("Notifications").Store(&raw); err != nil {
-		return nil, err
-	}
-	out := make([]Notification, 0, len(raw))
-	for _, r := range raw {
-		out = append(out, Notification{ID: r.ID, App: r.App, Title: r.Title, Body: r.Body, Icon: r.Icon})
-	}
-	return out, nil
-}
-
-// NotificationAction: "open" or "dismiss".
-func (d *Desktop) NotificationAction(id, action string) error {
-	return d.shell("NotificationAction", id, action).Err
-}
-
-func (d *Desktop) Clipboard() ([]string, error) {
-	var out []string
-	err := d.shell("ClipboardHistory").Store(&out)
-	return out, err
-}
-
-func (d *Desktop) SetClipboard(text string) error { return d.shell("SetClipboard", text).Err }
 
 func (d *Desktop) notifyMedia() {
 	select {

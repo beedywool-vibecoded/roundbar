@@ -281,13 +281,24 @@ export interface Status {
   profile?: string
   recentApps?: App[]
   view?: View | null
+  /** the focus source answers (GNOME: the extension runs) */
   extension?: boolean
   /** The PC's active keyboard layout, used by the device when keyboardLayout is 'auto' */
   keyboard?: { detected: LayoutId; source: string }
+  /** desktop backend and what it can do */
+  desktop?: DesktopInfo
   /** Discord RPC session of the daemon */
   discord?: DiscordStatus
   /** obs-websocket session of the daemon */
   obs?: ObsStatus
+}
+
+export interface DesktopInfo {
+  backend: string // gnome | kde | wayland | x11 | none
+  focus: boolean
+  windows: boolean
+  notifications: boolean
+  clipboard: boolean
 }
 
 export interface ObsStatus {

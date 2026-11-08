@@ -11,11 +11,12 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/beedywool-vibecoded/roundbar/internal/desktop"
 	"github.com/beedywool-vibecoded/roundbar/internal/discord"
 	"github.com/beedywool-vibecoded/roundbar/internal/icons"
 )
 
-// Pages backed by GNOME Shell and PipeWire: windows, mixer, clipboard, and the
+// Pages backed by the desktop shell and PipeWire: windows, mixer, clipboard, and the
 // notification panel. Lists are pushed only while the page that shows them is
 // on screen (notifications: always, if enabled), so idle cost stays zero.
 
@@ -61,6 +62,9 @@ func (d *Daemon) sendWindows() {
 		return
 	}
 	ws, err := d.desk.Windows()
+	if errors.Is(err, desktop.ErrUnsupported) {
+		ws, err = []desktop.Window{}, nil
+	}
 	if err != nil {
 		log.Printf("windows: %v", err)
 		return
@@ -97,6 +101,9 @@ func (d *Daemon) sendClips() {
 		return
 	}
 	list, err := d.desk.Clipboard()
+	if errors.Is(err, desktop.ErrUnsupported) {
+		list, err = nil, nil
+	}
 	if err != nil {
 		return
 	}
@@ -120,6 +127,9 @@ func (d *Daemon) sendNotifs(newID string) {
 		return
 	}
 	list, err := d.desk.Notifications()
+	if errors.Is(err, desktop.ErrUnsupported) {
+		list, err = []desktop.Notification{}, nil
+	}
 	if err != nil {
 		log.Printf("notifications: %v", err)
 		return

@@ -72,6 +72,7 @@ const status: Status = {
   view: { profile: 'default', page: 'main', kind: 'radial', awake: true },
   extension: true,
   keyboard: { detected: 'de', source: 'gnome' },
+  desktop: { backend: 'gnome', focus: true, windows: true, notifications: true, clipboard: true },
   discord: { connected: false },
   obs: { connected: false },
 }

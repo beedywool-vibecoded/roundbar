@@ -345,7 +345,7 @@ function show() {
             </p>
 
             <p v-else-if="page.type === 'windows'" class="muted small" style="margin: 0">
-              The open windows as icons on a ring, most recent first (up to 8). Tap one to bring it to the front. Needs the GNOME extension. Nothing to set up.
+              The open windows as icons on a ring, most recent first (up to 8). Tap one to bring it to the front. Needs a desktop that lists its windows (GNOME with the extension, KDE, X11, wlroots compositors). Nothing to set up.
             </p>
 
             <p v-else-if="page.type === 'clipboard'" class="muted small" style="margin: 0">

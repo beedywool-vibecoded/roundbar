@@ -203,7 +203,7 @@ async function show(pg: Page) {
           </p>
           <MatchChips v-if="!isDefault" v-model="profile.match" :taken-by="takenBy" />
           <p v-if="!isDefault" class="muted small" style="margin: 0">
-            App id or window class, lowercase, as GNOME reports it (either one matches): <code>firefox</code>, <code>org.gnome.nautilus</code>, <code>code</code>.
+            App id or window class, lowercase, as the desktop reports it (either one matches): <code>firefox</code>, <code>org.gnome.nautilus</code>, <code>code</code>.
           </p>
         </div>
         <div class="setting color-row">

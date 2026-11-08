@@ -109,9 +109,12 @@ func (d *Daemon) Run() error {
 	if d.desk, err = desktop.Connect(); err != nil {
 		log.Printf("session bus: %v", err)
 	} else {
+		info := d.desk.Info()
+		log.Printf("desktop: %s backend (focus %v, windows %v, notifications %v, clipboard %v)",
+			info.Backend, info.Focus, info.Windows, info.Notifications, info.Clipboard)
 		if f, ok := d.desk.CurrentFocus(); ok {
 			d.onFocus(f)
-		} else {
+		} else if info.Backend == desktop.BackendGnome {
 			log.Printf("focus: GNOME extension not answering, per-app profiles disabled until it starts")
 		}
 		go d.desktopLoop()
@@ -837,7 +840,8 @@ type Status struct {
 	Profile    string           `json:"profile"`
 	RecentApps []desktop.Focus  `json:"recentApps"`
 	View       View             `json:"view"`
-	Extension  bool             `json:"extension"`
+	Extension  bool             `json:"extension"` // the focus source answers
+	Desktop    desktop.Info     `json:"desktop"`
 	Discord    discord.State    `json:"discord"`
 	OBS        obs.State        `json:"obs"`
 }
@@ -867,7 +871,11 @@ func (d *Daemon) status() Status {
 		k := d.layout
 		kbd = &k
 	}
-	return Status{Keyboard: kbd, OBS: d.obs.State(), Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
+	var info desktop.Info
+	if d.desk != nil {
+		info = d.desk.Info()
+	}
+	return Status{Keyboard: kbd, Desktop: info, OBS: d.obs.State(), Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
 }
 
 // notify wakes every socket watcher (coalesced per watcher).

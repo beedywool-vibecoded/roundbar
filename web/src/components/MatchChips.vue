@@ -87,7 +87,7 @@ function onKey(e: KeyboardEvent) {
       </div>
     </div>
     <p v-else class="muted small" style="margin: 0">
-      Apps you focus show up here as suggestions while the daemon and the GNOME extension run.
+      Apps you focus show up here as suggestions while the daemon runs (on GNOME, with its extension).
     </p>
   </div>
 </template>

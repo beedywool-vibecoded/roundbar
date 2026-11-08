@@ -32,6 +32,23 @@ onMounted(async () => {
 
 const st = computed(() => live.status)
 
+const backendNames: Record<string, string> = {
+  gnome: 'GNOME (extension)',
+  kde: 'KDE Plasma (KWin script)',
+  wayland: 'Wayland (foreign toplevel)',
+  x11: 'X11 (EWMH)',
+  none: 'unsupported',
+}
+const missing = computed(() => {
+  const d = st.value?.desktop
+  if (!d) return []
+  const out: string[] = []
+  if (!d.windows) out.push('window list')
+  if (!d.notifications) out.push('notifications')
+  if (!d.clipboard) out.push('clipboard history')
+  return out
+})
+
 const EDGE_TAPS: { id: EdgeDoubleTap; label: string }[] = [
   { id: 'page', label: 'Change page' },
   { id: 'quickSettings', label: 'Quick settings' },
@@ -146,9 +163,17 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
                   {{ st.focus.name }} <code class="plain muted">{{ st.focus.id }}</code>
                   <code v-if="st.focus.class && st.focus.class !== st.focus.id" class="plain muted"> · class {{ st.focus.class }}</code>
                 </template>
-                <span v-else-if="st.extension === false" class="warn-text">The GNOME extension isn't running, so profiles can't follow the focused window. Enable it in Extensions.</span>
+                <span v-else-if="st.desktop?.backend === 'gnome' && st.extension === false" class="warn-text">The GNOME extension isn't running, so profiles can't follow the focused window. Enable it in Extensions.</span>
+                <span v-else-if="st.desktop && !st.desktop.focus" class="warn-text">This desktop doesn't tell other programs which window is focused, so profiles stay on Default.</span>
                 <span v-else class="muted">—</span>
               </dd>
+              <template v-if="st.desktop">
+                <dt>Desktop</dt>
+                <dd>
+                  {{ backendNames[st.desktop.backend] ?? st.desktop.backend }}
+                  <span v-if="missing.length" class="muted small" style="margin-left: 8px">no {{ missing.join(', ') }} here</span>
+                </dd>
+              </template>
             </dl>
           </template>
         </section>
