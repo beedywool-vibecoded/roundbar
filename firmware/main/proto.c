@@ -127,6 +127,63 @@ static size_t b64decode(const char *in, uint8_t *out, size_t cap)
 
 static void handle_cover(cJSON *m);
 
+static size_t b64encode(const uint8_t *in, size_t n, char *out)
+{
+    static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t o = 0;
+    for (size_t i = 0; i < n; i += 3) {
+        uint32_t v = in[i] << 16 | (i + 1 < n ? in[i + 1] << 8 : 0) | (i + 2 < n ? in[i + 2] : 0);
+        out[o++] = T[v >> 18 & 63];
+        out[o++] = T[v >> 12 & 63];
+        out[o++] = i + 1 < n ? T[v >> 6 & 63] : '=';
+        out[o++] = i + 2 < n ? T[v & 63] : '=';
+    }
+    out[o] = 0;
+    return o;
+}
+
+// {"t":"screenshot"}: the active screen plus overlays as RGB565, in chunks.
+static void send_screenshot(void)
+{
+    lvgl_port_lock(0);
+    lv_draw_buf_t *shot = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB565);
+    lv_draw_buf_t *top = lv_snapshot_take(lv_layer_top(), LV_COLOR_FORMAT_ARGB8888);
+    lvgl_port_unlock();
+    if (!shot) return;
+    int w = shot->header.w, h = shot->header.h;
+    if (top && top->header.w == w && top->header.h == h) { // blend panels / toasts over the page
+        for (int y = 0; y < h; y++) {
+            uint16_t *d = (uint16_t *)(shot->data + y * shot->header.stride);
+            const uint8_t *t = top->data + y * top->header.stride;
+            for (int x = 0; x < w; x++) {
+                uint8_t a = t[4 * x + 3];
+                if (!a) continue;
+                uint16_t p = d[x];
+                int r = (p >> 11) << 3, g = ((p >> 5) & 63) << 2, b = (p & 31) << 3;
+                r = (t[4 * x + 2] * a + r * (255 - a)) / 255;
+                g = (t[4 * x + 1] * a + g * (255 - a)) / 255;
+                b = (t[4 * x + 0] * a + b * (255 - a)) / 255;
+                d[x] = (uint16_t)((r >> 3) << 11 | (g >> 2) << 5 | (b >> 3));
+            }
+        }
+    }
+    const size_t raw_chunk = 24 * 1024;
+    size_t total = (size_t)h * shot->header.stride;
+    int n = (int)((total + raw_chunk - 1) / raw_chunk);
+    char *line = heap_caps_malloc(raw_chunk * 4 / 3 + 256, MALLOC_CAP_SPIRAM);
+    for (int i = 0; line && i < n; i++) {
+        size_t len = LV_MIN(raw_chunk, total - i * raw_chunk);
+        int o = snprintf(line, 160, "{\"t\":\"shot\",\"w\":%d,\"h\":%d,\"stride\":%d,\"n\":%d,\"i\":%d,\"data\":\"", w, h,
+                         (int)shot->header.stride, n, i);
+        o += b64encode(shot->data + i * raw_chunk, len, line + o);
+        strcpy(line + o, "\"}");
+        usb_send_line(line);
+    }
+    free(line);
+    lv_draw_buf_destroy(shot);
+    if (top) lv_draw_buf_destroy(top);
+}
+
 static const char *str(cJSON *o, const char *k) { return cJSON_GetStringValue(cJSON_GetObjectItem(o, k)); }
 static int num(cJSON *o, const char *k, int def)
 {
@@ -246,6 +303,8 @@ static void handle(cJSON *m)
         else if (str(m, "text")) usb_hid(HID_TEXT, str(m, "text"), id);
         else if (str(m, "media")) usb_hid(HID_MEDIA, str(m, "media"), id);
         else ack(id, false, "nothing to type");
+    } else if (!strcmp(t, "screenshot")) {
+        send_screenshot();
     } else if (!strcmp(t, "bootloader")) {
         vTaskDelay(pdMS_TO_TICKS(100));
         usb_reboot_to_bootloader();

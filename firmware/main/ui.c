@@ -1987,36 +1987,44 @@ static void build_windows(lv_obj_t *tile)
 
 static char win_ids[9][16];
 
+// The center shape of this profile's shortcut pages, so the window page matches them.
+static int shortcut_center_shape(void)
+{
+    for (int i = 0; i < page_count; i++) {
+        if (strcmp(page_kind(pages[i]), "radial")) continue;
+        cJSON *c = cJSON_GetObjectItem(pages[i], "center");
+        if (c) return shape_id(jstr(c, "shape"), SH_SQUARE);
+    }
+    return SH_SQUARE;
+}
+
 static lv_obj_t *window_button(int k, cJSON *w, int size, bool center)
 {
     strlcpy(win_ids[k], jstr(w, "id") ?: "", sizeof(win_ids[0]));
     lv_color_t bg = center ? P.pc : P.schh;
-    lv_obj_t *b = mask_button(win_w.ring, center ? SH_SQUARE : SH_CIRCLE, size, bg);
-    lv_obj_t *ic = app_icon(b, jstr(w, "icon"), "select_window", center ? P.on_pc : P.on_surface,
-                            center ? 320 : (size >= 82 ? 280 : 240));
+    lv_obj_t *b = mask_button(win_w.ring, center ? shortcut_center_shape() : SH_CIRCLE, size, bg);
+    // icon sizes follow the shortcut glyphs (ring 32 px, center 44 px) a bit larger for colour icons
+    lv_obj_t *ic = app_icon(b, jstr(w, "icon"), "select_window", center ? P.on_pc : P.on_surface, center ? 256 : 192);
     lv_obj_center(ic);
     lv_obj_add_event_cb(b, window_event, LV_EVENT_CLICKED, win_ids[k]);
     return b;
 }
 
-// Same layout as shortcut pages: the most recent window you're not in is the big
-// center button (a quick "switch back"), the next most recent ones fill the ring.
+// 1:1 with a full shortcut page: 8 ring slots (72 px at radius 128) and the
+// 112 px center. The most recent window you're not in takes the center (a quick
+// switch back), the next most recent fill the ring from 12 o'clock clockwise.
 void ui_windows(cJSON *list)
 {
     if (!win_w.ring) return;
     lv_obj_clean(win_w.ring);
     int total = cJSON_GetArraySize(list);
-    // list[0] is the focused window (most recent); it's already in use
-    int first = total > 1 ? 1 : 0;
+    int first = total > 1 ? 1 : 0; // list[0] is the focused window: already in use
     cJSON *center = cJSON_GetArrayItem(list, first);
-    int n = LV_MIN(total - first - 1, 8);
-    if (n < 0) n = 0;
-    int size = n <= 4 ? 92 : n <= 6 ? 82 : 72;
-    int radius = n <= 4 ? 110 : n <= 6 ? 120 : 128;
+    int n = LV_MAX(0, LV_MIN(total - first - 1, 8));
     for (int i = 0; i < n; i++) {
-        int16_t ang = (int16_t)(270 + i * 360 / n) % 360;
-        lv_obj_t *b = window_button(i + 1, cJSON_GetArrayItem(list, first + 1 + i), size, false);
-        lv_obj_align(b, LV_ALIGN_CENTER, radius * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, radius * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
+        int16_t ang = (int16_t)(270 + i * 45) % 360;
+        lv_obj_t *b = window_button(i + 1, cJSON_GetArrayItem(list, first + 1 + i), 72, false);
+        lv_obj_align(b, LV_ALIGN_CENTER, 128 * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, 128 * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
     }
     if (center) lv_obj_center(window_button(0, center, 112, true));
     else lv_obj_center(text(win_w.ring, F.body, P.on_sv, "No windows"));
@@ -2642,8 +2650,12 @@ void ui_assets_changed(void)
     build(false);
 }
 
+static void np_close(void);
+static void qs_close(void);
 void ui_show(const char *profile, const char *page)
 {
+    np_close(); // previews from the configurator shouldn't open behind a panel
+    qs_close();
     if (profile) switch_profile(profile);
     if (page) goto_page(page);
     if (power != AWAKE) lv_display_trigger_activity(disp);

@@ -1,8 +1,12 @@
 package daemon
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"image"
+	"image/png"
 	"log"
 	"time"
 	"unicode/utf8"
@@ -263,4 +267,57 @@ func (d *Daemon) discordLoop() {
 		}
 		d.notify() // the configurator shows the connection state
 	}
+}
+
+// ---- screenshots ----------------------------------------------------------
+
+type shot struct {
+	W, H, Stride, N, I int
+	Data               string
+}
+
+// screenshot asks the device for its screen and returns it as PNG bytes.
+func (d *Daemon) screenshot() ([]byte, error) {
+	ch := make(chan json.RawMessage, 64)
+	d.mu.Lock()
+	d.replies["shot"] = ch
+	d.mu.Unlock()
+	defer func() { d.mu.Lock(); delete(d.replies, "shot"); d.mu.Unlock() }()
+	d.send(map[string]any{"t": "screenshot"})
+	var buf []byte
+	var w, h, stride int
+	for got, n := 0, 1; got < n; got++ {
+		select {
+		case raw := <-ch:
+			var s shot
+			if err := json.Unmarshal(raw, &s); err != nil {
+				return nil, err
+			}
+			b, err := base64.StdEncoding.DecodeString(s.Data)
+			if err != nil {
+				return nil, err
+			}
+			w, h, stride, n = s.W, s.H, s.Stride, s.N
+			buf = append(buf, b...)
+		case <-time.After(10 * time.Second):
+			return nil, errors.New("the device did not send a screenshot")
+		}
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			o := y*stride + 2*x
+			if o+1 >= len(buf) {
+				break
+			}
+			v := uint16(buf[o]) | uint16(buf[o+1])<<8
+			img.Pix[img.PixOffset(x, y)+0] = uint8(v>>11) << 3
+			img.Pix[img.PixOffset(x, y)+1] = uint8(v>>5&63) << 2
+			img.Pix[img.PixOffset(x, y)+2] = uint8(v&31) << 3
+			img.Pix[img.PixOffset(x, y)+3] = 255
+		}
+	}
+	var out bytes.Buffer
+	err := png.Encode(&out, img)
+	return out.Bytes(), err
 }

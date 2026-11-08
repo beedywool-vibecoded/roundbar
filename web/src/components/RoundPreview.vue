@@ -337,19 +337,17 @@ const mixer = computed(() => {
 const WINDOW_ICONS = ['public', 'terminal', 'folder', 'code', 'chat', 'music_note']
 const windows = computed(() => {
   if (props.page.type !== 'windows') return null
-  // Like the device: the most recent window you're not in is the center button,
-  // the next ones sit on the ring (radial-page sizes), no text.
+  // 1:1 with a full shortcut page (like the device): 8 ring slots of 72 px at
+  // radius 128 filled from 12 o'clock, the most recent other window in the center.
   const ring = WINDOW_ICONS.slice(1)
-  const n = ring.length
-  const size = n <= 4 ? 92 : n <= 6 ? 82 : 72
-  const radius = n <= 4 ? 110 : n <= 6 ? 120 : 128
   return {
     center: WINDOW_ICONS[0]!,
-    size,
+    size: 72,
     ring: ring.map((icon, i) => {
-      const [x, y] = at(radius, 270 + (i * 360) / n)
+      const [x, y] = at(128, 270 + i * 45)
       return { icon, x, y }
     }),
+  },
   }
 })
 const CLIPS = [
@@ -609,10 +607,10 @@ const dots = computed(() => {
       <template v-else-if="windows">
         <g v-for="w in windows.ring" :key="w.icon">
           <circle :cx="w.x" :cy="w.y" :r="windows.size / 2" :fill="p.surfaceContainerHighest" />
-          <text class="sym" :x="w.x" :y="w.y" font-size="36" :fill="p.onSurface">{{ w.icon }}</text>
+          <text class="sym" :x="w.x" :y="w.y" font-size="32" :fill="p.onSurface">{{ w.icon }}</text>
         </g>
         <path :d="buttonPath('square', 0, 0, 112)" :fill="p.primaryContainer" />
-        <text class="sym" x="0" y="0" font-size="52" :fill="p.onPrimaryContainer">{{ windows.center }}</text>
+        <text class="sym" x="0" y="0" font-size="44" :fill="p.onPrimaryContainer">{{ windows.center }}</text>
       </template>
 
       <!-- Clipboard -->

@@ -23,6 +23,7 @@ const usage = `usage: roundbar <command>
   config       open the configurator in the browser (--no-open to only print the URL)
   status       print daemon and device status
   bootloader   reboot the device into USB download mode, for flashing
+  screenshot   save what the device shows as a PNG (roundbar screenshot out.png)
   install      install the systemd user service, GNOME extension and app launcher
 `
 
@@ -51,6 +52,17 @@ func main() {
 		}
 	case "bootloader":
 		err = ipc.Call(ipc.Request{Op: "bootloader"}, nil)
+	case "screenshot":
+		out := "roundbar.png"
+		if len(os.Args) > 2 {
+			out = os.Args[2]
+		}
+		var r struct {
+			PNG []byte `json:"png"`
+		}
+		if err = ipc.Call(ipc.Request{Op: "screenshot"}, &r); err == nil {
+			err = os.WriteFile(out, r.PNG, 0o644)
+		}
 	case "install":
 		err = install()
 	default:

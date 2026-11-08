@@ -35,7 +35,7 @@ func Call(req Request, out any) error {
 		return err
 	}
 	defer c.Close()
-	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+	_ = c.SetDeadline(time.Now().Add(15 * time.Second))
 	if err := json.NewEncoder(c).Encode(req); err != nil {
 		return err
 	}

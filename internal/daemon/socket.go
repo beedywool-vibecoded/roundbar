@@ -75,6 +75,13 @@ func (d *Daemon) handle(c net.Conn) {
 				continue
 			}
 			_ = enc.Encode(ok)
+		case "screenshot":
+			png, err := d.screenshot()
+			if err != nil {
+				_ = enc.Encode(map[string]string{"error": err.Error()})
+				continue
+			}
+			_ = enc.Encode(map[string]any{"png": png}) // base64 in JSON
 		case "discordState": // pushed by the Vencord plugin inside Vesktop
 			if err := d.setDiscordExt(req.Action); err != nil {
 				_ = enc.Encode(map[string]string{"error": "bad state"})
