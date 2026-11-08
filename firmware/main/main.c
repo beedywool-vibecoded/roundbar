@@ -28,7 +28,7 @@ void app_main(void)
     ui_init(disp, touch);
     lvgl_port_unlock();
 
-    QueueHandle_t lines = xQueueCreate(8, sizeof(char *));
+    QueueHandle_t lines = xQueueCreate(64, sizeof(char *)) // a burst arrives right after connecting;
     usb_init(lines);
     proto_start(lines);
     ESP_LOGI("main", "Roundbar up");

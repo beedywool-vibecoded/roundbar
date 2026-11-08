@@ -66,7 +66,6 @@ type Device struct {
 	Rotation          int      `json:"rotation"` // degrees clockwise: 0, 90, 180, 270
 	FollowPc          *bool    `json:"followPc,omitempty"`
 	EdgeDoubleTap     string   `json:"edgeDoubleTap,omitempty"`
-	MicIndicator      *bool    `json:"micIndicator,omitempty"`
 	Notifications     *bool    `json:"notifications,omitempty"`
 	NotifToast        *bool    `json:"notifToast,omitempty"`
 	Screensaver       string   `json:"screensaver,omitempty"`

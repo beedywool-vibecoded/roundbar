@@ -330,10 +330,7 @@ const mixer = computed(() => {
     const hx = x0 + ((x1 - x0) * a.vol) / 100
     return { ...a, y, x0, x1, hx }
   })
-  const chips = [
-    { text: 'Speakers', on: true },
-    { text: 'Headset', on: false },
-  ].map((c) => ({ ...c, w: measure(c.text, 14, false) + (c.on ? 44 : 28) }))
+  const chips: { text: string; on: boolean; w: number }[] = [] // per-app volume only, no output picker
   const total = chips.reduce((a, c) => a + c.w, 0) + 8
   let x = -total / 2
   return {

@@ -65,7 +65,6 @@ the device keeps a copy in flash so it works without the daemon.
     "rotation": 0,             // screen rotation, degrees clockwise: 0 | 90 | 180 | 270 (touch follows)
     "edgeDoubleTap": "page",   // double tap near the left/right edge: "page" (prev/next, instant) |
                                // "quickSettings" | "screenOff" | "off"; missing = "page"
-    "micIndicator": false,     // red ring around the screen while any app records the microphone; missing = false
     "screensaver": "off",      // after screensaverAfter s idle: "off" | "clock" | "photos" (dimmed); replaces the dim step
     "screensaverAfter": 60,    // seconds, 10..3600
     "screensaverImages": [],   // asset ids for "photos" (stills only, ≤ 20), synced like image pages (cover fit)
@@ -99,7 +98,7 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `dial` | `icon`, `label`, `source: "volume"\|"mic"\|"brightness"\|"custom"`, `step?: number` (custom only, 1..20), `onUp?: Action`, `onDown?: Action` (custom only) | one big value arc, drag along the edge |
 | `clock` | `style?: "analog"\|"digital"` (default analog), `weather?: bool` (default true, needs top-level `weather`), `zones?: [{ "label": "Tokyo", "tz": "Asia/Tokyo" }]` (0..3 world clocks, IANA names) | home time large, weather below, world clocks as small dials/rows |
 | `timer` | `minutes?: number[]` (1..4 presets, 1..180, default [5, 15, 25]), `pomodoro?: bool`, `label?` | turn the bezel ring to set minutes, tap the center to start/pause, hold to reset; the ring empties as time runs out; pomodoro alternates 25 min work / 5 min break (4th break 15). At the end the screen pulses and the PC shows a notification. |
-| `mixer` | – | output device chips (tap to switch) and one slider row per app playing sound (icon, name, volume; tap the icon to mute); scrolls vertically |
+| `mixer` | – | one slider row per app playing sound (icon, name, volume; tap the icon to mute); scrolls vertically |
 | `windows` | – | icons of the open windows on a ring (most recent first, up to 8); tap focuses the window |
 | `clipboard` | – | the last 10 copied texts as a scrolling list; tap one to paste it into the focused app |
 | `discord` | – | your Discord voice channel: members around the ring (avatar, speaking = green ring, muted badge), big mute / deafen buttons, leave; "Not in a voice channel" otherwise. Needs a Discord application set up in the configurator (Device view). |
@@ -209,12 +208,11 @@ partition (see §2).
 | `weather` | `city`, `temp`, `code` (WMO), `hi`, `lo`, `units`, `day: bool` | on connect and every 30 min while a clock page or the clock screensaver can show |
 | `icon` | `name`, `w`, `h`, `data` (base64 RGB565A8: RGB565 LE plane then A8 plane) | app icons for mixer / windows / notifications, sent before the list that uses them; the device caches them by name until reboot |
 | `windows` | `list: [{id, app, title, icon}]` | while a `windows` page is visible, on change |
-| `mixer` | `apps: [{id, name, icon, vol, muted}]`, `outputs: [{id, name, active}]` | while a `mixer` page is visible, on change |
+| `mixer` | `apps: [{id, name, icon, vol, muted}]` | while a `mixer` page is visible, on change |
 | `clips` | `list: [string]` (newest first, ≤ 10, each ≤ 200 chars) | while a `clipboard` page is visible, on change |
 | `notifs` | `list: [{id, app, title, body, icon}]` (newest first, ≤ 20) | on connect and on every change, if `device.notifications` |
 | `notif` | `id, app, title, body, icon` | a new notification (for the toast), followed by `notifs` |
 | `discord` | `state: {connected, user, channel, members: [{id, name, avatar, muted, speaking}], mute, deaf, error}` | while a `discord` page is visible, on change (avatars arrive first as `icon`s named by URL) |
-| `micInUse` | `on: bool` | whenever capture streams start/stop (default source, excluding monitors) |
 | `assetsWant` | `id` | device replies `{"t":"assets","have":[ids],"free":bytes}` |
 | `asset` | `name`, `n`, `i`, `data` (base64, ≤ 32 KiB raw per chunk), `id` (ack) | one file in `n` chunks; every chunk is acked, the file is renamed into place after the last |
 | `assetsPrune` | `keep: [ids]` | delete every stored asset not listed |

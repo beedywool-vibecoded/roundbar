@@ -284,7 +284,6 @@ export function starterConfig(): Config {
       brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr',
       followPc: true,
       edgeDoubleTap: 'page',
-      micIndicator: false,
       screensaver: 'off',
       screensaverAfter: SCREENSAVER_DEFAULTS.after,
       screensaverImages: [],
@@ -349,7 +348,6 @@ export function normalize(raw: unknown): Config {
   if (!(ROTATIONS as readonly unknown[]).includes(cfg.device.rotation)) cfg.device.rotation = 0
   if (typeof cfg.device.followPc !== 'boolean') cfg.device.followPc = true
   if (!['page', 'quickSettings', 'screenOff', 'off'].includes(cfg.device.edgeDoubleTap)) cfg.device.edgeDoubleTap = 'page'
-  if (typeof cfg.device.micIndicator !== 'boolean') cfg.device.micIndicator = false
   if (typeof cfg.device.notifications !== 'boolean') cfg.device.notifications = true
   if (typeof cfg.device.notifToast !== 'boolean') cfg.device.notifToast = true
   if (!['off', 'clock', 'photos'].includes(cfg.device.screensaver)) cfg.device.screensaver = 'off'
@@ -555,7 +553,6 @@ export function validate(c: Config, icons: Set<string>): Issue[] {
   if (!inRange(c.media.blur)) out.push({ path: 'media.blur', message: 'Blur must be 0 to 100' })
   if (!inRange(c.media.coverOpacity)) out.push({ path: 'media.coverOpacity', message: 'Album art opacity must be 0 to 100' })
   if (!/^#[0-9a-f]{6}$/i.test(c.theme.seed)) out.push({ path: 'theme.seed', message: 'Seed must be a #RRGGBB color' })
-  if (typeof d.micIndicator !== 'boolean') out.push({ path: 'device.micIndicator', message: 'Mic indicator must be on or off' })
   if (typeof d.notifications !== 'boolean') out.push({ path: 'device.notifications', message: 'Notification panel must be on or off' })
   if (typeof d.notifToast !== 'boolean') out.push({ path: 'device.notifToast', message: 'New notifications must be on or off' })
   if (!['off', 'clock', 'photos'].includes(d.screensaver)) out.push({ path: 'device.screensaver', message: 'Screen saver must be off, clock or photos' })

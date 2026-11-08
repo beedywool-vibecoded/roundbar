@@ -1695,7 +1695,10 @@ static void timer_show(void)
         if (idle) lv_obj_remove_flag(tw.presets, LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(tw.presets, LV_OBJ_FLAG_HIDDEN);
     }
-    if (tw.reset) lv_obj_set_style_opa(tw.reset, idle ? LV_OPA_40 : LV_OPA_COVER, 0);
+    if (tw.reset) { // "disabled" look by color, not opacity (a translucent button looked like a stain)
+        lv_obj_set_style_bg_color(tw.reset, idle ? P.sch : P.schh, 0);
+        lv_obj_set_style_text_color(lv_obj_get_child(tw.reset, 0), idle ? P.outline : P.on_surface, 0);
+    }
     if (tw.phase_lbl)
         lv_label_set_text(tw.phase_lbl, tmr.pomodoro ? (tmr.phase ? "Break" : "Focus") : (tmr.label[0] ? tmr.label : ""));
 }
@@ -1863,7 +1866,7 @@ static void build_timer(lv_obj_t *tile, cJSON *pg)
             lv_obj_set_style_bg_color(chip, P.secc, 0);
             lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
             lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
-            squish_on_press(chip, 34);
+            lv_obj_set_style_bg_color(chip, lv_color_mix(lv_color_white(), P.secc, 30), LV_STATE_PRESSED);
             char b[6];
             snprintf(b, sizeof(b), "%d", presets[i]);
             lv_obj_t *l = text(chip, F.label, P.on_secc, b);
@@ -1872,40 +1875,6 @@ static void build_timer(lv_obj_t *tile, cJSON *pg)
         }
     }
     timer_show();
-}
-
-// ---- mic-in-use ring ------------------------------------------------------------------------
-
-static lv_obj_t *mic_ring;
-static bool mic_on;
-
-static void mic_ring_sync(void)
-{
-    if (!mic_ring) return;
-    bool show = mic_on && power != OFF && power != ASLEEP;
-    if (show) lv_obj_remove_flag(mic_ring, LV_OBJ_FLAG_HIDDEN);
-    else lv_obj_add_flag(mic_ring, LV_OBJ_FLAG_HIDDEN);
-}
-
-static void mic_ring_build(void)
-{
-    if (mic_ring) lv_obj_delete(mic_ring);
-    mic_ring = lv_arc_create(lv_layer_top());
-    lv_obj_set_size(mic_ring, LCD_W, LCD_H);
-    lv_obj_center(mic_ring);
-    lv_arc_set_bg_angles(mic_ring, 0, 360);
-    lv_obj_set_style_arc_width(mic_ring, 5, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(mic_ring, P.error, LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(mic_ring, LV_OPA_TRANSP, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(mic_ring, LV_OPA_TRANSP, LV_PART_KNOB);
-    lv_obj_remove_flag(mic_ring, LV_OBJ_FLAG_CLICKABLE);
-    mic_ring_sync();
-}
-
-void ui_mic_in_use(bool on)
-{
-    mic_on = on && store_get_bool("micIndicator", false);
-    mic_ring_sync();
 }
 
 // ---- screen saver ---------------------------------------------------------------------------
@@ -2185,7 +2154,6 @@ static void mixer_slider_event(lv_event_t *e)
 }
 
 static void mixer_mute_event(lv_event_t *e) { send_simple("mixerMute", "id", lv_event_get_user_data(e), 0); }
-static void mixer_output_event(lv_event_t *e) { send_simple("output", "id", lv_event_get_user_data(e), 0); }
 
 static void build_mixer(lv_obj_t *tile)
 {
@@ -2201,36 +2169,9 @@ void ui_mixer(cJSON *m)
     lv_obj_clean(mix_w.col);
     lv_obj_t *head = text(mix_w.col, F.body, P.on_sv, "Volume mixer");
     (void)head;
-    // outputs
-    cJSON *outs = cJSON_GetObjectItem(m, "outputs"), *o;
-    lv_obj_t *row = box(mix_w.col);
-    lv_obj_set_size(row, 260, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(row, 6, 0);
-    int k = 0;
-    cJSON_ArrayForEach(o, outs)
-    {
-        if (k >= 6) break;
-        strlcpy(mix_w.outs[k], jstr(o, "id") ?: "", sizeof(mix_w.outs[0]));
-        bool act = cJSON_IsTrue(cJSON_GetObjectItem(o, "active"));
-        lv_obj_t *chip = box(row);
-        lv_obj_set_size(chip, LV_SIZE_CONTENT, 32);
-        lv_obj_set_style_pad_hor(chip, 12, 0);
-        lv_obj_set_style_radius(chip, 16, 0);
-        lv_obj_set_style_bg_color(chip, act ? P.secc : P.schh, 0);
-        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
-        lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_t *cl = text(chip, F.label, act ? P.on_secc : P.on_surface, jstr(o, "name") ?: "");
-        lv_obj_set_style_max_width(cl, 200, 0);
-        lv_label_set_long_mode(cl, LV_LABEL_LONG_DOT);
-        lv_obj_center(cl);
-        lv_obj_add_event_cb(chip, mixer_output_event, LV_EVENT_CLICKED, mix_w.outs[k]);
-        k++;
-    }
     // apps
     cJSON *apps = cJSON_GetObjectItem(m, "apps"), *a;
-    k = 0;
+    int k = 0;
     cJSON_ArrayForEach(a, apps)
     {
         if (k >= 12) break;
@@ -2712,7 +2653,6 @@ static void build(bool animate)
     for (int i = 0; i < page_count; i++) lv_obj_set_width(dots[i], i == cur_page ? 18 : 6);
     update_dots();
     sync_gifs();
-    mic_ring_build();
     if (qs) {
         lv_obj_delete(qs); // rebuilt with the new pages when opened
         qs = NULL;
@@ -2816,7 +2756,6 @@ static void wake(void)
         sync_gifs();
         ui_announce();
     }
-    mic_ring_sync();
 }
 
 static uint32_t last_shield_tap;
@@ -2894,8 +2833,7 @@ static void power_tick(lv_timer_t *t)
             saver_hide();
             board_backlight(0);
             make_shield();
-            mic_ring_sync();
-            sync_gifs();
+                    sync_gifs();
             ui_announce();
         }
     } else if (strcmp(jstr(cJSON_GetObjectItem(store_config(), "device"), "screensaver") ?: "off", "off") &&

@@ -76,14 +76,14 @@ func (d *Daemon) sendMixer() {
 	if a == nil {
 		return
 	}
-	apps, outs, err := a.Mixer()
+	apps, _, err := a.Mixer()
 	if err != nil {
 		return
 	}
 	for i := range apps {
 		d.sendIcons(apps[i].Icon)
 	}
-	d.send(map[string]any{"t": "mixer", "apps": apps, "outputs": outs})
+	d.send(map[string]any{"t": "mixer", "apps": apps})
 }
 
 func (d *Daemon) sendClips() {

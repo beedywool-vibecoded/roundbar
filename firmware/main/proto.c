@@ -185,11 +185,10 @@ static void handle(cJSON *m)
         lvgl_port_lock(0);
         ui_stats(m);
         lvgl_port_unlock();
-    } else if (!strcmp(t, "time") || !strcmp(t, "weather") || !strcmp(t, "micInUse")) {
+    } else if (!strcmp(t, "time") || !strcmp(t, "weather")) {
         lvgl_port_lock(0);
         if (t[0] == 't') ui_time(m);
-        else if (t[0] == 'w') ui_weather(m);
-        else ui_mic_in_use(flag(m, "on"));
+        else ui_weather(m);
         lvgl_port_unlock();
     } else if (!strcmp(t, "icon")) {
         static uint8_t *ibuf;

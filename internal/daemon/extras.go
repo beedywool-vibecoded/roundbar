@@ -178,22 +178,3 @@ func (d *Daemon) timerDone(label, phase string) {
 		spawn(p, "-i", "complete", "-d", "Roundbar timer")
 	}
 }
-
-// ---- mic in use -----------------------------------------------------------
-
-func (d *Daemon) sendMicInUse() {
-	d.mu.Lock()
-	a := d.audio
-	d.mu.Unlock()
-	if a == nil {
-		return
-	}
-	on := a.MicInUse()
-	d.mu.Lock()
-	changed := on != d.micInUse || !d.micSent
-	d.micInUse, d.micSent = on, true
-	d.mu.Unlock()
-	if changed {
-		d.send(map[string]any{"t": "micInUse", "on": on})
-	}
-}

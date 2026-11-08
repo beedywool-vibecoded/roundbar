@@ -25,7 +25,6 @@ void ui_media_theme(cJSON *palette);
 void ui_assets_changed(void);
 void ui_time(cJSON *msg);      // {"t":"time"}
 void ui_weather(cJSON *msg);   // {"t":"weather"}
-void ui_mic_in_use(bool on);
 void ui_icon(const char *name, int w, int h, const uint8_t *data, size_t len);
 void ui_windows(cJSON *list);
 void ui_mixer(cJSON *msg);

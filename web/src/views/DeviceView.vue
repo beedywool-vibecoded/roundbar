@@ -252,13 +252,6 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
           </div>
           <div class="setting">
             <div class="grow">
-              <div>Mic in use indicator</div>
-              <div class="muted small">A red ring around the screen while an app uses your microphone</div>
-            </div>
-            <M3Switch v-model="dev.micIndicator" label="Mic in use indicator" />
-          </div>
-          <div class="setting">
-            <div class="grow">
               <div>Notification panel</div>
               <div class="muted small">Pull up from the bottom edge of the device to see your notifications</div>
             </div>

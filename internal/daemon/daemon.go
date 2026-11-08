@@ -68,11 +68,10 @@ type Daemon struct {
 	artCancel context.CancelFunc // in-flight artwork job
 	coverSeq  int
 
-	clockKick         chan struct{}
-	discord           *discord.Client
-	discordKick       chan struct{}
-	iconsSent         map[string]bool
-	micInUse, micSent bool
+	clockKick   chan struct{}
+	discord     *discord.Client
+	discordKick chan struct{}
+	iconsSent   map[string]bool
 
 	statsStop chan struct{}
 	watchers  map[chan struct{}]bool
@@ -138,7 +137,6 @@ func (d *Daemon) deviceLoop() {
 		d.mu.Lock()
 		d.port = p
 		d.sentPro, d.lastVol, d.lastMic, d.artSent = "", "", "", ""
-		d.micSent = false
 		d.iconsSent = map[string]bool{}
 		d.mu.Unlock()
 		d.notify()
@@ -229,7 +227,6 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		d.syncProfile(true)
 		d.notify()
 		d.kickClock()
-		go d.sendMicInUse()
 		go d.sendNotifs("")
 	case "view":
 		var v View
@@ -649,13 +646,6 @@ func (d *Daemon) audioLoop() {
 			case <-a.Streams:
 				if d.viewKind() == "mixer" {
 					d.sendMixer()
-				}
-			case <-a.Capture:
-				d.mu.Lock()
-				on := d.cfg.Device.MicIndicator != nil && *d.cfg.Device.MicIndicator // off unless enabled
-				d.mu.Unlock()
-				if on {
-					d.sendMicInUse()
 				}
 			case <-a.Closed():
 				alive = false

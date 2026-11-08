@@ -52,8 +52,6 @@ export interface DeviceSettings {
   followPc: boolean
   /** Double tap near the left/right edge. Missing = "page" */
   edgeDoubleTap: EdgeDoubleTap
-  /** Red ring while an app records the microphone. Missing = true */
-  micIndicator: boolean
   /** Replaces the dim step after screensaverAfter seconds idle. Missing = "off" */
   screensaver: Screensaver
   /** Seconds, 10..3600. Missing = 60 */
