@@ -6,6 +6,8 @@ import M3Dialog from '@/components/M3Dialog.vue'
 import RoundPreview from '@/components/RoundPreview.vue'
 import TextField from '@/components/TextField.vue'
 import { ID_RE, duplicateProfile, newPage, slug, uniqueId } from '@/lib/model'
+import { PRESETS } from '@/lib/presets'
+import { toast } from '@/lib/ui'
 import { config, focusKeys, isNew, issuesUnder, live, profilePalette } from '@/lib/store'
 import type { Profile } from '@/lib/types'
 import { confirm } from '@/lib/ui'
@@ -43,6 +45,15 @@ async function remove(p: Profile, i: number) {
 
 // ---- new profile ----
 const creating = ref(false)
+const presetId = ref('') // '' = blank
+const preset = computed(() => PRESETS.find((p) => p.id === presetId.value))
+function pickPreset(id: string) {
+  const before = preset.value
+  presetId.value = id
+  const now = preset.value
+  if (now && (!newName.value.trim() || newName.value === before?.name)) newName.value = now.name
+  if (!now && before && newName.value === before.name) newName.value = ''
+}
 const newName = ref('')
 const newId = ref('')
 const idEdited = ref(false)
@@ -64,6 +75,7 @@ function openCreate() {
   newName.value = unmatched ? (live.status?.focus?.name ?? '') : ''
   newId.value = ''
   idEdited.value = false
+  presetId.value = ''
   creating.value = true
 }
 function create() {
@@ -71,7 +83,14 @@ function create() {
   const id = effectiveId.value
   const focus = live.status?.focus
   const match = focus && newName.value === focus.name ? [focus.id.toLowerCase()] : []
-  profiles.value.push({ id, name: newName.value.trim(), match, pages: [newPage('radial', [])] })
+  const p = preset.value
+  if (p) {
+    const built = p.build()
+    profiles.value.push({ id, name: newName.value.trim(), ...built })
+    if (p.setup) toast(p.setup)
+  } else {
+    profiles.value.push({ id, name: newName.value.trim(), match, pages: [newPage('radial', [])] })
+  }
   creating.value = false
   router.push(`/profiles/${id}`)
 }
@@ -137,6 +156,24 @@ function create() {
 
     <M3Dialog v-model="creating" title="New profile">
       <form class="form" @submit.prevent="create">
+        <div class="seg" role="radiogroup" aria-label="Start from">
+          <button type="button" role="radio" class="st" :class="{ on: !presetId }" :aria-checked="!presetId" @click="pickPreset('')">
+            <Icon v-if="!presetId" name="check" :size="18" /> Blank
+          </button>
+          <button
+            v-for="p in PRESETS"
+            :key="p.id"
+            type="button"
+            role="radio"
+            class="st"
+            :class="{ on: presetId === p.id }"
+            :aria-checked="presetId === p.id"
+            v-tip="p.hint"
+            @click="pickPreset(p.id)"
+          >
+            <Icon :name="presetId === p.id ? 'check' : p.icon" :size="18" /> {{ p.name }}
+          </button>
+        </div>
         <TextField v-model="newName" label="Name" placeholder="Firefox, Code, Games…" />
         <TextField
           :model-value="effectiveId"
@@ -146,7 +183,8 @@ function create() {
           help="Used in the config file. Made from the name unless you change it."
           @update:model-value="((newId = $event), (idEdited = true))"
         />
-        <p class="muted small" style="margin: 0">It starts with one page of buttons. Add the window classes it should match on the next screen.</p>
+        <p v-if="preset" class="muted small" style="margin: 0">{{ preset.hint }}. {{ preset.setup }}</p>
+        <p v-else class="muted small" style="margin: 0">It starts with one page of buttons. Add the window classes it should match on the next screen.</p>
         <button type="submit" class="sr-only" tabindex="-1">Create</button>
       </form>
       <template #actions>
