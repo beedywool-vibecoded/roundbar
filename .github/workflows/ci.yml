@@ -22,6 +22,11 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: go build -trimpath -o bin/roundbar ./cmd/roundbar
+      - name: Windows (vet, cross-compile)
+        run: |
+          GOOS=windows GOARCH=amd64 go vet ./...
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H=windowsgui" -o bin/roundbar.exe ./cmd/roundbar
+          GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="-H=windowsgui" -o bin/roundbar-arm64.exe ./cmd/roundbar
 
   web:
     name: Configurator (type check, build)
@@ -90,6 +95,18 @@ jobs:
         run: |
           go build -trimpath -ldflags="-s -w" -o roundbar-linux-amd64 ./cmd/roundbar
           GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o roundbar-linux-arm64 ./cmd/roundbar
+      - name: Windows app and installer
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nsis
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o roundbar-windows-amd64.exe ./cmd/roundbar
+          GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o roundbar-windows-arm64.exe ./cmd/roundbar
+          go run ./tools/winicon -o deploy/windows/roundbar.ico
+          ver="${GITHUB_REF_NAME#v}"
+          IFS=. read -r a b c _ <<< "${ver%%[!0-9.]*}"
+          makensis -V2 -DVERSION="$ver" -DVERSION4="${a:-0}.${b:-0}.${c:-0}.0" \
+            -DEXE="$PWD/roundbar-windows-amd64.exe" -DOUTFILE="$PWD/roundbar-setup-windows-amd64.exe" \
+            deploy/windows/roundbar.nsi
       - name: CJK and emoji font pack
         run: |
           sudo apt-get update -qq
@@ -108,4 +125,7 @@ jobs:
           files: |
             roundbar-linux-amd64
             roundbar-linux-arm64
+            roundbar-windows-amd64.exe
+            roundbar-windows-arm64.exe
+            roundbar-setup-windows-amd64.exe
             roundbar-firmware.tar.gz

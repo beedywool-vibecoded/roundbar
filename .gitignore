@@ -8,3 +8,4 @@
 /firmware/dependencies.lock
 /bin/
 /.claude/
+/deploy/windows/roundbar.ico
