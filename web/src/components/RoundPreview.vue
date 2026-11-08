@@ -678,12 +678,12 @@ const dots = computed(() => {
             <text class="sym" :x="m.x + 25" :y="m.y + 25" font-size="16" :fill="p.onErrorContainer">{{ m.deaf ? 'headset_off' : 'mic_off' }}</text>
           </g>
         </g>
-        <text class="txt" y="-44" font-size="22" font-weight="700" :fill="p.onSurface">General</text>
-        <text class="txt" y="-20" font-size="14" :fill="p.onSurfaceVariant">My server</text>
-        <text class="txt" y="2" font-size="14" :fill="p.onSurfaceVariant">5 in voice</text>
+        <text class="txt" y="-50" font-size="22" font-weight="700" :fill="p.onSurface">General</text>
+        <text class="txt" y="-26" font-size="14" :fill="p.onSurfaceVariant">My server</text>
+        <text class="txt" y="-4" font-size="14" :fill="p.onSurfaceVariant">5 in voice</text>
         <g v-for="b in [{ x: -44, icon: 'mic', bg: p.surfaceContainerHighest, fg: p.onSurface }, { x: 0, icon: 'headphones', bg: p.surfaceContainerHighest, fg: p.onSurface }, { x: 44, icon: 'call_end', bg: p.error, fg: p.surface }]" :key="b.icon">
-          <circle :cx="b.x" cy="46" r="18" :fill="b.bg" />
-          <text class="sym" :x="b.x" y="46" font-size="22" :fill="b.fg">{{ b.icon }}</text>
+          <circle :cx="b.x" cy="30" r="18" :fill="b.bg" />
+          <text class="sym" :x="b.x" y="30" font-size="22" :fill="b.fg">{{ b.icon }}</text>
         </g>
       </template>
 

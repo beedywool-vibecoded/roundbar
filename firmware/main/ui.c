@@ -1222,6 +1222,7 @@ static void build_touchpad(lv_obj_t *tile, cJSON *pg)
 static lv_obj_t *wrap_shot;
 static void wrap_x_exec(void *o, int32_t v) { lv_obj_set_x(o, v); }
 static void wrap_shot_x_exec(void *o, int32_t v) { lv_obj_set_x(o, v); }
+static void dc_flush_pending(void);
 static void wrap_done(lv_anim_t *a)
 {
     if (!wrap_shot) return;
@@ -1229,6 +1230,7 @@ static void wrap_done(lv_anim_t *a)
     lv_obj_delete(wrap_shot);
     wrap_shot = NULL;
     if (buf) lv_draw_buf_destroy(buf);
+    if (a) dc_flush_pending();
 }
 
 // Wrapping can't scroll the tileview past its ends, so fake the slide: the old
@@ -2768,6 +2770,26 @@ void ui_mangohud(cJSON *m)
 // ---- page: Discord voice --------------------------------------------------------------------
 
 static lv_obj_t *dc_root;
+static lv_obj_t *dc_av[12]; // avatars of the current layout, for in-place speaking rings
+static int dc_avn, dc_av_size;
+static uint32_t dc_sig;
+static cJSON *dc_pending; // state that arrived mid-slide
+
+static bool pages_moving(void) { return wrap_shot || (tv && lv_obj_is_scrolling(tv)); }
+
+// Hash of the state without the speaking flags (those change many times a second).
+static uint32_t dc_signature(cJSON *st)
+{
+    cJSON *copy = cJSON_Duplicate(st, 1);
+    cJSON *m;
+    cJSON_ArrayForEach(m, cJSON_GetObjectItem(copy, "members")) cJSON_DeleteItemFromObject(m, "speaking");
+    char *js = cJSON_PrintUnformatted(copy);
+    cJSON_Delete(copy);
+    uint32_t h = 2166136261u;
+    for (const char *p = js; p && *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
+    free(js);
+    return h;
+}
 
 static void dc_toggle_event(lv_event_t *e) { send_simple("discordToggle", "what", lv_event_get_user_data(e), 0); }
 
@@ -2800,6 +2822,22 @@ static void build_discord(lv_obj_t *tile)
 void ui_discord(cJSON *st)
 {
     if (!dc_root) return;
+    uint32_t sig = dc_signature(st);
+    if (sig == dc_sig && dc_avn > 0) { // only who's talking changed: just the rings
+        cJSON *members = cJSON_GetObjectItem(st, "members");
+        for (int i = 0; i < dc_avn; i++) {
+            bool speaking = cJSON_IsTrue(cJSON_GetObjectItem(cJSON_GetArrayItem(members, i), "speaking"));
+            lv_obj_set_style_border_width(dc_av[i], speaking ? LV_MAX(3, dc_av_size / 16) : 0, 0);
+        }
+        return;
+    }
+    if (pages_moving()) { // rebuilding mid-slide breaks the snap: apply it when the pages stop
+        if (dc_pending) cJSON_Delete(dc_pending);
+        dc_pending = cJSON_Duplicate(st, 1);
+        return;
+    }
+    dc_sig = sig;
+    dc_avn = 0;
     lv_obj_clean(dc_root);
     if (!cJSON_IsTrue(cJSON_GetObjectItem(st, "connected"))) {
         lv_obj_t *ic = text(dc_root, F.icon_xl, P.on_sv, theme_icon("headset_mic"));
@@ -2817,6 +2855,7 @@ void ui_discord(cJSON *st)
     int n = LV_MIN(cJSON_GetArraySize(members), 12);
     // Avatars shrink as the channel fills up: big when it's you and a friend.
     int size = n <= 2 ? 88 : n <= 4 ? 80 : n <= 6 ? 72 : n <= 8 ? 64 : 54;
+    dc_av_size = size;
     int radius = n <= 2 ? 112 : n <= 4 ? 120 : n <= 6 ? 126 : n <= 8 ? 130 : 136;
     for (int i = 0; i < n; i++) {
         cJSON *m = cJSON_GetArrayItem(members, i);
@@ -2830,6 +2869,7 @@ void ui_discord(cJSON *st)
         lv_obj_set_style_border_width(av, speaking ? LV_MAX(3, size / 16) : 0, 0);
         lv_obj_set_style_border_color(av, lv_color_hex(0x23A55A), 0); // Discord's speaking green
         lv_obj_remove_flag(av, LV_OBJ_FLAG_CLICKABLE);
+        dc_av[dc_avn++] = av;
         int ax = radius * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, ay = radius * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX;
         lv_obj_align(av, LV_ALIGN_CENTER, ax, ay);
         const lv_image_dsc_t *img = icon_get(jstr(m, "avatar"));
@@ -2859,7 +2899,7 @@ void ui_discord(cJSON *st)
     const char *guild = jstr(st, "guild");
     bool has_guild = in_voice && guild && guild[0];
     bool small = controls && in_voice;
-    int y = small ? -24 : 0; // block shifts up to make room for the buttons
+    int y = small ? -30 : 0; // block shifts up to make room for the buttons
     lv_obj_t *ch = text(dc_root, F.title, P.on_surface, in_voice ? channel : "Not in voice");
     lv_obj_set_width(ch, 170);
     lv_label_set_long_mode(ch, LV_LABEL_LONG_DOT);
@@ -2879,12 +2919,21 @@ void ui_discord(cJSON *st)
     }
     if (small) {
         lv_obj_t *mb = dc_button(dc_root, 36, mute, mute ? "mic_off" : "mic", P.ec, P.on_ec, "mute");
-        lv_obj_align(mb, LV_ALIGN_CENTER, -44, 46);
+        lv_obj_align(mb, LV_ALIGN_CENTER, -44, 30);
         lv_obj_t *db = dc_button(dc_root, 36, deaf, deaf ? "headset_off" : "headphones", P.ec, P.on_ec, "deaf");
-        lv_obj_align(db, LV_ALIGN_CENTER, 0, 46);
+        lv_obj_align(db, LV_ALIGN_CENTER, 0, 30);
         lv_obj_t *lb = dc_button(dc_root, 36, true, "call_end", P.error, P.on_primary, "leave");
-        lv_obj_align(lb, LV_ALIGN_CENTER, 44, 46);
+        lv_obj_align(lb, LV_ALIGN_CENTER, 44, 30);
     }
+}
+
+static void dc_flush_pending(void)
+{
+    if (!dc_pending) return;
+    cJSON *st = dc_pending;
+    dc_pending = NULL;
+    ui_discord(st);
+    cJSON_Delete(st);
 }
 
 // ---- page dots ---------------------------------------------------------------------
@@ -2929,6 +2978,22 @@ static void update_dots(void)
     }
 }
 
+static void dc_flush_pending(void);
+
+// After any slide: never rest between two pages, and apply updates held back
+// while the pages were moving.
+static void tv_scroll_end(lv_event_t *e)
+{
+    static bool busy; // snapping below scrolls too, which fires this again
+    if (busy || wrap_shot || lv_obj_is_scrolling(tv)) return;
+    busy = true;
+    lv_obj_t *t = lv_tileview_get_tile_active(tv);
+    if (t && lv_obj_get_scroll_x(tv) != lv_obj_get_x(t)) lv_tileview_set_tile(tv, t, LV_ANIM_OFF); // instant, no loop
+    if (lv_obj_get_x(tv) != 0) lv_obj_set_x(tv, 0);
+    busy = false;
+    dc_flush_pending();
+}
+
 static void tile_event(lv_event_t *e)
 {
     lv_obj_t *t = lv_tileview_get_tile_active(tv);
@@ -2970,6 +3035,8 @@ static void build(bool animate)
     mix_w.sliding = false;
     clip_col = NULL;
     dc_root = NULL;
+    dc_avn = 0;
+    dc_sig = 0;
     obs_root = obs_time = NULL;
     obs_sig = 0;
     memset(&gw, 0, sizeof(gw));
@@ -2979,6 +3046,14 @@ static void build(bool animate)
     memset(&media_live, 0, sizeof(media_live));
     memset(slides, 0, sizeof(slides));
     ncustom = 0;
+    if (wrap_shot) { // a wrap slide was running on the old screen: end it cleanly
+        lv_anim_delete(wrap_shot, NULL);
+        if (tv) {
+            lv_anim_delete(tv, NULL);
+            lv_obj_set_x(tv, 0);
+        }
+        wrap_done(NULL);
+    }
 
     lv_obj_t *s = lv_obj_create(NULL);
     res = heap_caps_calloc(1, sizeof(*res), MALLOC_CAP_SPIRAM);
@@ -3061,6 +3136,7 @@ static void build(bool animate)
     if (cur_page >= page_count) cur_page = 0;
     lv_tileview_set_tile_by_index(tv, cur_page, 0, LV_ANIM_OFF);
     lv_obj_add_event_cb(tv, tile_event, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(tv, tv_scroll_end, LV_EVENT_SCROLL_END, NULL);
     for (int i = 0; i < page_count; i++) lv_obj_set_width(dots[i], i == cur_page ? 18 : 6);
     update_dots();
     sync_gifs();
