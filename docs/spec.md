@@ -58,7 +58,8 @@ the device keeps a copy in flash so it works without the daemon.
     "dimAfter": 30,            // seconds idle before dimming to 20 %, 0 = never
     "sleepAfter": 300,         // seconds idle before screen off, 0 = never
     "longPressMs": 450,
-    "keyboardLayout": "fr"     // host layout used to turn characters into HID keycodes: "fr" | "us"
+    "keyboardLayout": "fr",    // host layout used to turn characters into HID keycodes: "fr" | "us"
+    "rotation": 0              // screen rotation, degrees clockwise: 0 | 90 | 180 | 270 (touch follows)
   },
   "profiles": [
     {

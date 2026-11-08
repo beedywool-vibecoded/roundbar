@@ -9,8 +9,10 @@ import type {
   ColorRole,
   Config,
   DialSource,
+  MediaSettings,
   Page,
   PageType,
+  MediaButton,
   Profile,
   StatItem,
   Step,
@@ -94,6 +96,24 @@ export const SHAPE_LABELS: Record<ButtonShape, string> = {
   burst: 'Burst',
 }
 export const defaultShape = (center: boolean): ButtonShape => (center ? 'square' : 'circle')
+
+// Media page transport buttons. `play` shows while paused, `playing` while music plays.
+export const MEDIA_SHAPE_DEFAULTS: Record<MediaButton, ButtonShape> = {
+  prev: 'circle',
+  next: 'circle',
+  play: 'circle',
+  playing: 'square',
+}
+export const MEDIA_BUTTONS: { key: MediaButton; label: string }[] = [
+  { key: 'prev', label: 'Previous' },
+  { key: 'next', label: 'Next' },
+  { key: 'play', label: 'Play (paused)' },
+  { key: 'playing', label: 'Play (playing)' },
+]
+
+export const ROTATIONS = [0, 90, 180, 270] as const
+
+export const MEDIA_DEFAULTS = { blur: 60, coverOpacity: 50 } as const
 
 // ---- ids ----
 
@@ -187,8 +207,8 @@ export function starterConfig(): Config {
   return {
     version: 1,
     theme: { seed: DEFAULT_SEED, mode: 'dark', palette: devicePalette(DEFAULT_SEED, 'dark') },
-    media: { coverBackground: true, coverColors: true },
-    device: { brightness: 80, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr' },
+    media: { coverBackground: true, coverColors: true, ...MEDIA_DEFAULTS },
+    device: { brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr' },
     profiles: [
       {
         id: 'default',
@@ -220,6 +240,15 @@ export function starterConfig(): Config {
   }
 }
 
+const inRange = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100
+
+function normalizeMedia(raw: unknown, base: MediaSettings): MediaSettings {
+  const m = { ...base, ...(raw && typeof raw === 'object' ? (raw as Partial<MediaSettings>) : {}) }
+  if (!inRange(m.blur)) m.blur = MEDIA_DEFAULTS.blur
+  if (!inRange(m.coverOpacity)) m.coverOpacity = MEDIA_DEFAULTS.coverOpacity
+  return m
+}
+
 // Fills what a hand-written or older file may lack, so the editors can bind safely.
 export function normalize(raw: unknown): Config {
   const base = starterConfig()
@@ -231,10 +260,11 @@ export function normalize(raw: unknown): Config {
     ...c,
     version: 1,
     theme,
-    media: { ...base.media, ...(c.media ?? {}) },
+    media: normalizeMedia(c.media, base.media),
     device: { ...base.device, ...(c.device ?? {}) },
     profiles: Array.isArray(c.profiles) && c.profiles.length ? c.profiles : base.profiles,
   }
+  if (!(ROTATIONS as readonly unknown[]).includes(cfg.device.rotation)) cfg.device.rotation = 0
   for (const p of cfg.profiles) {
     p.match ??= []
     p.pages ??= []
@@ -331,6 +361,19 @@ function checkPage(pg: Page, pages: Page[], icons: Set<string>, path: string, ou
       if (pg.center) checkButton(pg.center, pages, icons, `${path}.center`, out)
       break
     }
+    case 'media':
+      if (pg.shapes !== undefined) {
+        if (!pg.shapes || typeof pg.shapes !== 'object' || Array.isArray(pg.shapes)) {
+          out.push({ path: `${path}.shapes`, message: 'Shapes must be an object' })
+          break
+        }
+        for (const [k, v] of Object.entries(pg.shapes)) {
+          if (!(k in MEDIA_SHAPE_DEFAULTS)) out.push({ path: `${path}.shapes.${k}`, message: `Unknown media button "${k}"` })
+          else if (!(BUTTON_SHAPES as readonly string[]).includes(v as string))
+            out.push({ path: `${path}.shapes.${k}`, message: `Unknown shape "${v}"` })
+        }
+      }
+      break
     case 'stats':
       if (pg.items.length < 1 || pg.items.length > LIMITS.stats)
         out.push({ path: `${path}.items`, message: `Pick 1 to ${LIMITS.stats} gauges` })
@@ -353,9 +396,12 @@ export function validate(c: Config, icons: Set<string>): Issue[] {
   const out: Issue[] = []
   const d = c.device
   if (!(d.brightness >= 5 && d.brightness <= 100)) out.push({ path: 'device.brightness', message: 'Brightness must be 5 to 100' })
+  if (!(ROTATIONS as readonly unknown[]).includes(d.rotation)) out.push({ path: 'device.rotation', message: 'Rotation must be 0, 90, 180 or 270' })
   if (!(d.dimAfter >= 0)) out.push({ path: 'device.dimAfter', message: 'Dim delay must be 0 or more' })
   if (!(d.sleepAfter >= 0)) out.push({ path: 'device.sleepAfter', message: 'Sleep delay must be 0 or more' })
   if (!(d.longPressMs >= 150 && d.longPressMs <= 3000)) out.push({ path: 'device.longPressMs', message: 'Long press must be 150 to 3000 ms' })
+  if (!inRange(c.media.blur)) out.push({ path: 'media.blur', message: 'Blur must be 0 to 100' })
+  if (!inRange(c.media.coverOpacity)) out.push({ path: 'media.coverOpacity', message: 'Album art opacity must be 0 to 100' })
   if (!/^#[0-9a-f]{6}$/i.test(c.theme.seed)) out.push({ path: 'theme.seed', message: 'Seed must be a #RRGGBB color' })
 
   if (!c.profiles.some((p) => p.id === 'default')) out.push({ path: 'profiles', message: 'The default profile is missing' })
@@ -386,6 +432,36 @@ export function duplicateProfile(p: Profile, taken: string[]): Profile {
   copy.id = uniqueId(p.id === 'default' ? 'profile' : p.id, taken)
   copy.name = `${p.name} copy`
   copy.match = []
+  return copy
+}
+
+// A deep copy of `page` ready to append to `target`: a fresh page id, unique button ids and
+// `page` actions pointing at pages the target lacks redirected to its first page.
+export function pastePage(page: Page, target: Profile): Page {
+  const copy = JSON.parse(JSON.stringify(page)) as Page
+  const taken = target.pages.map((p) => p.id)
+  copy.id = uniqueId(page.id, taken)
+  const ids = new Set([...taken, copy.id])
+  const first = target.pages[0]?.id ?? copy.id
+  const fix = (a: Action | undefined) => {
+    if (a?.type === 'page' && !ids.has(a.page)) a.page = first
+  }
+  if (copy.type === 'radial') {
+    const used = new Set<string>()
+    for (const b of [...copy.buttons, ...(copy.center ? [copy.center] : [])]) {
+      if (!ID_RE.test(b.id) || used.has(b.id)) {
+        let i = 1
+        while (used.has(`b${i}`) || buttonIds(copy).includes(`b${i}`)) i++
+        b.id = `b${i}`
+      }
+      used.add(b.id)
+      fix(b.tap)
+      fix(b.hold)
+    }
+  } else if (copy.type === 'dial') {
+    fix(copy.onUp)
+    fix(copy.onDown)
+  }
   return copy
 }
 

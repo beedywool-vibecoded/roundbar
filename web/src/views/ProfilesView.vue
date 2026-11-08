@@ -101,7 +101,7 @@ function create() {
       <article v-for="(p, i) in profiles" :key="p.id" class="card prof" :class="{ bad: issuesUnder(`profiles[${i}]`).length }">
         <RouterLink :to="`/profiles/${p.id}`" class="main st" :aria-label="`Edit ${p.name}`">
           <div class="thumb">
-            <RoundPreview v-if="p.pages[0]" :page="p.pages[0]" :palette="palette" :page-count="p.pages.length" />
+            <RoundPreview v-if="p.pages[0]" :page="p.pages[0]" :palette="palette" :page-count="p.pages.length" thumb />
           </div>
           <div class="grow info">
             <div class="name-row">

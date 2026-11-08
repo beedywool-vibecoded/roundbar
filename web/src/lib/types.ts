@@ -38,8 +38,12 @@ export interface Theme {
 
 export type KeyboardLayout = 'fr' | 'us'
 
+export type Rotation = 0 | 90 | 180 | 270
+
 export interface DeviceSettings {
   brightness: number
+  /** Degrees clockwise */
+  rotation: Rotation
   dimAfter: number
   sleepAfter: number
   longPressMs: number
@@ -88,8 +92,11 @@ export interface RadialPage extends PageBase {
   center?: Button
   buttons: Button[]
 }
+export type MediaButton = 'prev' | 'next' | 'play' | 'playing'
 export interface MediaPage extends PageBase {
   type: 'media'
+  /** Transport button shapes; missing keys use MEDIA_SHAPE_DEFAULTS */
+  shapes?: Partial<Record<MediaButton, ButtonShape>>
 }
 export interface StatsPage extends PageBase {
   type: 'stats'
@@ -117,6 +124,10 @@ export interface Profile {
 export interface MediaSettings {
   coverBackground: boolean
   coverColors: boolean
+  /** 0 (nearly sharp) … 100 (very soft) */
+  blur: number
+  /** How much the album art shows through the surface-colored scrim, 0..100 */
+  coverOpacity: number
 }
 
 export interface Config {

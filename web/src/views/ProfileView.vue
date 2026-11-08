@@ -9,11 +9,12 @@ import RoundPreview from '@/components/RoundPreview.vue'
 import ShapeLoader from '@/components/ShapeLoader.vue'
 import TextField from '@/components/TextField.vue'
 import { api } from '@/lib/api'
-import { ID_RE, LIMITS, PAGE_TYPES, newPage, pageTypeInfo } from '@/lib/model'
+import { ID_RE, LIMITS, PAGE_TYPES, newPage, pageTypeInfo, pastePage } from '@/lib/model'
+import { clipboardPage, copyPage } from '@/lib/clipboard'
 import { config, daemonUp, dirty, findProfile, focusKeys, issuesUnder, profileIndex } from '@/lib/store'
 import { devicePalette } from '@/lib/theme'
 import type { Page, PageType } from '@/lib/types'
-import { confirm, toastError } from '@/lib/ui'
+import { confirm, toast, toastError } from '@/lib/ui'
 
 const props = defineProps<{ pid: string }>()
 const router = useRouter()
@@ -60,6 +61,18 @@ function addPage(t: PageType) {
   p.pages.push(page)
   adding.value = false
   router.push(`/profiles/${p.id}/pages/${page.id}`)
+}
+const full = computed(() => (profile.value?.pages.length ?? 0) >= LIMITS.pages)
+function copy(pg: Page) {
+  copyPage(pg)
+  toast('Page copied')
+}
+function paste() {
+  const p = profile.value
+  const src = clipboardPage.value
+  if (!p || !src || full.value) return
+  p.pages.push(pastePage(src, p))
+  toast('Page pasted')
 }
 function move(i: number, d: number) {
   const pages = profile.value!.pages
@@ -149,7 +162,17 @@ async function show(pg: Page) {
         <div class="card-head">
           <h2>Pages</h2>
           <span class="muted small">{{ profile.pages.length }} / {{ LIMITS.pages }}</span>
-          <button class="btn btn-tonal st" type="button" :disabled="profile.pages.length >= LIMITS.pages" @click="adding = true">
+          <button
+            v-if="clipboardPage"
+            class="btn btn-text st"
+            type="button"
+            :disabled="full"
+            v-tip="full ? `A profile has at most ${LIMITS.pages} pages` : `Paste ${clipboardPage.title || pageTypeInfo(clipboardPage.type).label}`"
+            @click="paste"
+          >
+            <Icon name="content_paste" :size="18" /> Paste page
+          </button>
+          <button class="btn btn-tonal st" type="button" :disabled="full" @click="adding = true">
             <Icon name="add" :size="18" /> Add page
           </button>
         </div>
@@ -157,7 +180,7 @@ async function show(pg: Page) {
         <ul class="pages">
           <li v-for="(pg, i) in profile.pages" :key="pg.id" class="pg" :class="{ bad: issuesUnder(`profiles[${index}].pages[${i}]`).length }">
             <RouterLink :to="`/profiles/${pid}/pages/${pg.id}`" class="pg-main st">
-              <div class="thumb"><RoundPreview :page="pg" :palette="palette" :page-index="i" :page-count="profile.pages.length" /></div>
+              <div class="thumb"><RoundPreview :page="pg" :palette="palette" :page-index="i" :page-count="profile.pages.length" thumb /></div>
               <div class="grow pg-info">
                 <div class="pg-name">
                   <span class="ellipsis">{{ pg.title || pageTypeInfo(pg.type).label }}</span>
@@ -171,6 +194,7 @@ async function show(pg: Page) {
                 <ShapeLoader v-if="showing === pg.id" small />
                 <Icon v-else name="cast" :size="20" />
               </button>
+              <button class="icon-btn st" type="button" v-tip="'Copy page'" @click="copy(pg)"><Icon name="content_copy" :size="20" /></button>
               <button class="icon-btn st" type="button" :disabled="i === 0" v-tip="'Move up'" @click="move(i, -1)"><Icon name="arrow_upward" :size="20" /></button>
               <button class="icon-btn st" type="button" :disabled="i === profile.pages.length - 1" v-tip="'Move down'" @click="move(i, 1)"><Icon name="arrow_downward" :size="20" /></button>
               <button class="icon-btn st" type="button" :disabled="profile.pages.length <= 1" v-tip="profile.pages.length <= 1 ? 'A profile needs one page' : 'Delete'" @click="remove(pg, i)">

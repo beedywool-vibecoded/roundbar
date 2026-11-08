@@ -11,12 +11,13 @@ import M3Select from '@/components/M3Select.vue'
 import M3Switch from '@/components/M3Switch.vue'
 import M3Shape from '@/components/M3Shape.vue'
 import ShapeLoader from '@/components/ShapeLoader.vue'
+import ShapePicker from '@/components/ShapePicker.vue'
 import { api } from '@/lib/api'
-import { DIAL_SOURCES, LIMITS, STAT_ITEMS, newButton, nextButtonId, pageTypeInfo } from '@/lib/model'
+import { DIAL_SOURCES, LIMITS, MEDIA_BUTTONS, MEDIA_SHAPE_DEFAULTS, STAT_ITEMS, newButton, nextButtonId, pageTypeInfo } from '@/lib/model'
 import { config, daemonUp, dirty, findProfile, issuesUnder, profileIndex } from '@/lib/store'
 import { devicePalette } from '@/lib/theme'
 import { lockScroll, unlockScroll } from '@/lib/scrollLock'
-import type { Action, Button, DialPage, DialSource, Page, StatItem } from '@/lib/types'
+import type { Action, Button, ButtonShape, DialPage, DialSource, MediaButton, Page, StatItem } from '@/lib/types'
 import { run } from '@/lib/ui'
 
 const props = defineProps<{ pid: string; page: string }>()
@@ -160,6 +161,21 @@ function toggleDialAction(k: 'onUp' | 'onDown', on: boolean) {
   else delete d[k]
 }
 
+// ---- media transport shapes: the default is stored as a missing key ----
+function mediaShape(k: MediaButton): ButtonShape {
+  const p = page.value
+  return (p?.type === 'media' && p.shapes?.[k]) || MEDIA_SHAPE_DEFAULTS[k]
+}
+function setMediaShape(k: MediaButton, s: ButtonShape) {
+  const p = page.value
+  if (p?.type !== 'media') return
+  const { [k]: _drop, ...rest } = p.shapes ?? {}
+  const next = s === MEDIA_SHAPE_DEFAULTS[k] ? rest : { ...rest, [k]: s }
+  if (Object.keys(next).length) p.shapes = next
+  else delete p.shapes
+}
+const mediaFill = (k: MediaButton) => (k === 'play' || k === 'playing' ? palette.value.primaryContainer : palette.value.secondaryContainer)
+
 // ---- device ----
 const showing = ref(false)
 function show() {
@@ -272,7 +288,7 @@ function show() {
             <TextField v-model="title" label="Title (optional)" :placeholder="page.type === 'radial' ? 'Shown in the middle when there is no center button' : 'Shown in this configurator'" :max="24" />
 
             <p v-if="page.type === 'media'" class="muted small" style="margin: 0">
-              Shows the current player (MPRIS) with previous, play / pause and next, and the volume on the edge arc. Nothing to set up.
+              Shows the current player (MPRIS) with previous, play / pause and next, and the volume on the edge arc.
             </p>
 
             <template v-else-if="page.type === 'stats'">
@@ -318,6 +334,23 @@ function show() {
                 <ActionEditor v-if="dial.onDown" :model-value="dial.onDown" :pages="profile.pages" @update:model-value="dial.onDown = $event as Action" />
               </template>
             </template>
+          </div>
+        </div>
+
+        <div v-if="page.type === 'media'" class="card">
+          <div class="card-head"><h2>Button shapes</h2></div>
+          <div class="form">
+            <div v-for="b in MEDIA_BUTTONS" :key="b.key">
+              <p class="section-label" style="margin-top: 0">{{ b.label }}</p>
+              <ShapePicker
+                :model-value="mediaShape(b.key)"
+                :fallback="MEDIA_SHAPE_DEFAULTS[b.key]"
+                :fill="mediaFill(b.key)"
+                :label="`${b.label} shape`"
+                @update:model-value="setMediaShape(b.key, $event)"
+              />
+            </div>
+            <p class="tf-help" style="margin: 0">The play button takes its paused or playing shape with the player state. Click it in the preview to switch.</p>
           </div>
         </div>
 

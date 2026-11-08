@@ -4,7 +4,7 @@ import Icon from '@/components/Icon.vue'
 import M3Shape from '@/components/M3Shape.vue'
 import M3Slider from '@/components/M3Slider.vue'
 import NumField from '@/components/NumField.vue'
-import { PAGE_TYPES } from '@/lib/model'
+import { PAGE_TYPES, ROTATIONS } from '@/lib/model'
 import { config, daemonUp, findProfile, live } from '@/lib/store'
 import type { KeyboardLayout } from '@/lib/types'
 
@@ -119,6 +119,27 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
             <span class="muted">{{ dev.brightness }} %</span>
           </div>
           <M3Slider v-model="dev.brightness" label="Brightness" :min="5" :max="100" :step="5" :format="(v) => `${v} %`" />
+        </div>
+        <div class="setting">
+          <div class="grow">
+            <div>Screen rotation</div>
+            <div class="muted small">Turn the screen to match how the device is mounted</div>
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Screen rotation">
+            <button
+              v-for="r in ROTATIONS"
+              :key="r"
+              type="button"
+              role="radio"
+              class="st"
+              :class="{ on: dev.rotation === r }"
+              :aria-checked="dev.rotation === r"
+              @click="dev.rotation = r"
+            >
+              <Icon v-if="dev.rotation === r" name="check" :size="18" />
+              {{ r }}°
+            </button>
+          </div>
         </div>
         <div class="setting col">
           <div class="form-row">

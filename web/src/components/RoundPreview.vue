@@ -4,7 +4,7 @@
 // Buttons can be clicked to select them for editing.
 import { computed, ref } from 'vue'
 import { buttonPath, type ButtonShape } from '@/lib/shapes'
-import { defaultShape } from '@/lib/model'
+import { MEDIA_SHAPE_DEFAULTS, defaultShape } from '@/lib/model'
 import type { Button, ColorRole, Page, Palette, StatItem } from '@/lib/types'
 
 const props = withDefaults(
@@ -15,8 +15,10 @@ const props = withDefaults(
     editable?: boolean
     pageIndex?: number
     pageCount?: number
+    /** Small, non-interactive copy (inside a link) */
+    thumb?: boolean
   }>(),
-  { selected: null, editable: false, pageIndex: 0, pageCount: 1 },
+  { selected: null, editable: false, pageIndex: 0, pageCount: 1, thumb: false },
 )
 const emit = defineEmits<{ select: [id: string]; addCenter: [] }>()
 
@@ -149,9 +151,16 @@ function pick(id: string) {
 
 // ---- media ----
 const SAMPLE_VOLUME = 42
+// Shown playing; clicking the play button pauses the sample, to see both shapes
+const playing = ref(true)
 const media = computed(() => {
-  if (props.page.type !== 'media') return null
+  const pg = props.page
+  if (pg.type !== 'media') return null
+  const shape = (k: keyof typeof MEDIA_SHAPE_DEFAULTS) => pg.shapes?.[k] ?? MEDIA_SHAPE_DEFAULTS[k]
   return {
+    prev: buttonPath(shape('prev'), -94, 44, 64),
+    next: buttonPath(shape('next'), 94, 44, 64),
+    play: buttonPath(shape(playing.value ? 'playing' : 'play'), 0, 44, 100),
     title: ellipsize('Song title', 22, true, 236),
     artist: ellipsize('Artist name', 16, false, 220),
     arc: bezel(SAMPLE_VOLUME, p.value.primary),
@@ -285,13 +294,23 @@ const dots = computed(() => {
         <text class="txt" y="-104" font-size="14" :fill="p.onSurfaceVariant">Spotify</text>
         <text class="txt" y="-66" font-size="22" font-weight="700" :fill="p.onSurface">{{ media.title }}</text>
         <text class="txt" y="-36" font-size="16" :fill="p.onSurfaceVariant">{{ media.artist }}</text>
-        <circle cx="-94" cy="44" r="32" :fill="p.secondaryContainer" />
+        <path :d="media.prev" :fill="p.secondaryContainer" />
         <text class="sym" x="-94" y="44" font-size="32" :fill="p.onSecondaryContainer">skip_previous</text>
-        <circle cx="94" cy="44" r="32" :fill="p.secondaryContainer" />
+        <path :d="media.next" :fill="p.secondaryContainer" />
         <text class="sym" x="94" y="44" font-size="32" :fill="p.onSecondaryContainer">skip_next</text>
-        <!-- Playing: rounded square (radius 30 %); a circle when paused -->
-        <rect x="-50" y="-6" width="100" height="100" rx="30" :fill="p.primaryContainer" />
-        <text class="sym" x="0" y="44" font-size="44" :fill="p.onPrimaryContainer">pause</text>
+        <!-- The play button takes its `playing` shape while music plays, `play` when paused -->
+        <g
+          :class="{ 'play-g': !thumb }"
+          :role="thumb ? undefined : 'button'"
+          :tabindex="thumb ? undefined : 0"
+          :aria-label="thumb ? undefined : playing ? 'Preview paused state' : 'Preview playing state'"
+          @click="!thumb && (playing = !playing)"
+          @keydown.enter.prevent="playing = !playing"
+          @keydown.space.prevent="playing = !playing"
+        >
+          <path :d="media.play" :fill="p.primaryContainer" />
+          <text class="sym" x="0" y="44" font-size="44" :fill="p.onPrimaryContainer">{{ playing ? 'pause' : 'play_arrow' }}</text>
+        </g>
         <text class="txt" y="132" font-size="14" :fill="p.onSurfaceVariant">{{ SAMPLE_VOLUME }}</text>
       </template>
 
@@ -367,6 +386,16 @@ const dots = computed(() => {
 }
 .bubble {
   pointer-events: none;
+}
+.play-g {
+  cursor: pointer;
+}
+.play-g:focus-visible {
+  outline: none;
+}
+.play-g:focus-visible path {
+  stroke: var(--primary);
+  stroke-width: 3;
 }
 .ghost {
   cursor: pointer;

@@ -6,8 +6,9 @@ import IconPicker from './IconPicker.vue'
 import TextField from './TextField.vue'
 import ActionEditor from './ActionEditor.vue'
 import M3Switch from './M3Switch.vue'
+import ShapePicker from './ShapePicker.vue'
 import { COLOR_ROLES, LIMITS, SHAPE_LABELS, defaultShape } from '@/lib/model'
-import { BUTTON_SHAPES, buttonPath, type ButtonShape } from '@/lib/shapes'
+import { buttonPath, type ButtonShape } from '@/lib/shapes'
 import type { Action, Button, ColorRole, Page, Palette } from '@/lib/types'
 
 const model = defineModel<Button>({ required: true })
@@ -97,24 +98,7 @@ function swatch(c: ColorRole): [string, string] {
 
       <div>
         <p class="section-label">Shape</p>
-        <div class="colors" role="radiogroup" aria-label="Shape">
-          <button
-            v-for="s in BUTTON_SHAPES"
-            :key="s"
-            type="button"
-            role="radio"
-            class="color st"
-            :class="{ on: shape === s }"
-            :aria-checked="shape === s"
-            v-tip="s === fallbackShape ? `${SHAPE_LABELS[s]} (default here)` : SHAPE_LABELS[s]"
-            @click="pickShape(s)"
-          >
-            <svg width="40" height="40" viewBox="0 0 100 100" aria-hidden="true">
-              <path :d="buttonPath(s, 50, 50, 92)" :fill="shape === s ? swatch(model.color)[0] : 'var(--schh)'" />
-            </svg>
-            <span>{{ s === 'square' ? 'Square' : SHAPE_LABELS[s] }}</span>
-          </button>
-        </div>
+        <ShapePicker :model-value="shape" :fallback="fallbackShape" :fill="swatch(model.color)[0]" label="Shape" @update:model-value="pickShape" />
         <p class="tf-help" style="margin-left: 0">{{ model.shape ? '' : `Default: ${SHAPE_LABELS[fallbackShape].toLowerCase()}. ` }}Pressing only squishes the button; the shape stays.</p>
       </div>
 

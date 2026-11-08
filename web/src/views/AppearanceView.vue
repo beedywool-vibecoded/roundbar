@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import Icon from '@/components/Icon.vue'
 import RoundPreview from '@/components/RoundPreview.vue'
 import M3Switch from '@/components/M3Switch.vue'
+import M3Slider from '@/components/M3Slider.vue'
 import { SEEDS, devicePalette, validHex } from '@/lib/theme'
 import { config } from '@/lib/store'
 import { PALETTE_ROLES, type Page, type ThemeMode } from '@/lib/types'
@@ -25,6 +26,8 @@ watch(hex, (h) => {
 function onPicker(e: Event) {
   theme.value.seed = (e.target as HTMLInputElement).value.toUpperCase()
 }
+
+const blurText = (v: number) => (v === 0 ? 'Sharp' : `${v}`)
 
 const MODES: { id: ThemeMode; label: string; icon: string }[] = [
   { id: 'dark', label: 'Dark', icon: 'dark_mode' },
@@ -125,6 +128,23 @@ const shown = computed(() => samples.value[Math.min(sample.value, samples.value.
           </div>
           <M3Switch v-model="media.coverBackground" label="Album art background" />
         </div>
+        <template v-if="media.coverBackground">
+          <div class="setting col">
+            <div class="row-head">
+              <span>Blur</span>
+              <span class="muted">{{ blurText(media.blur) }}</span>
+            </div>
+            <M3Slider v-model="media.blur" label="Blur" :min="0" :max="100" :step="5" :format="blurText" />
+          </div>
+          <div class="setting col">
+            <div class="row-head">
+              <span>Album art opacity</span>
+              <span class="muted">{{ media.coverOpacity }} %</span>
+            </div>
+            <M3Slider v-model="media.coverOpacity" label="Album art opacity" :min="0" :max="100" :step="5" :format="(v) => `${v} %`" />
+            <p class="muted small" style="margin: 0">How much of the cover shows through the dimmed layer behind the text.</p>
+          </div>
+        </template>
         <div class="setting">
           <div class="grow">
             <div>Colors from album art</div>
@@ -187,6 +207,11 @@ const shown = computed(() => samples.value[Math.min(sample.value, samples.value.
 }
 .hex {
   max-width: 220px;
+}
+.row-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
 }
 .sw {
   width: 20px;

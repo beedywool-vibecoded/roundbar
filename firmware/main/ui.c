@@ -963,6 +963,12 @@ static void build(bool animate)
 
 void ui_reload(void)
 {
+    static const lv_display_rotation_t ROT[] = {LV_DISPLAY_ROTATION_0, LV_DISPLAY_ROTATION_90, LV_DISPLAY_ROTATION_180,
+                                                LV_DISPLAY_ROTATION_270};
+    int rot = store_get_int("rotation", 0);
+    lv_display_rotation_t want = ROT[(rot / 90) & 3];
+    // esp_lvgl_port turns this into panel MADCTL swap/mirror; LVGL rotates touch points.
+    if (lv_display_get_rotation(disp) != want) lv_display_set_rotation(disp, want);
     if (indev) lv_indev_set_long_press_time(indev, store_get_int("longPressMs", 450));
     if (power == AWAKE) board_backlight(store_brightness());
     build(false);
