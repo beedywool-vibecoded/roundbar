@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -171,8 +172,7 @@ type tail struct {
 type Session struct {
 	prefix, dir string
 	before      map[string]bool // files in the log folder before we started
-	conns       map[string]net.Conn
-	finished    chan struct{} // one value per "LoggingFinished"
+	conns       map[string]*ctl
 	tails       map[string]*tail
 	lastScan    time.Time
 }
@@ -192,7 +192,7 @@ func logDir(c conf) string {
 func Start() *Session {
 	raw, _ := os.ReadFile(ConfPath())
 	c := readConf(raw)
-	s := &Session{prefix: socketPrefix(c.control), dir: logDir(c), before: map[string]bool{}, conns: map[string]net.Conn{}, finished: make(chan struct{}, 16), tails: map[string]*tail{}}
+	s := &Session{prefix: socketPrefix(c.control), dir: logDir(c), before: map[string]bool{}, conns: map[string]*ctl{}, tails: map[string]*tail{}}
 	for _, f := range s.csvs() {
 		s.before[f] = true
 	}
@@ -206,40 +206,91 @@ func (s *Session) csvs() []string {
 }
 
 // connect starts logging on games that appeared since the last scan.
+// ctl is a control connection to one game's MangoHud, kept for the game's whole
+// life: MangoHud serves a single client and doesn't take a new one after the
+// first disconnects, so closing it would lock us out until the game restarts.
+type ctl struct {
+	c        net.Conn
+	finished chan struct{} // one value per "LoggingFinished"
+	dead     chan struct{} // closed when the game (or its socket) goes away
+}
+
+var pool = struct {
+	sync.Mutex
+	m map[string]*ctl
+}{m: map[string]*ctl{}}
+
+// control returns the live connection to a MangoHud socket, dialing it once.
+func control(name string) *ctl {
+	pool.Lock()
+	defer pool.Unlock()
+	if k := pool.m[name]; k != nil {
+		select {
+		case <-k.dead:
+			delete(pool.m, name)
+		default:
+			return k
+		}
+	}
+	c, err := net.DialTimeout("unix", name, time.Second)
+	if err != nil {
+		return nil
+	}
+	k := &ctl{c: c, finished: make(chan struct{}, 4), dead: make(chan struct{})}
+	go func() { // version strings, then LoggingFinished each time logging stops
+		defer func() {
+			close(k.dead)
+			c.Close()
+			pool.Lock()
+			if pool.m[name] == k {
+				delete(pool.m, name)
+			}
+			pool.Unlock()
+		}()
+		buf := make([]byte, 512)
+		var seen []byte
+		for {
+			n, err := c.Read(buf)
+			seen = append(seen, buf[:n]...)
+			for bytes.Contains(seen, []byte("LoggingFinished")) {
+				_, after, _ := bytes.Cut(seen, []byte("LoggingFinished"))
+				seen = append([]byte(nil), after...)
+				select {
+				case k.finished <- struct{}{}:
+				default:
+				}
+			}
+			if len(seen) > 4096 {
+				seen = seen[len(seen)-64:]
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	pool.m[name] = k
+	return k
+}
+
+// connect starts logging on games that appeared since the last scan.
 func (s *Session) connect() {
 	s.lastScan = time.Now()
 	for _, name := range Sockets(s.prefix) {
 		if s.conns[name] != nil {
 			continue
 		}
-		c, err := net.DialTimeout("unix", name, time.Second)
-		if err != nil {
+		k := control(name)
+		if k == nil {
 			continue
 		}
-		go func() { // version strings, then LoggingFinished after we stop logging
-			buf := make([]byte, 512)
-			var seen []byte
-			for {
-				n, err := c.Read(buf)
-				seen = append(seen, buf[:n]...)
-				for bytes.Contains(seen, []byte("LoggingFinished")) {
-					_, after, _ := bytes.Cut(seen, []byte("LoggingFinished"))
-					seen = append([]byte(nil), after...)
-					s.finished <- struct{}{}
-				}
-				if len(seen) > 4096 {
-					seen = seen[len(seen)-64:]
-				}
-				if err != nil {
-					return
-				}
-			}
-		}()
-		if _, err := c.Write([]byte(":logging=1;")); err != nil {
-			c.Close()
+		for len(k.finished) > 0 { // stale signals from an earlier visit
+			<-k.finished
+		}
+		if _, err := k.c.Write([]byte(":logging=1;")); err != nil {
+			k.c.Close() // the reader sees it and drops the connection
 			continue
 		}
-		s.conns[name] = c
+		s.conns[name] = k
 	}
 }
 
@@ -394,21 +445,20 @@ func summarize(rows []row) Snapshot {
 
 // Stop turns logging off and removes the CSV and summary files it created.
 func (s *Session) Stop() {
-	for _, c := range s.conns {
-		_, _ = c.Write([]byte(":logging=0;"))
+	for _, k := range s.conns {
+		_, _ = k.c.Write([]byte(":logging=0;"))
 	}
-	// MangoHud writes the summary, then says LoggingFinished.
+	// MangoHud writes the summary, then says LoggingFinished. The connections
+	// stay open for the next visit (see ctl).
 	deadline := time.After(3 * time.Second)
 wait:
-	for range s.conns {
+	for _, k := range s.conns {
 		select {
-		case <-s.finished:
+		case <-k.finished:
+		case <-k.dead:
 		case <-deadline:
 			break wait
 		}
-	}
-	for _, c := range s.conns {
-		c.Close()
 	}
 	for _, f := range s.csvs() {
 		if !s.before[f] {
