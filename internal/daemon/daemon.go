@@ -84,6 +84,7 @@ type Daemon struct {
 	cdp           *discord.CDP
 	iconsSent     map[string]bool
 
+<<<<<<< HEAD
 	layout   keymap.Detected // the PC's active keyboard layout
 	layoutMu sync.Mutex      // one detection at a time
 
@@ -92,6 +93,13 @@ type Daemon struct {
 	mangoStop chan struct{}
 	watchers  map[chan struct{}]bool
 	done      chan struct{}
+=======
+	statsStop  chan struct{}
+	lastRelink time.Time
+	mangoStop  chan struct{}
+	watchers   map[chan struct{}]bool
+	done       chan struct{}
+>>>>>>> master
 }
 
 func New() *Daemon {
@@ -211,6 +219,22 @@ func (d *Daemon) send(v any) {
 	}
 }
 
+// relink drops the serial connection when the board stops answering; the
+// device loop reopens it at once, and the board greets a new connection with
+// hello (a jammed link was seen to recover only that way). At most every 30 s.
+func (d *Daemon) relink(why string) {
+	d.mu.Lock()
+	p := d.port
+	if p == nil || time.Since(d.lastRelink) < 30*time.Second {
+		d.mu.Unlock()
+		return
+	}
+	d.lastRelink = time.Now()
+	d.mu.Unlock()
+	log.Printf("device not answering (%s): reconnecting", why)
+	p.Close()
+}
+
 // sendWait sends a message with an id and waits for the device's ack.
 func (d *Daemon) sendWait(m map[string]any, timeout time.Duration) bool {
 	d.mu.Lock()
@@ -226,6 +250,7 @@ func (d *Daemon) sendWait(m map[string]any, timeout time.Duration) bool {
 	case ok := <-ch:
 		return ok
 	case <-time.After(timeout):
+		d.relink(fmt.Sprint("no ack for ", m["t"]))
 		return false
 	}
 }

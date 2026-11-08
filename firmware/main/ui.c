@@ -1644,8 +1644,11 @@ static void build_clock(lv_obj_t *tile, cJSON *pg, int page)
     build_clock_into(tile, pg, &clocks[page], false, true);
 }
 
+static void tv_settle(void);
+
 static void clock_tick(lv_timer_t *t)
 {
+    tv_settle();
     if (power == OFF || power == ASLEEP) return;
     if (cur_page >= 0 && cur_page < page_count) clock_update(&clocks[cur_page]);
     game_session_update();
@@ -3012,6 +3015,18 @@ static void tv_scroll_end(lv_event_t *e)
     if (lv_obj_get_x(tv) != 0) lv_obj_set_x(tv, 0);
     busy = false;
     dc_flush_pending();
+}
+
+// Once a second: never rest between two pages (an interrupted slide can leave
+// the pages there), unless a finger or an animation is moving them.
+static void tv_settle(void)
+{
+    if (!tv || wrap_shot || lv_obj_is_scrolling(tv)) return;
+    if (indev && lv_indev_get_state(indev) == LV_INDEV_STATE_PRESSED) return;
+    if (lv_anim_get(tv, NULL)) return;
+    lv_obj_t *t = lv_tileview_get_tile_active(tv);
+    if (t && lv_obj_get_scroll_x(tv) != lv_obj_get_x(t)) lv_tileview_set_tile(tv, t, LV_ANIM_OFF);
+    if (lv_obj_get_x(tv) != 0) lv_obj_set_x(tv, 0);
 }
 
 static void tile_event(lv_event_t *e)
