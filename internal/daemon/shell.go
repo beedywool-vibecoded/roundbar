@@ -41,8 +41,8 @@ func (d *Daemon) sendIcons(names ...string) {
 		if seen {
 			continue
 		}
-		if b := icons.Bitmap(n); b != nil {
-			d.send(map[string]any{"t": "icon", "name": n, "w": icons.Size, "h": icons.Size,
+		if b, size := icons.BitmapSized(n); b != nil {
+			d.send(map[string]any{"t": "icon", "name": n, "w": size, "h": size,
 				"data": base64.StdEncoding.EncodeToString(b)})
 		}
 	}

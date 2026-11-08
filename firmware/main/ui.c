@@ -2376,45 +2376,58 @@ void ui_discord(cJSON *st)
     bool mute = cJSON_IsTrue(cJSON_GetObjectItem(st, "mute")), deaf = cJSON_IsTrue(cJSON_GetObjectItem(st, "deaf"));
     const char *channel = jstr(st, "channel");
     cJSON *members = cJSON_GetObjectItem(st, "members");
-    int n = LV_MIN(cJSON_GetArraySize(members), 8);
+    int n = LV_MIN(cJSON_GetArraySize(members), 12);
+    // Avatars shrink as the channel fills up: big when it's you and a friend.
+    int size = n <= 2 ? 88 : n <= 4 ? 80 : n <= 6 ? 72 : n <= 8 ? 64 : 54;
+    int radius = n <= 2 ? 112 : n <= 4 ? 120 : n <= 6 ? 126 : n <= 8 ? 130 : 136;
     for (int i = 0; i < n; i++) {
         cJSON *m = cJSON_GetArrayItem(members, i);
         bool speaking = cJSON_IsTrue(cJSON_GetObjectItem(m, "speaking")), muted = cJSON_IsTrue(cJSON_GetObjectItem(m, "muted"));
         int16_t ang = (int16_t)(270 + i * 360 / LV_MAX(n, 1)) % 360;
         lv_obj_t *av = box(dc_root);
-        lv_obj_set_size(av, 56, 56);
-        lv_obj_set_style_radius(av, 28, 0);
+        lv_obj_set_size(av, size, size);
+        lv_obj_set_style_radius(av, size / 2, 0);
         lv_obj_set_style_bg_color(av, P.schh, 0);
         lv_obj_set_style_bg_opa(av, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(av, speaking ? 4 : 0, 0);
+        lv_obj_set_style_border_width(av, speaking ? LV_MAX(3, size / 16) : 0, 0);
         lv_obj_set_style_border_color(av, lv_color_hex(0x23A55A), 0); // Discord's speaking green
         lv_obj_remove_flag(av, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_align(av, LV_ALIGN_CENTER, 132 * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, 132 * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
-        lv_obj_t *ic = app_icon(av, jstr(m, "avatar"), "person", P.on_surface, 256);
+        lv_obj_align(av, LV_ALIGN_CENTER, radius * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, radius * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
+        const lv_image_dsc_t *img = icon_get(jstr(m, "avatar"));
+        lv_obj_t *ic = img ? app_icon(av, jstr(m, "avatar"), "person", P.on_surface, (size - 6) * 256 / (int)img->header.w)
+                           : text(av, size > 70 ? F.icon_l : F.icon_m, P.on_surface, theme_icon("person"));
         lv_obj_center(ic);
         if (muted) {
+            int bs = LV_MAX(20, size / 4);
             lv_obj_t *badge = box(av);
-            lv_obj_set_size(badge, 22, 22);
-            lv_obj_set_style_radius(badge, 11, 0);
+            lv_obj_set_size(badge, bs, bs);
+            lv_obj_set_style_radius(badge, bs / 2, 0);
             lv_obj_set_style_bg_color(badge, P.ec, 0);
             lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
-            lv_obj_align(badge, LV_ALIGN_BOTTOM_RIGHT, 4, 4);
-            lv_obj_t *bi = text(badge, F.label, P.on_ec, theme_icon("mic_off"));
-            lv_obj_set_style_text_font(bi, F.icon_s, 0);
-            lv_obj_set_style_transform_scale(bi, 160, 0);
+            lv_obj_align(badge, LV_ALIGN_BOTTOM_RIGHT, 2, 2);
+            lv_obj_t *bi = text(badge, F.icon_s, P.on_ec, theme_icon("mic_off"));
+            lv_obj_set_style_transform_scale(bi, bs * 256 / 30, 0);
             lv_obj_center(bi);
         }
     }
     bool controls = cJSON_IsTrue(cJSON_GetObjectItem(st, "controls"));
     if (!controls) { // no mute/deafen control available: show the channel only
+        const char *guild = jstr(st, "guild");
+        bool has_guild = channel && channel[0] && guild && guild[0];
         lv_obj_t *ch = text(dc_root, F.title, P.on_surface, channel && channel[0] ? channel : "Not in voice");
         lv_obj_set_width(ch, 170);
         lv_label_set_long_mode(ch, LV_LABEL_LONG_DOT);
-        lv_obj_align(ch, LV_ALIGN_CENTER, 0, -12);
+        lv_obj_align(ch, LV_ALIGN_CENTER, 0, has_guild ? -20 : -12);
+        if (has_guild) { // server name, small, under the channel
+            lv_obj_t *g = text(dc_root, F.label, P.on_sv, guild);
+            lv_obj_set_width(g, 160);
+            lv_label_set_long_mode(g, LV_LABEL_LONG_DOT);
+            lv_obj_align(g, LV_ALIGN_CENTER, 0, 4);
+        }
         if (channel && channel[0]) {
-            lv_obj_t *cnt = text(dc_root, F.body, P.on_sv, "");
+            lv_obj_t *cnt = text(dc_root, F.label, P.on_sv, "");
             lv_label_set_text_fmt(cnt, "%d in voice%s", cJSON_GetArraySize(members), mute || deaf ? "  ·  you're muted" : "");
-            lv_obj_align(cnt, LV_ALIGN_CENTER, 0, 20);
+            lv_obj_align(cnt, LV_ALIGN_CENTER, 0, has_guild ? 26 : 20);
         }
         return;
     }

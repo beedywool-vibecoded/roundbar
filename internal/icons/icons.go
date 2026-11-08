@@ -27,6 +27,9 @@ import (
 
 const Size = 48
 
+// AvatarSize: Discord avatars are shown up to ~110 px, so they're fetched bigger.
+const AvatarSize = 96
+
 var (
 	mu    sync.Mutex
 	cache = map[string][]byte{}
@@ -177,11 +180,11 @@ func fetchRound(u string) image.Image {
 	if err != nil {
 		return nil
 	}
-	dst := image.NewNRGBA(image.Rect(0, 0, Size, Size))
+	dst := image.NewNRGBA(image.Rect(0, 0, AvatarSize, AvatarSize))
 	xdraw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), xdraw.Src, nil)
-	c := float64(Size) / 2
-	for y := 0; y < Size; y++ {
-		for x := 0; x < Size; x++ {
+	c := float64(AvatarSize) / 2
+	for y := 0; y < AvatarSize; y++ {
+		for x := 0; x < AvatarSize; x++ {
 			d := math.Hypot(float64(x)+0.5-c, float64(y)+0.5-c)
 			cov := math.Max(0, math.Min(1, c-d+0.5))
 			o := dst.PixOffset(x, y)
@@ -191,44 +194,51 @@ func fetchRound(u string) image.Image {
 	return dst
 }
 
-// Bitmap returns the icon as RGB565 LE plane + A8 plane (Size×Size), or nil.
-// name is an icon theme name, a file path, or an https URL (made round).
+// Bitmap returns the icon as RGB565 LE plane + A8 plane, or nil, and its side.
+// name is an icon theme name, a file path, or an https URL (made round, AvatarSize).
 func Bitmap(name string) []byte {
+	b, _ := BitmapSized(name)
+	return b
+}
+
+func BitmapSized(name string) ([]byte, int) {
 	if name == "" {
-		return nil
+		return nil, 0
+	}
+	size := Size
+	if strings.HasPrefix(name, "https://") {
+		size = AvatarSize
 	}
 	mu.Lock()
 	if b, ok := cache[name]; ok {
 		mu.Unlock()
-		return b
+		return b, size
 	}
 	mu.Unlock()
-	var out []byte
 	var src image.Image
-	if strings.HasPrefix(name, "https://") {
+	if size == AvatarSize {
 		src = fetchRound(name)
 	} else if p := find(name); p != "" {
 		src = load(p)
 	}
-	{
-		if img := src; img != nil {
-			dst := image.NewNRGBA(image.Rect(0, 0, Size, Size))
-			if b := img.Bounds(); b.Dx() == Size && b.Dy() == Size {
-				draw.Draw(dst, dst.Bounds(), img, b.Min, draw.Src)
-			} else {
-				xdraw.CatmullRom.Scale(dst, dst.Bounds(), img, b, xdraw.Src, nil)
-			}
-			out = make([]byte, Size*Size*3)
-			for i := 0; i < Size*Size; i++ {
-				p := dst.Pix[i*4:]
-				v := uint16(p[0]>>3)<<11 | uint16(p[1]>>2)<<5 | uint16(p[2]>>3)
-				binary.LittleEndian.PutUint16(out[2*i:], v)
-				out[2*Size*Size+i] = p[3]
-			}
+	var out []byte
+	if src != nil {
+		dst := image.NewNRGBA(image.Rect(0, 0, size, size))
+		if b := src.Bounds(); b.Dx() == size && b.Dy() == size {
+			draw.Draw(dst, dst.Bounds(), src, b.Min, draw.Src)
+		} else {
+			xdraw.CatmullRom.Scale(dst, dst.Bounds(), src, b, xdraw.Src, nil)
+		}
+		out = make([]byte, size*size*3)
+		for i := 0; i < size*size; i++ {
+			p := dst.Pix[i*4:]
+			v := uint16(p[0]>>3)<<11 | uint16(p[1]>>2)<<5 | uint16(p[2]>>3)
+			binary.LittleEndian.PutUint16(out[2*i:], v)
+			out[2*size*size+i] = p[3]
 		}
 	}
 	mu.Lock()
 	cache[name] = out
 	mu.Unlock()
-	return out
+	return out, size
 }

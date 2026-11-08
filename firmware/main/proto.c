@@ -249,9 +249,9 @@ static void handle(cJSON *m)
         lvgl_port_unlock();
     } else if (!strcmp(t, "icon")) {
         static uint8_t *ibuf;
-        if (!ibuf) ibuf = heap_caps_malloc(64 * 64 * 3, MALLOC_CAP_SPIRAM); // icons are 48x48 RGB565A8
+        if (!ibuf) ibuf = heap_caps_malloc(128 * 128 * 3, MALLOC_CAP_SPIRAM); // app icons 48², avatars 96² (RGB565A8)
         const char *data = str(m, "data");
-        size_t n = ibuf && data ? b64decode(data, ibuf, 64 * 64 * 3) : 0;
+        size_t n = ibuf && data ? b64decode(data, ibuf, 128 * 128 * 3) : 0;
         lvgl_port_lock(0);
         ui_icon(str(m, "name"), num(m, "w", 0), num(m, "h", 0), ibuf, n);
         lvgl_port_unlock();

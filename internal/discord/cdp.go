@@ -49,6 +49,7 @@ const cdpScript = `(() => {
       connected: true,
       user: me ? (me.globalName || me.username) : "",
       channel: ch ? (ch.name || "Voice") : "",
+      guild: ch && ch.guild_id && C.GuildStore ? ((C.GuildStore.getGuild(ch.guild_id) || {}).name || "") : "",
       members,
       mute: !!(ME && ME.isSelfMute && ME.isSelfMute()),
       deaf: !!(ME && ME.isSelfDeaf && ME.isSelfDeaf()),

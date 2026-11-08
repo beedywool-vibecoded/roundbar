@@ -68,6 +68,7 @@ type State struct {
 	Controls  bool     `json:"controls"`  // mute/deafen can be toggled from the device (RPC only)
 	User      string   `json:"user,omitempty"`
 	Channel   string   `json:"channel,omitempty"` // "" = not in voice
+	Guild     string   `json:"guild,omitempty"`   // server name ("" for DMs / group calls)
 	Members   []Member `json:"members,omitempty"`
 	Mute      bool     `json:"mute"`
 	Deaf      bool     `json:"deaf"`
@@ -435,12 +436,13 @@ func (c *Client) refreshChannel() {
 	var ch struct {
 		ID          string       `json:"id"`
 		Name        string       `json:"name"`
+		GuildID     string       `json:"guild_id"`
 		VoiceStates []voiceState `json:"voice_states"`
 	}
 	if string(raw) == "null" || json.Unmarshal(raw, &ch) != nil || ch.ID == "" {
 		c.mu.Lock()
 		old := c.channelID
-		c.channelID, c.state.Channel, c.state.Members = "", "", nil
+		c.channelID, c.state.Channel, c.state.Guild, c.state.Members = "", "", "", nil
 		c.mu.Unlock()
 		if old != "" {
 			c.subscribeChannel(old, "UNSUBSCRIBE")
@@ -459,6 +461,19 @@ func (c *Client) refreshChannel() {
 		ch.Name = "Voice"
 	}
 	c.state.Channel, c.state.Members = ch.Name, members
+	c.mu.Unlock()
+	guild := ""
+	if ch.GuildID != "" {
+		if raw, err := c.call("GET_GUILD", map[string]any{"guild_id": ch.GuildID}, "", 5*time.Second); err == nil {
+			var g struct {
+				Name string `json:"name"`
+			}
+			_ = json.Unmarshal(raw, &g)
+			guild = g.Name
+		}
+	}
+	c.mu.Lock()
+	c.state.Guild = guild
 	c.mu.Unlock()
 	if old != ch.ID {
 		if old != "" {
