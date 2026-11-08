@@ -314,5 +314,17 @@ export interface FirmwareInfo {
   running: boolean
 }
 
+// GET /api/firmware/release: the latest published release (fetched only while the
+// configurator is open) and how the device's firmware compares to it
+export interface FirmwareRelease {
+  version?: string
+  /** "unknown": no device, or a development build without a release version */
+  status?: 'upToDate' | 'updateAvailable' | 'deviceNewer' | 'unknown'
+  appSize?: number
+  fontsSize?: number
+  /** Set when the release couldn't be fetched (offline, none published yet) */
+  error?: string
+}
+
 // SSE `flash` events during a firmware update
-export type FlashEvent = { line: string } | { done: true; ok: boolean }
+export type FlashEvent = { line: string } | { progress: { done: number; total: number } } | { done: true; ok: boolean }

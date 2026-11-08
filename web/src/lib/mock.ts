@@ -103,7 +103,7 @@ async function upload(body: unknown): Promise<AssetInfo> {
 
 export async function handle(method: string, path: string, body?: unknown): Promise<unknown> {
   await wait(200)
-  const key = `${method} ${path}`
+  const key = `${method} ${path.split('?')[0]}`
   if (key === 'POST /api/assets') return upload(body)
   if (method === 'GET' && path.startsWith('/api/assets/')) {
     const blob = assets.get(decodeURIComponent(path.slice('/api/assets/'.length)))
@@ -129,10 +129,13 @@ export async function handle(method: string, path: string, body?: unknown): Prom
     }
     case 'GET /api/firmware':
       return { repo: '/home/me/roundbar', repoOk: true, idf: '/home/me/esp/esp-idf-v5.4/export.sh', built: '0.2.0', running: flashing }
+    case 'GET /api/firmware/release':
+      await wait(400)
+      return { version: 'v0.2.0', status: status.device?.fw === '0.2.0' ? 'upToDate' : 'updateAvailable', appSize: 1086256, fontsSize: 8983572 }
     case 'POST /api/firmware/update':
       if (flashing) throw new ApiError('an update is already running', 409)
       flashing = true
-      void fakeFlash()
+      void ((body as { source?: string } | undefined)?.source === 'build' ? fakeFlash() : fakeInstall())
       return { ok: true }
     case 'POST /api/discord': {
       const b = body as { clientId?: string; clientSecret?: string }
@@ -198,6 +201,38 @@ const FLASH_LOG = [
 ]
 async function fakeFlash() {
   for (const line of FLASH_LOG) {
+    await wait(250)
+    emitFlash({ line })
+  }
+  flashing = false
+  status.device!.fw = '0.2.0'
+  listeners.forEach((l) => l({ ...status }))
+  emitFlash({ done: true, ok: true })
+}
+
+async function fakeInstall() {
+  const lines = [
+    'installing v0.2.0',
+    'downloading bootloader.bin (20 KiB)',
+    'downloading partition-table.bin (3 KiB)',
+    'downloading roundbar.bin (1060 KiB)',
+    'asking the device to restart in download mode',
+    'bootloader on /dev/ttyACM1 (USB download port)',
+    'bootloader: already up to date',
+    'partition-table: already up to date',
+    'fonts: already up to date',
+    'writing app at 0x10000 (1060 KiB)',
+  ]
+  for (const line of lines) {
+    await wait(250)
+    emitFlash({ line })
+  }
+  const total = 1086256
+  for (let done = 0; done <= total; done += total / 20) {
+    await wait(150)
+    emitFlash({ progress: { done: Math.round(done), total } })
+  }
+  for (const line of ['app written and verified', 'restarting the device', 'done: the device is restarting with v0.2.0']) {
     await wait(250)
     emitFlash({ line })
   }
