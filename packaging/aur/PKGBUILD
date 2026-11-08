@@ -1,0 +1,32 @@
+# AUR package for roundbar's release binaries.
+# To publish a new version: set pkgver, run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO`,
+# then push PKGBUILD, roundbar.install and .SRCINFO to the roundbar-bin AUR repository.
+pkgname=roundbar-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Daemon, configurator and GNOME extension for the Roundbar, a round ESP32-S3 USB macro controller'
+arch=('x86_64' 'aarch64')
+url='https://github.com/beedywool-vibecoded/roundbar'
+license=('MIT')
+provides=('roundbar')
+conflicts=('roundbar')
+optdepends=('gnome-shell: per-app profiles follow the focused window')
+install=roundbar.install
+source=("roundbar-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+source_x86_64=("roundbar-$pkgver-x86_64::$url/releases/download/v$pkgver/roundbar-linux-amd64")
+source_aarch64=("roundbar-$pkgver-aarch64::$url/releases/download/v$pkgver/roundbar-linux-arm64")
+# Placeholders until the first release: run `updpkgsums`.
+sha256sums=('SKIP')
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+  install -Dm755 "roundbar-$pkgver-$CARCH" "$pkgdir/usr/bin/roundbar"
+  cd "roundbar-$pkgver"
+  install -Dm644 deploy/70-roundbar.rules "$pkgdir/usr/lib/udev/rules.d/70-roundbar.rules"
+  install -Dm644 deploy/roundbar.service "$pkgdir/usr/lib/systemd/user/roundbar.service"
+  install -Dm644 deploy/roundbar.desktop "$pkgdir/usr/share/applications/roundbar.desktop"
+  install -dm755 "$pkgdir/usr/share/gnome-shell/extensions/roundbar@beedy"
+  install -m644 gnome-extension/roundbar@beedy/* "$pkgdir/usr/share/gnome-shell/extensions/roundbar@beedy/"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -49,10 +49,17 @@ jobs:
     container: espressif/idf:v6.0.3
     steps:
       - uses: actions/checkout@v4
+      # The firmware reports its version (`hello.fw`): the tag for releases, so
+      # the configurator can compare it with the latest release.
+      - name: Version from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: echo "$GITHUB_REF_NAME" > firmware/version.txt
       - name: Build
         shell: bash
         working-directory: firmware
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           . "$IDF_PATH/export.sh"
           idf.py set-target esp32s3
           idf.py build
@@ -64,6 +71,7 @@ jobs:
             firmware/build/bootloader/bootloader.bin
             firmware/build/partition_table/partition-table.bin
             firmware/build/flash_args
+            firmware/build/flasher_args.json
           retention-days: 7
 
   release:
@@ -73,6 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write # start the web installer deploy
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -86,10 +95,13 @@ jobs:
         with:
           name: firmware
           path: fw
-      - name: Daemon binary (configurator embedded)
+      - name: Daemon binaries (configurator embedded)
+        env:
+          CGO_ENABLED: "0" # static: runs on any distribution
         run: |
-          go build -trimpath -ldflags="-s -w" -o roundbar-linux-amd64 ./cmd/roundbar
-          GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o roundbar-linux-arm64 ./cmd/roundbar
+          mkdir -p dist
+          GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/roundbar-linux-amd64 ./cmd/roundbar
+          GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/roundbar-linux-arm64 ./cmd/roundbar
       - name: CJK and emoji font pack
         run: |
           sudo apt-get update -qq
@@ -97,15 +109,39 @@ jobs:
           cjk=$(dirname "$(fc-list | grep -m1 -o '^[^:]*NotoSansCJK-Medium.ttc')")
           emoji=$(fc-list | grep -m1 -o '^[^:]*NotoColorEmoji.ttf')
           go run ./tools/fontpack -cjk "$cjk" -emoji "$emoji" -out fonts.bin
-      - name: Firmware bundle
+      # Parts at their offsets (bootloader.bin, partition-table.bin, roundbar.bin,
+      # fonts.bin), roundbar-full.bin (all merged at 0x0, for first installs) and
+      # firmware.json (offsets, sizes, SHA-256, flash MD5: the in-app updater's input).
+      - name: Firmware images and manifest
+        run: go run ./tools/fwrelease -build fw -fonts fonts.bin -partitions firmware/partitions.csv -version "$GITHUB_REF_NAME" -out dist
+      - name: Firmware bundle (for esptool)
         run: |
           mkdir bundle
-          cp fw/roundbar.bin fw/bootloader/bootloader.bin fw/partition_table/partition-table.bin fw/flash_args fonts.bin firmware/partitions.csv bundle/
-          tar -C bundle -czf roundbar-firmware.tar.gz .
+          cp fw/roundbar.bin fw/bootloader/bootloader.bin fw/partition_table/partition-table.bin fw/flash_args \
+            dist/fonts.bin dist/firmware.json firmware/partitions.csv bundle/
+          tar -C bundle -czf dist/roundbar-firmware.tar.gz .
+      - name: .deb and .rpm packages
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
+          for arch in amd64 arm64; do
+            install -Dm755 "dist/roundbar-linux-$arch" build/nfpm/roundbar
+            for fmt in deb rpm; do
+              VERSION="${GITHUB_REF_NAME#v}" GOARCH="$arch" "$(go env GOPATH)/bin/nfpm" package -f packaging/nfpm.yaml -p "$fmt" -t dist/
+            done
+          done
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: |
-            roundbar-linux-amd64
-            roundbar-linux-arm64
-            roundbar-firmware.tar.gz
+          fail_on_unmatched_files: true
+          files: dist/*
+      # Releases made with the workflow token don't trigger other workflows, and
+      # the Pages environment only deploys from the default branch: dispatch it there.
+      - name: Publish the web installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.event.repository.default_branch }}"

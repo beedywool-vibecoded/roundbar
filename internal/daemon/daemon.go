@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"log"
@@ -53,6 +54,7 @@ type Daemon struct {
 	raw              []byte
 	sha              string
 	port             *device.Port
+	openErr          string // why the last open failed ("permission"), shown in status
 	hello            hello
 	view             View
 	focus            desktop.Focus
@@ -147,17 +149,35 @@ func (d *Daemon) deviceLoop() {
 	for {
 		path := device.Find()
 		if path == "" {
+			d.mu.Lock()
+			stale := d.openErr != ""
+			d.openErr = ""
+			d.mu.Unlock()
+			if stale {
+				d.notify()
+			}
 			device.WaitHotplug(d.done)
 			continue
 		}
 		p, err := device.Open(path)
 		if err != nil {
-			log.Printf("open %s: %v", path, err)
+			why := ""
+			if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
+				why = "permission"
+				log.Printf("open %s: %v (install the udev rule: roundbar udev)", path, err)
+			} else {
+				log.Printf("open %s: %v", path, err)
+			}
+			d.mu.Lock()
+			d.openErr = why
+			d.mu.Unlock()
+			d.notify()
 			device.WaitHotplug(d.done)
 			continue
 		}
 		log.Printf("device on %s", path)
 		d.mu.Lock()
+		d.openErr = ""
 		d.port = p
 		d.sentPro, d.lastVol, d.lastMic, d.artSent = "", "", "", ""
 		d.iconsSent = map[string]bool{}
@@ -853,12 +873,14 @@ type DeviceStatus struct {
 	Cfg       string `json:"cfg,omitempty"`
 	InSync    bool   `json:"inSync"`
 	SyncNote  string `json:"syncNote,omitempty"` // e.g. "Loaded the setup stored on your Roundbar"
+	// Error is "permission" when the port exists but can't be opened (no udev rule).
+	Error string `json:"error,omitempty"`
 }
 
 func (d *Daemon) status() Status {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	ds := &DeviceStatus{Connected: d.port != nil}
+	ds := &DeviceStatus{Connected: d.port != nil, Error: d.openErr}
 	if d.port != nil {
 		ds.Port, ds.FW, ds.Cfg, ds.InSync = d.port.Path, d.hello.FW, d.hello.Cfg, d.hello.Cfg == d.sha
 		ds.SyncNote = d.syncNote

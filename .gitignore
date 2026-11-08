@@ -8,3 +8,5 @@
 /firmware/dependencies.lock
 /bin/
 /.claude/
+/firmware/version.txt
+/build/

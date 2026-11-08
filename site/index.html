@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Roundbar installer</title>
+    <meta name="description" content="Install the Roundbar firmware on a Guition JC3636W518C (ESP32-S3) from your browser." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%234f378b'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23d0bcff' stroke-width='3'/%3E%3C/svg%3E" />
+    <!-- ESP Web Tools, pinned: flashes over Web Serial (Chrome, Edge, Opera on desktop). -->
+    <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fef7ff;
+        --surface: #f3edf7;
+        --surface-high: #ece6f0;
+        --text: #1d1b20;
+        --muted: #49454f;
+        --primary: #6750a4;
+        --on-primary: #ffffff;
+        --pc: #eaddff;
+        --on-pc: #21005d;
+        --outline: #cac4d0;
+        --warn-bg: #ffd8e4;
+        --warn-fg: #31111d;
+        --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) {
+          --bg: #141218;
+          --surface: #211f26;
+          --surface-high: #2b2930;
+          --text: #e6e0e9;
+          --muted: #cac4d0;
+          --primary: #d0bcff;
+          --on-primary: #381e72;
+          --pc: #4f378b;
+          --on-pc: #eaddff;
+          --outline: #49454f;
+          --warn-bg: #633b48;
+          --warn-fg: #ffd8e4;
+        }
+      }
+      :root[data-theme='dark'] {
+        --bg: #141218;
+        --surface: #211f26;
+        --surface-high: #2b2930;
+        --text: #e6e0e9;
+        --muted: #cac4d0;
+        --primary: #d0bcff;
+        --on-primary: #381e72;
+        --pc: #4f378b;
+        --on-pc: #eaddff;
+        --outline: #49454f;
+        --warn-bg: #633b48;
+        --warn-fg: #ffd8e4;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.55 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 48px 16px 64px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        margin-bottom: 32px;
+      }
+      .dial {
+        flex: none;
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        background: var(--pc);
+        display: grid;
+        place-items: center;
+      }
+      .dial::after {
+        content: '';
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        border: 6px solid var(--primary);
+        border-right-color: transparent;
+        transform: rotate(-45deg);
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 6vw, 40px);
+        line-height: 1.1;
+        letter-spacing: -0.01em;
+      }
+      header p {
+        margin: 6px 0 0;
+        color: var(--muted);
+      }
+      .card {
+        background: var(--surface);
+        border-radius: 24px;
+        padding: 24px;
+        margin-bottom: 20px;
+      }
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 20px;
+      }
+      .install {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px 24px;
+      }
+      .version {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      esp-web-install-button button,
+      .btn {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 28px;
+        background: var(--primary);
+        color: var(--on-primary);
+        font-family: inherit;
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .btn:focus-visible {
+        outline: 3px solid var(--text);
+        outline-offset: 2px;
+      }
+      ol {
+        margin: 0;
+        padding-left: 22px;
+      }
+      li + li {
+        margin-top: 8px;
+      }
+      .note {
+        border-radius: 16px;
+        padding: 14px 16px;
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+        font-size: 15px;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.92em;
+        background: var(--surface-high);
+        padding: 2px 6px;
+        border-radius: 6px;
+        overflow-wrap: anywhere;
+      }
+      pre {
+        margin: 12px 0 0;
+        padding: 12px 14px;
+        background: var(--surface-high);
+        border-radius: 12px;
+        overflow-x: auto;
+        font: 13px/1.5 var(--mono);
+      }
+      a {
+        color: var(--primary);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      footer {
+        margin-top: 32px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="dial" aria-hidden="true"></div>
+        <div>
+          <h1>Roundbar installer</h1>
+          <p>Put the Roundbar firmware on a Guition JC3636W518C (ESP32-S3, 360×360 round screen), straight from your browser.</p>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>1. Flash the board</h2>
+        <div class="install" id="install" hidden>
+          <esp-web-install-button id="button">
+            <button slot="activate" class="btn">Install Roundbar</button>
+            <span slot="unsupported">Your browser can't talk to USB serial ports. Open this page in <b>Chrome</b> or <b>Edge</b> on a computer.</span>
+            <span slot="not-allowed">Serial access needs a secure page (https).</span>
+          </esp-web-install-button>
+          <span class="version" id="version"></span>
+        </div>
+        <p id="no-release" class="muted" hidden>No firmware release is published yet. Check back later, or build it from source (see the README).</p>
+        <ol style="margin-top: 16px">
+          <li>Use <b>Chrome</b> or <b>Edge</b> on a desktop computer (Firefox and Safari can't access USB serial ports).</li>
+          <li>Plug the board into the computer with a USB-C <b>data</b> cable.</li>
+          <li>Click <b>Install Roundbar</b>, pick the board in the list (usually “USB JTAG/serial debug unit” or “ttyACM0”) and confirm.
+            Writing takes a few minutes: the image includes a 9 MB font pack for Chinese, Japanese, Korean and emoji.</li>
+          <li>When it's done the board restarts into Roundbar.</li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <h2>Board not showing up, or the install fails?</h2>
+        <p style="margin-top: 0">Put it in download mode by hand:</p>
+        <ol>
+          <li>Unplug the board.</li>
+          <li>Hold the <b>BOOT</b> button, plug the cable back in, then release the button.</li>
+          <li>Click <b>Install Roundbar</b> again and pick the port that just appeared.</li>
+        </ol>
+        <p class="note" style="margin-bottom: 0">
+          The first install erases the board, including any settings stored on it. If the board already runs Roundbar,
+          update it from the configurator instead (Device page, <b>Firmware</b> card): it only rewrites what changed and keeps your settings.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>2. Install the PC app</h2>
+        <p style="margin-top: 0">On Linux (GNOME on Wayland works best), run this in a terminal. It installs the daemon, the configurator and the GNOME extension for your user, and asks for your password once to allow access to the board's USB port.</p>
+        <pre><code>curl -fsSL https://raw.githubusercontent.com/beedywool-vibecoded/roundbar/master/install.sh | sh</code></pre>
+        <p class="muted" style="margin-bottom: 0">Then open <b>roundbar</b> from your app launcher. Arch users can install <code>roundbar-bin</code> from the AUR; .deb and .rpm packages are attached to each release.</p>
+      </section>
+
+      <footer>
+        <a href="https://github.com/beedywool-vibecoded/roundbar">Source on GitHub</a> ·
+        <a href="https://github.com/beedywool-vibecoded/roundbar/releases">Releases</a> · MIT licence ·
+        Flashing by <a href="https://esphome.github.io/esp-web-tools/">ESP Web Tools</a>
+      </footer>
+    </main>
+    <script>
+      // The Pages workflow puts the latest release in firmware/; without one, say so.
+      fetch('firmware/manifest.json', { cache: 'no-cache' })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+        .then((m) => {
+          document.getElementById('button').setAttribute('manifest', 'firmware/manifest.json')
+          document.getElementById('version').textContent = `Firmware ${m.version}`
+          document.getElementById('install').hidden = false
+        })
+        .catch(() => {
+          document.getElementById('no-release').hidden = false
+        })
+    </script>
+  </body>
+</html>

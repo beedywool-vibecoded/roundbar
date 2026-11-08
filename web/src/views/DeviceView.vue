@@ -130,8 +130,12 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
                 </text>
               </M3Shape>
               <div>
-                <div class="big">{{ st.device?.connected ? 'Connected' : 'No device' }}</div>
-                <p v-if="!st.device?.connected" class="muted small">Plug the Roundbar in over USB. Settings are sent as soon as it shows up.</p>
+                <div class="big">{{ st.device?.connected ? 'Connected' : st.device?.error === 'permission' ? 'No access to the device' : 'No device' }}</div>
+                <p v-if="st.device?.error === 'permission'" class="muted small">
+                  The Roundbar is plugged in, but this account isn't allowed to open its USB port. Run
+                  <code class="plain">roundbar udev</code> in a terminal (it asks for your password once).
+                </p>
+                <p v-else-if="!st.device?.connected" class="muted small">Plug the Roundbar in over USB. Settings are sent as soon as it shows up.</p>
               </div>
             </div>
             <dl class="facts">

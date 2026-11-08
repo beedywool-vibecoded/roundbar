@@ -276,7 +276,8 @@ export interface View {
 // GET /api/status and the SSE `status` event. Only `daemon` is set when the daemon is down.
 export interface Status {
   daemon: boolean
-  device?: { connected: boolean; port?: string; fw?: string; cfg?: string; inSync?: boolean; syncNote?: string }
+  /** error "permission": the board is plugged in but its port can't be opened (no udev rule) */
+  device?: { connected: boolean; port?: string; fw?: string; cfg?: string; inSync?: boolean; syncNote?: string; error?: string }
   focus?: App | null
   profile?: string
   recentApps?: App[]
@@ -329,5 +330,17 @@ export interface FirmwareInfo {
   running: boolean
 }
 
+// GET /api/firmware/release: the latest published release (fetched only while the
+// configurator is open) and how the device's firmware compares to it
+export interface FirmwareRelease {
+  version?: string
+  /** "unknown": no device, or a development build without a release version */
+  status?: 'upToDate' | 'updateAvailable' | 'deviceNewer' | 'unknown'
+  appSize?: number
+  fontsSize?: number
+  /** Set when the release couldn't be fetched (offline, none published yet) */
+  error?: string
+}
+
 // SSE `flash` events during a firmware update
-export type FlashEvent = { line: string } | { done: true; ok: boolean }
+export type FlashEvent = { line: string } | { progress: { done: number; total: number } } | { done: true; ok: boolean }

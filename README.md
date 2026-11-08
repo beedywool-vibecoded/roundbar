@@ -242,7 +242,28 @@ l'emploi, et des captures de l'écran de la carte avec `roundbar screenshot out.
 <img src=".github/assets/section-install-light.svg#gh-light-mode-only" alt="03 | Installation" width="100%">
 <img src=".github/assets/section-install-dark.svg#gh-dark-mode-only" alt="03 | Installation" width="100%">
 
-Il faut Go, Node et npm, sur un bureau Linux (GNOME de préférence, voir [Bureaux](#bureaux)) :
+**Sans outils de développement**, en deux temps :
+
+1. **Firmware** : ouvre l'[installateur web](https://beedywool-vibecoded.github.io/roundbar/) dans Chrome ou Edge,
+   branche la carte et clique sur *Install Roundbar*. Si la carte n'apparaît pas, maintiens **BOOT** en la branchant.
+2. **Logiciel PC** (Linux, idéalement GNOME en Wayland), dans un terminal :
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/beedywool-vibecoded/roundbar/master/install.sh | sh
+```
+
+Le script télécharge le binaire de la dernière release dans `~/.local/bin`, vérifie son SHA-256, propose
+d'installer la règle udev (ton mot de passe une fois : c'est elle qui évite le « permission denied » sur
+`/dev/ttyACM0`), puis lance `roundbar install`. Désinstallation : `roundbar uninstall` (tes réglages dans
+`~/.config/roundbar` restent). Sur Arch : paquet AUR `roundbar-bin` (`packaging/aur/PKGBUILD`) ; chaque release
+fournit aussi des `.deb` et `.rpm`.
+
+Les **mises à jour du firmware** se font ensuite depuis le configurateur (page *Device*, carte *Firmware*) ou avec
+`roundbar firmware update` : la carte redémarre seule en mode téléchargement, seules les parties modifiées sont
+réécrites (le pack de polices de 9 Mo seulement s'il a changé), sans Python ni esptool. Le flasheur intégré n'a
+pas encore été validé sur une vraie carte.
+
+**Depuis les sources**, il faut Go, Node et npm :
 
 ```sh
 make install
@@ -278,7 +299,10 @@ Les jeux Steam apparaissent partout comme `steam_app_<id>`. `ROUNDBAR_DESKTOP=gn
 | `roundbar screenshot out.png` | Enregistre ce qu'affiche la carte en PNG |
 | `roundbar bootloader` | Redémarre la carte en mode téléchargement USB, pour la flasher |
 | `roundbar daemon` | Le pont entre la carte et le bureau (lancé par le service systemd) |
-| `roundbar install` | Installe le service, le lanceur et, sous GNOME, l'extension |
+| `roundbar firmware check` / `update` | Compare le firmware de la carte à la dernière release / l'installe |
+| `roundbar install` | Installe la règle udev (demande), le service, l'extension GNOME et le lanceur |
+| `roundbar udev` | Installe seulement la règle udev |
+| `roundbar uninstall` | Enlève ce qu'a installé `roundbar install` et le binaire de `~/.local/bin` |
 
 <br>
 
@@ -292,7 +316,7 @@ Le firmware demande **ESP-IDF v6**, installé dans `~/esp/esp-idf-v6.0.3` :
 . ~/esp/esp-idf-v6.0.3/export.sh
 ```
 
-Pour accéder au port série sans root, installe la règle udev :
+Pour accéder au port série sans root, installe la règle udev (`roundbar udev` fait la même chose) :
 
 ```sh
 sudo cp deploy/70-roundbar.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger -s tty
@@ -306,8 +330,12 @@ make flash
 
 `make flash` (ou `tools/flash.sh`) redémarre la carte **en mode téléchargement tout seul**, sans
 toucher au bouton BOOT, et n'écrit le pack de polices que **s'il a changé**. Si la carte ne fait pas
-encore tourner Roundbar : maintiens BOOT en la branchant. Une fois installé, le bouton de mise à jour
-du configurateur fait la même chose.
+encore tourner Roundbar : maintiens BOOT en la branchant. Depuis un checkout, la carte *Firmware* du
+configurateur propose aussi *Build from source*, qui compile et flashe de la même façon.
+
+Une release (tag `v*`) publie les binaires, `.deb`/`.rpm`, chaque partie du firmware, l'image fusionnée
+`roundbar-full.bin`, le manifeste `firmware.json` et `SHA256SUMS`, puis met à jour l'installateur web
+(détails dans `docs/spec.md` §5). Pour GitHub Pages, la source doit être réglée sur *GitHub Actions*.
 
 <table>
 <tr>

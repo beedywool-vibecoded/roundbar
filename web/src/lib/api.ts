@@ -1,7 +1,7 @@
 // Client for the configurator API (docs/spec.md section 4). Every call carries the
 // bearer token from the URL the configurator was opened with.
 import { mockMode, token } from './token'
-import type { Action, AssetInfo, Config, FirmwareInfo, FlashEvent, Status } from './types'
+import type { Action, AssetInfo, Config, FirmwareInfo, FirmwareRelease, FlashEvent, Status } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -92,8 +92,11 @@ export const api = {
   // The raw file, converted by the server for the device
   uploadAsset: (file: Blob) => request<AssetInfo>('POST', '/api/assets', file),
   firmware: () => request<FirmwareInfo>('GET', '/api/firmware'),
-  // Builds and flashes; progress arrives as `flash` events (onFlash)
-  updateFirmware: () => request<unknown>('POST', '/api/firmware/update'),
+  // Asks GitHub for the latest release (cached by the server for 10 minutes unless refresh)
+  release: (refresh = false) => request<FirmwareRelease>('GET', `/api/firmware/release${refresh ? '?refresh=1' : ''}`),
+  // Installs the latest release, or builds and flashes this PC's checkout; progress
+  // arrives as `flash` events (onFlash)
+  updateFirmware: (source: 'release' | 'build' = 'release') => request<unknown>('POST', '/api/firmware/update', { source }),
   // Stored by the daemon in ~/.config/roundbar/discord.json, never in the config
   connectDiscord: (clientId: string, clientSecret: string) => request<unknown>('POST', '/api/discord', { clientId, clientSecret }),
   // Stored by the daemon in ~/.config/roundbar/obs.json, never in the config

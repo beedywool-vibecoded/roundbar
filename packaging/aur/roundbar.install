@@ -1,0 +1,18 @@
+post_install() {
+  cat <<'EOF'
+roundbar: for each desktop user, once:
+  systemctl --user enable --now roundbar
+  gnome-extensions enable roundbar@beedy   (GNOME; on Wayland after logging out and back in)
+or simply run `roundbar install`, which does both.
+If the board was already plugged in, unplug it and plug it back in so the udev rule applies.
+Configure it with "roundbar" in the app launcher, or `roundbar config`.
+EOF
+}
+
+post_upgrade() {
+  echo "roundbar: restart the daemon to use the new version: systemctl --user restart roundbar"
+}
+
+post_remove() {
+  echo "roundbar: settings stay in ~/.config/roundbar; remove that folder if you don't need them."
+}

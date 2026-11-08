@@ -62,7 +62,7 @@ func Run(open bool) error {
 	url := "http://" + l.Addr().String() + "/#t=" + s.token
 	log.Printf("configurator on %s", url)
 
-	s.idle = time.AfterFunc(firstVisit, func() { log.Printf("no browser connected, exiting"); os.Exit(0) })
+	s.idle = time.AfterFunc(firstVisit, func() { s.exit("no browser connected") })
 	go s.watchDaemon()
 
 	mux := http.NewServeMux()
@@ -83,6 +83,7 @@ func Run(open bool) error {
 	mux.HandleFunc("GET /api/backup", s.auth(s.getBackup))
 	mux.HandleFunc("POST /api/restore", s.auth(s.postRestore))
 	mux.HandleFunc("POST /api/firmware/update", s.auth(s.postFirmware))
+	mux.HandleFunc("GET /api/firmware/release", s.auth(s.getRelease))
 	mux.HandleFunc("GET /api/assets/{id}", s.auth(s.getAsset))
 	mux.Handle("/", spa())
 
@@ -111,6 +112,24 @@ func (s *server) auth(h http.HandlerFunc) http.HandlerFunc {
 		}
 		h(w, r)
 	}
+}
+
+// exit ends the configurator once no tab is left, but never in the middle of
+// a firmware update: that would leave the board half written.
+func (s *server) exit(why string) {
+	s.mu.Lock()
+	if len(s.clients) > 0 { // a tab came back
+		s.mu.Unlock()
+		return
+	}
+	if job.isRunning() {
+		s.idle = time.AfterFunc(idleExit, func() { s.exit(why) })
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
+	log.Printf("%s, exiting", why)
+	os.Exit(0)
 }
 
 func jsonErr(w http.ResponseWriter, code int, msg, path string) {
@@ -303,7 +322,7 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		delete(s.clients, ch)
 		if len(s.clients) == 0 {
-			s.idle = time.AfterFunc(idleExit, func() { log.Printf("last tab closed, exiting"); os.Exit(0) })
+			s.idle = time.AfterFunc(idleExit, func() { s.exit("last tab closed") })
 		}
 		s.mu.Unlock()
 	}()
