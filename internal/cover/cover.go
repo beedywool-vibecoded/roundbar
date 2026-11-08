@@ -88,12 +88,12 @@ func shrink(img image.Image, n int) [][3]float64 {
 	return out
 }
 
-// Blurred renders the background: shrink to 24×24, blur that, then bilinear back to 360×360
+// Blurred renders the background: shrink to 32×32, blur that once, then bilinear back to 360×360
 // (a cheap, very smooth blur), as little-endian RGB565 with ordered dithering.
 func Blurred(img image.Image) []byte {
-	const n = 24
+	const n = 32
 	small := shrink(img, n)
-	for pass := 0; pass < 3; pass++ { // 3×3 box blur on the small grid: Gaussian-like
+	for pass := 0; pass < 1; pass++ { // 3×3 box blur on the small grid: Gaussian-like
 		next := make([][3]float64, n*n)
 		for y := 0; y < n; y++ {
 			for x := 0; x < n; x++ {
