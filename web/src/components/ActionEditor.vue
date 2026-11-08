@@ -7,7 +7,8 @@ import TextField from './TextField.vue'
 import KeyRecorder from './KeyRecorder.vue'
 import ShapeLoader from './ShapeLoader.vue'
 import { api } from '@/lib/api'
-import { ACTION_TYPES, LIMITS, MEDIA_CMDS, MIC_CMDS, OBS_DEFAULT_INPUT, OBS_REQUESTS, checkAction, defaultAction, validText, type Issue } from '@/lib/model'
+import { ACTION_TYPES, LIMITS, MEDIA_CMDS, MIC_CMDS, OBS_DEFAULT_INPUT, OBS_REQUESTS, checkAction, defaultAction, type Issue } from '@/lib/model'
+import { effectiveLayout, layoutName, untypeable, validText } from '@/lib/layouts'
 import { comboFromEvent, formatCombo, heldMods, modifierOf, type Modifier } from '@/lib/keys'
 import { config, daemonUp, live } from '@/lib/store'
 import type { Action, ActionType, MediaCmd, MicCmd, ObsRequest, Page, Step } from '@/lib/types'
@@ -28,8 +29,21 @@ const problems = computed(() => {
   checkAction(model.value, props.pages, '', out)
   return out
 })
-const textError = (t: string) =>
-  t.length > LIMITS.text ? `At most ${LIMITS.text} characters` : !validText(t) ? 'Only ASCII and é è à ç ù can be typed' : null
+// The layout the device will type with (configured, or detected for auto).
+const typingLayout = computed(() => effectiveLayout(config.value?.device.keyboardLayout, live.status?.keyboard?.detected))
+const textError = (t: string) => {
+  if (t.length > LIMITS.text) return `At most ${LIMITS.text} characters`
+  if (!validText(t)) return 'Has characters no keyboard layout can type'
+  const l = typingLayout.value
+  const bad = l ? untypeable(t, l) : []
+  return bad.length ? `${layoutName(l)} can't type ${bad.join(' ')}` : null
+}
+const textHelp = computed(() => {
+  const l = typingLayout.value
+  const auto = (config.value?.device.keyboardLayout ?? 'auto') === 'auto'
+  if (!l) return 'Typed with the PC keyboard layout (set on the Device page)'
+  return `Typed with the ${layoutName(l)} layout${auto ? ' (detected)' : ''}, set on the Device page`
+})
 
 // Flat view of the union's fields for the template
 const a = computed(() => model.value as unknown as Record<string, string>)
@@ -144,7 +158,7 @@ function onRecKey(e: KeyboardEvent) {
     return
   }
   lone = null
-  const c = comboFromEvent(e, config.value?.device.keyboardLayout ?? 'us')
+  const c = comboFromEvent(e)
   if (c) record(formatCombo(c))
 }
 function onRecKeyUp(e: KeyboardEvent) {
@@ -211,7 +225,7 @@ function test() {
       label="Text to type"
       :max="MAX_TEXT"
       :error="a.text ? textError(a.text) : null"
-      help="Typed with the keyboard layout set on the Device page"
+      :help="textHelp"
       @update:model-value="set('text', $event)"
     />
 

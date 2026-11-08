@@ -19,3 +19,9 @@ var Icons = func() map[string]int {
 	}
 	return m
 }()
+
+// KeymapsJSON describes the host keyboard layouts (see docs/spec.md). internal/keymap
+// resolves it; tools/gen-keymaps turns it into the firmware and configurator tables.
+//
+//go:embed keymaps.json
+var KeymapsJSON []byte

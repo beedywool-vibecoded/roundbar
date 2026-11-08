@@ -1,7 +1,6 @@
 // Key combos in the spec's syntax: lowercase modifiers `ctrl shift alt super` joined with
 // `+`, then one key name, or one modifier alone (`super` opens the GNOME overview). Letters and digits name the character (the device maps them
 // through keyboardLayout), punctuation names the US physical key.
-import type { KeyboardLayout } from './types'
 
 export const MODIFIERS = ['ctrl', 'shift', 'alt', 'super'] as const
 export type Modifier = (typeof MODIFIERS)[number]
@@ -194,7 +193,7 @@ export function heldMods(e: KeyboardEvent): Modifier[] {
 }
 
 // A keydown turned into a combo, or null for a lone modifier or a key the device can't send.
-export function comboFromEvent(e: KeyboardEvent, layout: KeyboardLayout): Combo | null {
+export function comboFromEvent(e: KeyboardEvent): Combo | null {
   if (isModifierKey(e)) return null
   let mods = heldMods(e)
   const k = e.key
@@ -203,9 +202,10 @@ export function comboFromEvent(e: KeyboardEvent, layout: KeyboardLayout): Combo 
   if (k.length === 1 && /[a-z]/i.test(k)) key = k.toLowerCase()
   else if (k.length === 1 && /[0-9]/.test(k)) {
     key = k
-    // AZERTY needs Shift to type a top-row digit; the device sends digits as the top row
-    // without it, so the Shift was only there to produce the character.
-    if (layout === 'fr' && e.code === `Digit${k}`) mods = mods.filter((m) => m !== 'shift')
+    // Some layouts (AZERTY) need Shift to type a top-row digit: the browser then reports
+    // the digit itself for Shift+DigitN. The device sends digits as the top row without
+    // it, so that Shift was only there to produce the character.
+    if (e.shiftKey && e.code === `Digit${k}`) mods = mods.filter((m) => m !== 'shift')
   } else if (BY_KEY[k]) key = BY_KEY[k]
   else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(k)) key = k.toLowerCase()
   else if (BY_CODE[e.code]) key = BY_CODE[e.code]!

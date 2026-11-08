@@ -5,6 +5,7 @@ import Icon from '@/components/Icon.vue'
 import M3Shape from '@/components/M3Shape.vue'
 import M3Slider from '@/components/M3Slider.vue'
 import M3Switch from '@/components/M3Switch.vue'
+import M3Select from '@/components/M3Select.vue'
 import NumField from '@/components/NumField.vue'
 import ImageList from '@/components/ImageList.vue'
 import DiscordCard from '@/components/DiscordCard.vue'
@@ -15,6 +16,7 @@ import type { ImageBinding } from '@/lib/assets'
 import { LIMITS, PAGE_TYPES, ROTATIONS } from '@/lib/model'
 import { config, daemonUp, findProfile, issuesUnder, live } from '@/lib/store'
 import type { EdgeDoubleTap, KeyboardLayout } from '@/lib/types'
+import { LAYOUTS, layoutName } from '@/lib/layouts'
 
 const dev = computed(() => config.value!.device)
 
@@ -37,10 +39,22 @@ const EDGE_TAPS: { id: EdgeDoubleTap; label: string }[] = [
   { id: 'off', label: 'Off' },
 ]
 
-const LAYOUTS: { id: KeyboardLayout; label: string; hint: string }[] = [
-  { id: 'fr', label: 'French (AZERTY)', hint: 'fr' },
-  { id: 'us', label: 'US (QWERTY)', hint: 'us' },
-]
+// Older configs may lack the field: missing means auto.
+const layout = computed<KeyboardLayout>({
+  get: () => dev.value.keyboardLayout || 'auto',
+  set: (v) => (dev.value.keyboardLayout = v),
+})
+const layoutOptions = computed<{ value: KeyboardLayout; label: string; hint?: string }[]>(() => {
+  const det = st.value?.keyboard?.detected
+  return [
+    {
+      value: 'auto',
+      label: det ? `Automatic (detected: ${layoutName(det)})` : 'Automatic',
+      hint: det ? undefined : daemonUp.value ? 'not detected, types as US' : 'needs the daemon',
+    },
+    ...LAYOUTS.map((l) => ({ value: l.id as KeyboardLayout, label: l.name, hint: l.xkb })),
+  ]
+})
 
 const view = computed(() => {
   const v = st.value?.view
@@ -237,23 +251,13 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
           <div class="setting">
             <div class="grow">
               <div>Keyboard layout</div>
-              <div class="muted small">The layout set on this PC, so typed text and shortcuts come out right.</div>
+              <div class="muted small">
+                The layout set on this PC, so typed text and shortcuts come out right. Automatic follows the layout
+                active on the PC, also when you switch layouts.
+              </div>
             </div>
-            <div class="seg" role="radiogroup" aria-label="Keyboard layout">
-              <button
-                v-for="l in LAYOUTS"
-                :key="l.id"
-                type="button"
-                role="radio"
-                class="st"
-                :class="{ on: dev.keyboardLayout === l.id }"
-                :aria-checked="dev.keyboardLayout === l.id"
-                v-tip="l.label"
-                @click="dev.keyboardLayout = l.id"
-              >
-                <Icon v-if="dev.keyboardLayout === l.id" name="check" :size="18" />
-                {{ l.hint.toUpperCase() }}
-              </button>
+            <div class="layout-pick">
+              <M3Select v-model="layout" :options="layoutOptions" label="Keyboard layout" />
             </div>
           </div>
         </section>
@@ -264,6 +268,11 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
 </template>
 
 <style scoped>
+.layout-pick {
+  width: 280px;
+  max-width: 100%;
+  flex-shrink: 0;
+}
 .cols {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

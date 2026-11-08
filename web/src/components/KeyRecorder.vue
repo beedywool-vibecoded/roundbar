@@ -5,7 +5,6 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import Icon from './Icon.vue'
 import M3Select from './M3Select.vue'
 import { KEY_NAMES, MODIFIERS, comboError, comboFromEvent, formatCombo, heldMods, modifierOf, parseCombo, prettyKey, type Modifier } from '@/lib/keys'
-import { config } from '@/lib/store'
 
 const model = defineModel<string>({ required: true })
 defineProps<{ label?: string }>()
@@ -45,7 +44,7 @@ function onKey(e: KeyboardEvent) {
     return
   }
   lone = null
-  const c = comboFromEvent(e, config.value?.device.keyboardLayout ?? 'us')
+  const c = comboFromEvent(e)
   if (!c) return
   model.value = formatCombo(c)
   stop()

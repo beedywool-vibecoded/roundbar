@@ -27,7 +27,7 @@ func Default() *Config {
 			"outline": "#938F99", "outlineVariant": "#49454F",
 		}},
 		Media:  Media{CoverBackground: true, CoverColors: true, Blur: ptr(60), CoverOpacity: ptr(50)},
-		Device: Device{Brightness: 80, DimAfter: 30, SleepAfter: 300, LongPressMs: 450, KeyboardLayout: "fr"},
+		Device: Device{Brightness: 80, DimAfter: 30, SleepAfter: 300, LongPressMs: 450, KeyboardLayout: "auto"},
 		Profiles: []Profile{
 			{ID: "default", Name: "Default", Match: []string{}, Pages: []Page{
 				mediaPage(),

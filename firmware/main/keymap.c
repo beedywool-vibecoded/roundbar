@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "keymaps.h"
+
 typedef struct {
     const char *name;
     uint8_t key;
@@ -18,25 +20,46 @@ static const named_t NAMED[] = {
     {"left", 0x50}, {"down", 0x51}, {"up", 0x52},
 };
 
-static uint8_t letter(char c, bool fr)
+// Unknown ids fall back to the first layout (us).
+static const km_layout_t *find_layout(const char *id)
 {
-    if (fr) {
-        switch (c) { // AZERTY moves these letters
-        case 'a': return 0x14; // US q position
-        case 'q': return 0x04;
-        case 'z': return 0x1A;
-        case 'w': return 0x1D;
-        case 'm': return 0x33;
-        }
-    }
-    return 0x04 + (c - 'a');
+    for (size_t i = 0; id && i < KEYMAP_COUNT; i++)
+        if (!strcmp(KEYMAPS[i].id, id)) return &KEYMAPS[i];
+    return &KEYMAPS[0];
+}
+
+const char *keymap_canonical(const char *id)
+{
+    for (size_t i = 0; id && i < KEYMAP_COUNT; i++)
+        if (!strcmp(KEYMAPS[i].id, id)) return KEYMAPS[i].id;
+    return NULL;
+}
+
+static int cmp_char(const void *key, const void *elem)
+{
+    uint32_t c = *(const uint32_t *)key;
+    uint16_t e = ((const km_char_t *)elem)->ch;
+    return c < e ? -1 : c > e ? 1 : 0;
+}
+
+static const km_char_t *lookup(const km_layout_t *l, uint32_t c)
+{
+    if (c > 0xFFFF) return NULL;
+    return bsearch(&c, l->chars, l->n, sizeof(km_char_t), cmp_char);
+}
+
+// The physical key that types this letter on the layout (letters are always unshifted).
+static uint8_t letter(const km_layout_t *l, char c)
+{
+    const km_char_t *e = lookup(l, (uint32_t)c);
+    return e && !e->m0 && !e->k1 ? e->k0 : 0x04 + (c - 'a');
 }
 
 static uint8_t digit_us(char c) { return c == '0' ? 0x27 : 0x1E + (c - '1'); }
 
-static uint8_t key_by_name(const char *k, size_t n, bool fr)
+static uint8_t key_by_name(const char *k, size_t n, const km_layout_t *l)
 {
-    if (n == 1 && k[0] >= 'a' && k[0] <= 'z') return letter(k[0], fr);
+    if (n == 1 && k[0] >= 'a' && k[0] <= 'z') return letter(l, k[0]);
     if (n == 1 && k[0] >= '0' && k[0] <= '9') return digit_us(k[0]);
     if (n >= 2 && n <= 3 && k[0] == 'f') {
         int f = atoi(k + 1);
@@ -50,7 +73,7 @@ static uint8_t key_by_name(const char *k, size_t n, bool fr)
 
 bool keymap_combo(const char *combo, const char *layout, uint8_t *mods, uint8_t *key)
 {
-    bool fr = layout && !strcmp(layout, "fr");
+    const km_layout_t *l = find_layout(layout);
     *mods = 0;
     *key = 0;
     const char *p = combo;
@@ -62,7 +85,7 @@ bool keymap_combo(const char *combo, const char *layout, uint8_t *mods, uint8_t 
         else if (n == 3 && !strncmp(p, "alt", 3)) *mods |= MOD_ALT;
         else if (n == 5 && !strncmp(p, "super", 5)) *mods |= MOD_SUPER;
         else {
-            *key = key_by_name(p, n, fr);
+            *key = key_by_name(p, n, l);
             if (!*key) return false;
         }
         if (!e) break;
@@ -72,38 +95,6 @@ bool keymap_combo(const char *combo, const char *layout, uint8_t *mods, uint8_t 
 }
 
 // ---- text -------------------------------------------------------------------
-
-#define S MOD_SHIFT
-#define G MOD_ALTGR
-
-typedef struct {
-    uint32_t ch;
-    uint8_t mods, key;
-    bool dead; // follow with space to get the bare character
-} chmap_t;
-
-static const chmap_t FR[] = {
-    {' ', 0, 0x2C}, {'\n', 0, 0x28}, {'\t', 0, 0x2B},
-    {'&', 0, 0x1E}, {0xE9, 0, 0x1F}, {'"', 0, 0x20}, {'\'', 0, 0x21}, {'(', 0, 0x22}, {'-', 0, 0x23},
-    {0xE8, 0, 0x24}, {'_', 0, 0x25}, {0xE7, 0, 0x26}, {0xE0, 0, 0x27}, {')', 0, 0x2D}, {'=', 0, 0x2E},
-    {'1', S, 0x1E}, {'2', S, 0x1F}, {'3', S, 0x20}, {'4', S, 0x21}, {'5', S, 0x22}, {'6', S, 0x23},
-    {'7', S, 0x24}, {'8', S, 0x25}, {'9', S, 0x26}, {'0', S, 0x27}, {'+', S, 0x2E},
-    {'~', G, 0x1F, true}, {'#', G, 0x20}, {'{', G, 0x21}, {'[', G, 0x22}, {'|', G, 0x23}, {'`', G, 0x24, true},
-    {'\\', G, 0x25}, {'^', 0, 0x2F, true}, {'@', G, 0x27}, {']', G, 0x2D}, {'}', G, 0x2E},
-    {'$', 0, 0x30}, {0xF9, 0, 0x34}, {'%', S, 0x34}, {'*', 0, 0x31},
-    {',', 0, 0x10}, {'?', S, 0x10}, {';', 0, 0x36}, {'.', S, 0x36}, {':', 0, 0x37}, {'/', S, 0x37},
-    {'!', 0, 0x38}, {'<', 0, 0x64}, {'>', S, 0x64},
-};
-
-static const chmap_t US[] = {
-    {' ', 0, 0x2C}, {'\n', 0, 0x28}, {'\t', 0, 0x2B},
-    {'!', S, 0x1E}, {'@', S, 0x1F}, {'#', S, 0x20}, {'$', S, 0x21}, {'%', S, 0x22}, {'^', S, 0x23},
-    {'&', S, 0x24}, {'*', S, 0x25}, {'(', S, 0x26}, {')', S, 0x27},
-    {'-', 0, 0x2D}, {'_', S, 0x2D}, {'=', 0, 0x2E}, {'+', S, 0x2E}, {'[', 0, 0x2F}, {'{', S, 0x2F},
-    {']', 0, 0x30}, {'}', S, 0x30}, {'\\', 0, 0x31}, {'|', S, 0x31}, {';', 0, 0x33}, {':', S, 0x33},
-    {'\'', 0, 0x34}, {'"', S, 0x34}, {'`', 0, 0x35}, {'~', S, 0x35}, {',', 0, 0x36}, {'<', S, 0x36},
-    {'.', 0, 0x37}, {'>', S, 0x37}, {'/', 0, 0x38}, {'?', S, 0x38},
-};
 
 static uint32_t utf8_next(const char **p)
 {
@@ -121,20 +112,12 @@ static uint32_t utf8_next(const char **p)
 
 int keymap_char(const char **p, const char *layout, keystroke_t out[2])
 {
-    bool fr = layout && !strcmp(layout, "fr");
-    uint32_t c = utf8_next(p);
-    if (c >= 'a' && c <= 'z') { out[0] = (keystroke_t){0, letter((char)c, fr)}; return 1; }
-    if (c >= 'A' && c <= 'Z') { out[0] = (keystroke_t){MOD_SHIFT, letter((char)(c - 'A' + 'a'), fr)}; return 1; }
-    if (!fr && c >= '0' && c <= '9') { out[0] = (keystroke_t){0, digit_us((char)c)}; return 1; }
-    const chmap_t *t = fr ? FR : US;
-    size_t n = fr ? sizeof(FR) / sizeof(FR[0]) : sizeof(US) / sizeof(US[0]);
-    for (size_t i = 0; i < n; i++) {
-        if (t[i].ch != c) continue;
-        out[0] = (keystroke_t){t[i].mods, t[i].key};
-        if (t[i].dead) { out[1] = (keystroke_t){0, 0x2C}; return 2; }
-        return 1;
-    }
-    return 0;
+    const km_char_t *e = lookup(find_layout(layout), utf8_next(p));
+    if (!e) return 0;
+    out[0] = (keystroke_t){e->m0, e->k0};
+    if (!e->k1) return 1;
+    out[1] = (keystroke_t){e->m1, e->k1};
+    return 2;
 }
 
 uint16_t keymap_media(const char *name)
