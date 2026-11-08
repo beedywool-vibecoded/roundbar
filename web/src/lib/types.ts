@@ -1,4 +1,7 @@
 // Config, status and action types, mirroring docs/spec.md sections 1, 3 and 4.
+import type { ButtonShape } from './shapes'
+
+export type { ButtonShape }
 
 export type ThemeMode = 'dark' | 'light'
 
@@ -67,6 +70,8 @@ export interface Button {
   icon: string
   label: string
   color: ColorRole
+  // Missing: circle on the ring, rounded square in the center
+  shape?: ButtonShape
   tap: Action
   hold?: Action
 }
@@ -109,9 +114,15 @@ export interface Profile {
   pages: Page[]
 }
 
+export interface MediaSettings {
+  coverBackground: boolean
+  coverColors: boolean
+}
+
 export interface Config {
   version: 1
   theme: Theme
+  media: MediaSettings
   device: DeviceSettings
   profiles: Profile[]
 }

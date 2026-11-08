@@ -2,11 +2,13 @@
 import { computed, ref, watch } from 'vue'
 import Icon from '@/components/Icon.vue'
 import RoundPreview from '@/components/RoundPreview.vue'
+import M3Switch from '@/components/M3Switch.vue'
 import { SEEDS, devicePalette, validHex } from '@/lib/theme'
 import { config } from '@/lib/store'
 import { PALETTE_ROLES, type Page, type ThemeMode } from '@/lib/types'
 
 const theme = computed(() => config.value!.theme)
+const media = computed(() => config.value!.media)
 const palette = computed(() => devicePalette(theme.value.seed, theme.value.mode))
 const isPreset = computed(() => SEEDS.some((s) => s.hex.toLowerCase() === theme.value.seed.toLowerCase()))
 
@@ -41,7 +43,6 @@ const samples = computed<Page[]>(() => {
 })
 const sample = ref(0)
 const shown = computed(() => samples.value[Math.min(sample.value, samples.value.length - 1)])
-const selected = computed(() => (shown.value?.type === 'radial' ? (shown.value.buttons[0]?.id ?? null) : null))
 </script>
 
 <template>
@@ -116,12 +117,27 @@ const selected = computed(() => (shown.value?.type === 'radial' ? (shown.value.b
             </div>
           </div>
         </div>
+        <div class="card-head" style="margin-top: 16px"><h2>Now playing</h2></div>
+        <div class="setting">
+          <div class="grow">
+            <div>Album art background</div>
+            <div class="muted small">A blurred copy of the cover behind media pages</div>
+          </div>
+          <M3Switch v-model="media.coverBackground" label="Album art background" />
+        </div>
+        <div class="setting">
+          <div class="grow">
+            <div>Colors from album art</div>
+            <div class="muted small">Media pages take a palette from the cover; other pages keep the theme</div>
+          </div>
+          <M3Switch v-model="media.coverColors" label="Colors from album art" />
+        </div>
       </section>
 
       <section class="card preview-card">
         <div class="card-head"><h2>Preview</h2></div>
         <div class="preview-wrap">
-          <RoundPreview v-if="shown" :page="shown" :palette="palette" :selected="selected" />
+          <RoundPreview v-if="shown" :page="shown" :palette="palette" />
         </div>
         <div v-if="samples.length > 1" class="seg" role="tablist" aria-label="Sample page">
           <button v-for="(p, i) in samples" :key="i" type="button" role="tab" class="st" :class="{ on: sample === i }" :aria-selected="sample === i" @click="sample = i">

@@ -24,6 +24,7 @@ func Default() *Config {
 			"error": "#F2B8B5", "errorContainer": "#8C1D18", "onErrorContainer": "#F9DEDC",
 			"outline": "#938F99", "outlineVariant": "#49454F",
 		}},
+		Media:  Media{CoverBackground: true, CoverColors: true},
 		Device: Device{Brightness: 80, DimAfter: 30, SleepAfter: 300, LongPressMs: 450, KeyboardLayout: "fr"},
 		Profiles: []Profile{
 			{ID: "default", Name: "Default", Match: []string{}, Pages: []Page{

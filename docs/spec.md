@@ -47,6 +47,10 @@ the device keeps a copy in flash so it works without the daemon.
       "outline": "#938F99", "outlineVariant": "#49454F"
     }
   },
+  "media": {
+    "coverBackground": true,   // blurred album art behind media pages
+    "coverColors": true        // media pages take a palette derived from the album art
+  },
   "device": {
     "brightness": 80,          // 5..100
     "dimAfter": 30,            // seconds idle before dimming to 20 %, 0 = never
@@ -79,8 +83,13 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 ### Button
 
 ```jsonc
-{ "id": "b1", "icon": "play_arrow", "label": "Play", "color": "primary", "tap": Action, "hold": Action /* optional */ }
+{ "id": "b1", "icon": "play_arrow", "label": "Play", "color": "primary", "shape": "cookie", "tap": Action, "hold": Action /* optional */ }
 ```
+- `shape` (optional): `"circle" | "square" | "cookie" | "clover" | "sunny" | "flower" | "burst"`. Missing: `circle` for ring
+  buttons, `square` (rounded square) for the center button. Lobed shapes use the polar formula
+  `r(t) = R·(1 + depth·cos(lobes·t))` with (lobes, depth): cookie (9, .07), clover (4, .17), sunny (8, .10),
+  flower (6, .13), burst (12, .05). `square` is a squircle `|x|⁴+|y|⁴ = R⁴`. Pressing only scales the button
+  to 91 % and lightens it; the shape stays.
 - `icon`: a name from `shared/icons.json` (Material Symbols Rounded subset baked into the firmware).
 - `label`: ≤ 16 chars, shown under the selected button.
 - `color`: `"primary" | "secondary" | "tertiary" | "error" | "surface"` → container + on-container pair.
@@ -132,6 +141,8 @@ name the US physical key.
 | `profile` | `id` | switch profile (focus changed). Device keeps one page index per profile. Unknown id → `default`. |
 | `app` | `id`, `name` | the focused app, shown briefly as a toast |
 | `media` | `title`, `artist`, `album`, `playing: bool`, `canNext`, `canPrev`, `player` | only while a `media` page is visible |
+| `cover` | `seq`, `n`, `i`, `w`, `h`, `data` (base64 chunk of RGB565 little-endian pixels) | blurred album art, `w`×`h` (360×360), split in `n` chunks of ≤ 48 KiB raw. `{"t":"cover","seq":s,"n":0}` clears it. Sent on track change when `media.coverBackground` is on. |
+| `mediaTheme` | `palette: {role: "#RRGGBB"}` (same roles as theme.palette) or `null` | cover palette for media pages when `media.coverColors` is on; `null` restores the theme |
 | `volume` | `value: 0..100`, `muted: bool` | on change, and once when a page that shows volume becomes visible |
 | `mic` | `muted: bool`, `value: 0..100` | same |
 | `stats` | any of `cpu ram gpu vram` (0..100 %), `cpuTemp gpuTemp` (°C) | every 1.5 s while a `stats` page is visible and the screen is awake |

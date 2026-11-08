@@ -6,8 +6,8 @@ import IconPicker from './IconPicker.vue'
 import TextField from './TextField.vue'
 import ActionEditor from './ActionEditor.vue'
 import M3Switch from './M3Switch.vue'
-import M3Shape from './M3Shape.vue'
-import { COLOR_ROLES, LIMITS } from '@/lib/model'
+import { COLOR_ROLES, LIMITS, SHAPE_LABELS, defaultShape } from '@/lib/model'
+import { BUTTON_SHAPES, buttonPath, type ButtonShape } from '@/lib/shapes'
 import type { Action, Button, ColorRole, Page, Palette } from '@/lib/types'
 
 const model = defineModel<Button>({ required: true })
@@ -24,6 +24,14 @@ const hasHold = computed({
     model.value = on ? { ...rest, hold: { type: 'keys', keys: '' } } : rest
   },
 })
+
+// Unset means the position's default: circle on the ring, rounded square in the center
+const fallbackShape = computed(() => defaultShape(props.center))
+const shape = computed(() => model.value.shape ?? fallbackShape.value)
+function pickShape(s: ButtonShape) {
+  const { shape: _drop, ...rest } = model.value
+  model.value = s === fallbackShape.value ? rest : { ...rest, shape: s }
+}
 
 function swatch(c: ColorRole): [string, string] {
   const p = props.palette
@@ -78,12 +86,36 @@ function swatch(c: ColorRole): [string, string] {
             :aria-checked="model.color === c.value"
             @click="set('color', c.value)"
           >
-            <M3Shape kind="cookie" :size="40" :fill="swatch(c.value)[0]">
+            <svg width="40" height="40" viewBox="0 0 100 100" aria-hidden="true">
+              <path :d="buttonPath(shape, 50, 50, 92)" :fill="swatch(c.value)[0]" />
               <circle v-if="model.color === c.value" cx="50" cy="50" r="13" :fill="swatch(c.value)[1]" />
-            </M3Shape>
+            </svg>
             <span>{{ c.label }}</span>
           </button>
         </div>
+      </div>
+
+      <div>
+        <p class="section-label">Shape</p>
+        <div class="colors" role="radiogroup" aria-label="Shape">
+          <button
+            v-for="s in BUTTON_SHAPES"
+            :key="s"
+            type="button"
+            role="radio"
+            class="color st"
+            :class="{ on: shape === s }"
+            :aria-checked="shape === s"
+            v-tip="s === fallbackShape ? `${SHAPE_LABELS[s]} (default here)` : SHAPE_LABELS[s]"
+            @click="pickShape(s)"
+          >
+            <svg width="40" height="40" viewBox="0 0 100 100" aria-hidden="true">
+              <path :d="buttonPath(s, 50, 50, 92)" :fill="shape === s ? swatch(model.color)[0] : 'var(--schh)'" />
+            </svg>
+            <span>{{ s === 'square' ? 'Square' : SHAPE_LABELS[s] }}</span>
+          </button>
+        </div>
+        <p class="tf-help" style="margin-left: 0">{{ model.shape ? '' : `Default: ${SHAPE_LABELS[fallbackShape].toLowerCase()}. ` }}Pressing only squishes the button; the shape stays.</p>
       </div>
 
       <p class="section-label"><Icon name="touch_app" :size="18" /> Tap</p>
@@ -142,16 +174,11 @@ function swatch(c: ColorRole): [string, string] {
   font-size: 12px;
   font-weight: 500;
 }
-.color svg {
-  transition: rotate 0.4s var(--ease-decel);
-}
 .color.on {
   color: var(--on-surface);
   background: var(--sch);
 }
-.color.on svg {
-  rotate: 40deg;
-}
+
 .section-label {
   display: flex;
   align-items: center;

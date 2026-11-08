@@ -1,5 +1,6 @@
 // Labels, defaults, id generation and validation for the config (docs/spec.md section 1).
 import { comboError } from './keys'
+import { BUTTON_SHAPES, type ButtonShape } from './shapes'
 import { DEFAULT_SEED, devicePalette } from './theme'
 import type {
   Action,
@@ -82,6 +83,17 @@ export const DIAL_SOURCES: { value: DialSource; label: string; icon: string }[] 
   { value: 'brightness', label: 'Screen brightness', icon: 'brightness_high' },
   { value: 'custom', label: 'Custom actions', icon: 'tune' },
 ]
+
+export const SHAPE_LABELS: Record<ButtonShape, string> = {
+  circle: 'Circle',
+  square: 'Rounded square',
+  cookie: 'Cookie',
+  clover: 'Clover',
+  sunny: 'Sunny',
+  flower: 'Flower',
+  burst: 'Burst',
+}
+export const defaultShape = (center: boolean): ButtonShape => (center ? 'square' : 'circle')
 
 // ---- ids ----
 
@@ -175,6 +187,7 @@ export function starterConfig(): Config {
   return {
     version: 1,
     theme: { seed: DEFAULT_SEED, mode: 'dark', palette: devicePalette(DEFAULT_SEED, 'dark') },
+    media: { coverBackground: true, coverColors: true },
     device: { brightness: 80, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr' },
     profiles: [
       {
@@ -218,6 +231,7 @@ export function normalize(raw: unknown): Config {
     ...c,
     version: 1,
     theme,
+    media: { ...base.media, ...(c.media ?? {}) },
     device: { ...base.device, ...(c.device ?? {}) },
     profiles: Array.isArray(c.profiles) && c.profiles.length ? c.profiles : base.profiles,
   }
@@ -299,6 +313,8 @@ function checkButton(b: Button, pages: Page[], icons: Set<string>, path: string,
   if (icons.size && !icons.has(b.icon)) out.push({ path: `${path}.icon`, message: `Unknown icon "${b.icon}"` })
   if (b.label.length > LIMITS.label) out.push({ path: `${path}.label`, message: `Label is longer than ${LIMITS.label} characters` })
   if (!COLOR_ROLES.some((c) => c.value === b.color)) out.push({ path: `${path}.color`, message: 'Unknown color' })
+  if (b.shape !== undefined && !(BUTTON_SHAPES as readonly string[]).includes(b.shape))
+    out.push({ path: `${path}.shape`, message: `Unknown shape "${b.shape}"` })
   checkAction(b.tap, pages, `${path}.tap`, out)
   if (b.hold) checkAction(b.hold, pages, `${path}.hold`, out)
 }

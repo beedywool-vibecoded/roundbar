@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// The 360 x 360 round screen, drawn with the device palette the way the firmware lays
-// pages out. Buttons can be clicked to select them for editing.
-import { computed } from 'vue'
-import { shapePath } from '@/lib/shapes'
-import { arc, polar, wavyArc } from '@/lib/geometry'
-import { STAT_ITEMS } from '@/lib/model'
-import type { Button, ColorRole, Page, Palette } from '@/lib/types'
+// The 360 x 360 round screen, laid out with the firmware's numbers (firmware/main/ui.c) and
+// drawn with the device palette. Coordinates are relative to the screen center, y down.
+// Buttons can be clicked to select them for editing.
+import { computed, ref } from 'vue'
+import { buttonPath, type ButtonShape } from '@/lib/shapes'
+import { defaultShape } from '@/lib/model'
+import type { Button, ColorRole, Page, Palette, StatItem } from '@/lib/types'
 
 const props = withDefaults(
   defineProps<{
@@ -20,10 +20,44 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ select: [id: string]; addCenter: [] }>()
 
-const C = 180
 const uid = `screen-${Math.random().toString(36).slice(2, 9)}`
 const p = computed(() => props.palette)
 
+// ---- text measuring, for the widths the device wraps or cuts text at ----
+const FONT = "'Google Sans Flex', 'Google Sans', system-ui, sans-serif"
+const fontsReady = ref(0)
+document.fonts?.ready.then(() => fontsReady.value++)
+const ctx = document.createElement('canvas').getContext('2d')
+function measure(s: string, px: number, bold: boolean): number {
+  void fontsReady.value
+  if (!ctx) return s.length * px * 0.55
+  ctx.font = `${bold ? 700 : 400} ${px}px ${FONT}`
+  return ctx.measureText(s).width
+}
+// LV_LABEL_LONG_DOT
+function ellipsize(s: string, px: number, bold: boolean, width: number): string {
+  if (measure(s, px, bold) <= width) return s
+  let t = s
+  while (t && measure(`${t}…`, px, bold) > width) t = t.slice(0, -1)
+  return `${t.trimEnd()}…`
+}
+// LV_LABEL_LONG_WRAP, centered
+function wrap(s: string, px: number, bold: boolean, width: number): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const w of s.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${w}` : w
+    if (!line || measure(next, px, bold) <= width) line = next
+    else {
+      lines.push(line)
+      line = w
+    }
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
+// ---- colors ----
 function pair(role: ColorRole): [string, string] {
   const q = p.value
   switch (role) {
@@ -39,205 +73,250 @@ function pair(role: ColorRole): [string, string] {
       return [q.surfaceContainerHighest, q.onSurface]
   }
 }
+// lv_color_mix(white, c, 30): the pressed tint
+function lighten(hex: string, amount = 30 / 255): string {
+  const n = Number.parseInt(hex.slice(1), 16)
+  const ch = (v: number) => Math.round(v + (255 - v) * amount)
+  return `rgb(${ch((n >> 16) & 255)}, ${ch((n >> 8) & 255)}, ${ch(n & 255)})`
+}
 
+// ---- geometry ----
+const rad = (deg: number) => (deg * Math.PI) / 180
+// Screen angles: 0° at 3 o'clock, clockwise
+const at = (r: number, deg: number): [number, number] => [r * Math.cos(rad(deg)), r * Math.sin(rad(deg))]
+function arcPath(r: number, a0: number, a1: number): string {
+  if (a1 - a0 <= 0.01) a1 = a0 + 0.01
+  const [x0, y0] = at(r, a0)
+  const [x1, y1] = at(r, a1)
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`
+}
+// lv_arc: background 135° → 45° clockwise, value 0..100 along it
+const ARC_START = 135
+const ARC_SWEEP = 270
+const valueAngle = (v: number) => ARC_START + (ARC_SWEEP * Math.min(100, Math.max(0, v))) / 100
+
+// Bezel arc: 348 px box, width 14, stroke centered inside the box
+const BEZEL_R = 348 / 2 - 14 / 2
+function bezel(value: number, color: string) {
+  const end = valueAngle(value)
+  const [kx, ky] = at(BEZEL_R, end)
+  return {
+    track: arcPath(BEZEL_R, ARC_START, ARC_START + ARC_SWEEP),
+    ind: arcPath(BEZEL_R, ARC_START, end),
+    kx,
+    ky,
+    color,
+  }
+}
+
+// ---- radial ----
 interface Placed {
   b: Button
   x: number
   y: number
   size: number
-  center: boolean
+  icon: number
+  shape: ButtonShape
 }
-
 const radial = computed(() => {
   const pg = props.page
   if (pg.type !== 'radial') return null
-  const n = pg.buttons.length
-  const hasCenter = !!pg.center
-  const ring = n <= 4 ? 112 : 124
-  const size = Math.min(n <= 4 ? 96 : 84, ((2 * Math.PI * ring) / Math.max(n, 1)) * 0.86)
-  const placed: Placed[] = pg.buttons.map((b, i) => {
-    const [x, y] = polar(C, C, ring, (360 / n) * i)
-    return { b, x, y, size, center: false }
+  const btns = pg.buttons.slice(0, 8)
+  const n = btns.length
+  const size = n <= 4 ? 92 : n <= 6 ? 82 : 72
+  const radius = n <= 4 ? 110 : n <= 6 ? 120 : 128
+  const icon = n <= 6 ? 32 : 24
+  const placed: Placed[] = btns.map((b, i) => {
+    const [x, y] = at(radius, 270 + (i * 360) / n)
+    return { b, x, y, size, icon, shape: b.shape ?? defaultShape(false) }
   })
-  if (pg.center) placed.push({ b: pg.center, x: C, y: C, size: 108, center: true })
-  return { placed, hasCenter, ring }
+  if (pg.center) placed.push({ b: pg.center, x: 0, y: 0, size: 112, icon: 44, shape: pg.center.shape ?? defaultShape(true) })
+  const title = pg.center ? [] : wrap(pg.title ?? '', 22, true, 150)
+  return { placed, title, hasCenter: !!pg.center }
+})
+const selectedButton = computed(() => radial.value?.placed.find((x) => x.b.id === props.selected)?.b ?? null)
+const bubble = computed(() => {
+  const label = selectedButton.value?.label
+  if (!label) return null
+  const w = measure(label, 16, false) + 32
+  return { label, w, h: 16 * 1.25 + 16 }
 })
 
-const selectedPlaced = computed(() => radial.value?.placed.find((x) => x.b.id === props.selected) ?? null)
-const labelPos = computed(() => {
-  const s = selectedPlaced.value
-  if (!s) return null
-  // Under the button, or above it in the lower part of the circle
-  const below = s.center || s.y < C + 60
-  return { x: s.x, y: below ? s.y + s.size / 2 + 6 : s.y - s.size / 2 - 6 }
-})
-
-// Sample values so the gauges read like the real thing
-const SAMPLE: Record<string, number> = { cpu: 23, cpuTemp: 54, ram: 61, gpu: 12, gpuTemp: 47, vram: 35 }
-
-const gauges = computed(() => {
-  const pg = props.page
-  if (pg.type !== 'stats') return []
-  const n = pg.items.length
-  const layouts: Record<number, { x: number; y: number; r: number }[]> = {
-    1: [{ x: C, y: C, r: 110 }],
-    2: [
-      { x: 108, y: C, r: 62 },
-      { x: 252, y: C, r: 62 },
-    ],
-    3: [
-      { x: C, y: 106, r: 54 },
-      { x: 108, y: 238, r: 54 },
-      { x: 252, y: 238, r: 54 },
-    ],
-    4: [
-      { x: 116, y: 116, r: 50 },
-      { x: 244, y: 116, r: 50 },
-      { x: 116, y: 244, r: 50 },
-      { x: 244, y: 244, r: 50 },
-    ],
-  }
-  const slots = layouts[Math.min(4, Math.max(1, n))] ?? []
-  return pg.items.slice(0, 4).map((item, i) => {
-    const info = STAT_ITEMS.find((s) => s.value === item)!
-    const v = SAMPLE[item] ?? 0
-    const slot = slots[i]!
-    return { ...slot, info, v, frac: Math.min(1, v / 100), color: i % 2 ? p.value.tertiary : p.value.primary }
-  })
-})
-
-const dots = computed(() => {
-  const n = props.pageCount
-  if (n <= 1) return []
-  const span = (n - 1) * 5
-  return Array.from({ length: n }, (_, i) => {
-    const [x, y] = polar(C, C, 168, 180 + span / 2 - i * 5)
-    return { x, y, on: i === props.pageIndex }
-  })
-})
-
-const iconStyle = (fill = 1) => ({ fontVariationSettings: `'FILL' ${fill}` })
-
+const pressed = ref<string | null>(null)
 function pick(id: string) {
   if (props.editable) emit('select', id)
 }
+
+// ---- media ----
+const SAMPLE_VOLUME = 42
+const media = computed(() => {
+  if (props.page.type !== 'media') return null
+  return {
+    title: ellipsize('Song title', 22, true, 236),
+    artist: ellipsize('Artist name', 16, false, 220),
+    arc: bezel(SAMPLE_VOLUME, p.value.primary),
+  }
+})
+
+// ---- stats ----
+const SAMPLE: Record<StatItem, number> = { cpu: 23, cpuTemp: 54, ram: 61, gpu: 12, gpuTemp: 47, vram: 35 }
+const CAPTION: Record<StatItem, string> = { cpu: 'CPU', cpuTemp: 'CPU °C', ram: 'RAM', gpu: 'GPU', gpuTemp: 'GPU °C', vram: 'VRAM' }
+const LAYOUT: Record<number, { size: number; at: [number, number][] }> = {
+  1: { size: 300, at: [[0, 0]] },
+  2: { size: 160, at: [[-84, 0], [84, 0]] },
+  3: { size: 148, at: [[0, -80], [-82, 62], [82, 62]] },
+  4: { size: 136, at: [[-74, -74], [74, -74], [-74, 74], [74, 74]] },
+}
+const gauges = computed(() => {
+  const pg = props.page
+  if (pg.type !== 'stats') return []
+  const items = pg.items.slice(0, 4)
+  const lay = LAYOUT[Math.max(1, items.length)]!
+  const one = items.length === 1
+  const width = one ? 20 : 12
+  const r = lay.size / 2 - width / 2
+  return items.map((item, i) => {
+    const [x, y] = lay.at[i]!
+    const v = SAMPLE[item]
+    const temp = item === 'cpuTemp' || item === 'gpuTemp'
+    const color = item === 'cpu' || item === 'cpuTemp' ? p.value.primary : item === 'ram' ? p.value.onSecondaryContainer : p.value.tertiary
+    return {
+      key: item,
+      x,
+      y,
+      width,
+      track: arcPath(r, ARC_START, ARC_START + ARC_SWEEP),
+      ind: arcPath(r, ARC_START, valueAngle(v)),
+      color,
+      value: `${v}${temp ? '°' : '%'}`,
+      caption: CAPTION[item],
+      valuePx: one ? 56 : 34,
+      captionPx: one ? 16 : 14,
+    }
+  })
+})
+
+// ---- dial ----
+const dial = computed(() => {
+  const pg = props.page
+  if (pg.type !== 'dial') return null
+  const custom = pg.source === 'custom'
+  const v = custom ? 50 : pg.source === 'brightness' ? 80 : 65
+  return {
+    icon: pg.icon || 'tune',
+    label: pg.label,
+    value: custom ? '' : String(v),
+    arc: bezel(v, pg.source === 'mic' ? p.value.tertiary : p.value.primary),
+  }
+})
+
+// ---- page dots: bottom center, 8 px above the edge, gap 6 ----
+const dots = computed(() => {
+  const n = props.pageCount
+  if (n < 2) return []
+  const widths = Array.from({ length: n }, (_, i) => (i === props.pageIndex ? 18 : 6))
+  const total = widths.reduce((a, b) => a + b, 0) + 6 * (n - 1)
+  let x = -total / 2
+  return widths.map((w, i) => {
+    const d = { x, w, on: i === props.pageIndex }
+    x += w + 6
+    return d
+  })
+})
 </script>
 
 <template>
-  <svg class="round" viewBox="0 0 360 360" role="img" :aria-label="`Preview of the ${page.type} page`">
+  <svg class="round" viewBox="-180 -180 360 360" role="img" :aria-label="`Preview of the ${page.type} page`">
     <defs>
-      <clipPath :id="uid"><circle cx="180" cy="180" r="180" /></clipPath>
+      <clipPath :id="uid"><circle r="180" /></clipPath>
     </defs>
     <g :clip-path="`url(#${uid})`">
-      <rect width="360" height="360" :fill="p.surface" />
+      <circle r="180" :fill="p.surface" />
 
-      <!-- Buttons on a ring -->
+      <!-- Buttons on a ring, optional center button -->
       <template v-if="radial">
-        <circle v-if="radial.placed.length > 1" cx="180" cy="180" :r="radial.ring" fill="none" :stroke="p.surfaceContainerHigh" stroke-width="1.5" />
+        <text v-for="(line, i) in radial.title" :key="i" :y="(i - (radial.title.length - 1) / 2) * 27" class="txt" font-size="22" font-weight="700" :fill="p.onSurfaceVariant">
+          {{ line }}
+        </text>
         <g
           v-for="pl in radial.placed"
           :key="pl.b.id"
           class="btn-g"
-          :class="{ editable, sel: pl.b.id === selected }"
+          :class="{ editable, down: pressed === pl.b.id }"
           :role="editable ? 'button' : undefined"
           :tabindex="editable ? 0 : undefined"
           :aria-label="editable ? `Edit ${pl.b.label || pl.b.icon}` : undefined"
           :style="{ transformOrigin: `${pl.x}px ${pl.y}px` }"
+          @pointerdown="editable && (pressed = pl.b.id)"
+          @pointerup="pressed = null"
+          @pointerleave="pressed = null"
           @click="pick(pl.b.id)"
           @keydown.enter.prevent="pick(pl.b.id)"
           @keydown.space.prevent="pick(pl.b.id)"
         >
+          <!-- Editing aid only: the device has no selection mark -->
           <path
-            v-if="pl.b.id === selected && editable"
-            :d="shapePath(pl.center ? 'sunny' : 'cookie', pl.x, pl.y, pl.size / 2 + 7)"
+            v-if="editable && pl.b.id === selected"
+            :d="buttonPath(pl.shape, pl.x, pl.y, pl.size + 12)"
             fill="none"
             :stroke="p.primary"
-            stroke-width="3"
+            stroke-width="2.5"
+            stroke-dasharray="5 4"
           />
-          <path :d="shapePath(pl.center ? 'sunny' : 'cookie', pl.x, pl.y, pl.size / 2 - 3)" :fill="pair(pl.b.color)[0]" />
-          <text
-            class="sym"
-            :x="pl.x"
-            :y="pl.y"
-            :font-size="pl.center ? 52 : Math.round(pl.size * 0.44)"
-            :fill="pair(pl.b.color)[1]"
-            :style="iconStyle()"
-            >{{ pl.b.icon }}</text
-          >
+          <path :d="buttonPath(pl.shape, pl.x, pl.y, pl.size)" :fill="pressed === pl.b.id ? lighten(pair(pl.b.color)[0]) : pair(pl.b.color)[0]" />
+          <text class="sym" :x="pl.x" :y="pl.y" :font-size="pl.icon" :fill="pair(pl.b.color)[1]">{{ pl.b.icon }}</text>
         </g>
-        <g v-if="editable && !radial.hasCenter" class="ghost" role="button" tabindex="0" aria-label="Add a center button" @click="emit('addCenter')" @keydown.enter.prevent="emit('addCenter')">
-          <circle cx="180" cy="180" r="44" fill="transparent" :stroke="p.outlineVariant" stroke-width="2" stroke-dasharray="6 6" />
-          <text class="sym" x="180" y="180" font-size="30" :fill="p.onSurfaceVariant" :style="iconStyle(0)">add</text>
+        <g v-if="editable && !radial.hasCenter && !radial.title.length" class="ghost" role="button" tabindex="0" aria-label="Add a center button" @click="emit('addCenter')" @keydown.enter.prevent="emit('addCenter')">
+          <circle r="40" fill="transparent" :stroke="p.outlineVariant" stroke-width="2" stroke-dasharray="6 6" />
+          <text class="sym outline" font-size="28" :fill="p.onSurfaceVariant">add</text>
         </g>
-        <g v-if="labelPos && selectedPlaced?.b.label" class="label">
-          <rect
-            :x="labelPos.x - (selectedPlaced.b.label.length * 7 + 20) / 2"
-            :y="labelPos.y - 11"
-            :width="selectedPlaced.b.label.length * 7 + 20"
-            height="22"
-            rx="11"
-            :fill="p.surfaceContainerHighest"
-          />
-          <text :x="labelPos.x" :y="labelPos.y + 1" font-size="13" font-weight="600" :fill="p.onSurface" text-anchor="middle" dominant-baseline="central">
-            {{ selectedPlaced.b.label }}
-          </text>
+        <!-- Label bubble, as after a press on the device -->
+        <g v-if="bubble" class="bubble">
+          <rect :x="-bubble.w / 2" :y="-bubble.h / 2" :width="bubble.w" :height="bubble.h" :rx="bubble.h / 2" :fill="p.surfaceContainerHighest" />
+          <text class="txt" font-size="16" :fill="p.onSurface">{{ bubble.label }}</text>
         </g>
       </template>
 
-      <!-- Media: now playing, transport, volume on the edge -->
-      <template v-else-if="page.type === 'media'">
-        <path :d="arc(180, 180, 166, 210, 510)" fill="none" :stroke="p.surfaceContainerHighest" stroke-width="10" stroke-linecap="round" />
-        <path :d="wavyArc(180, 180, 166, 210, 210 + 300 * 0.62, 2, 28)" fill="none" :stroke="p.primary" stroke-width="8" stroke-linecap="round" />
-        <circle v-bind="{ cx: polar(180, 180, 166, 210 + 300 * 0.62)[0], cy: polar(180, 180, 166, 210 + 300 * 0.62)[1] }" r="9" :fill="p.primary" />
-        <path :d="shapePath('clover', 180, 92, 34)" :fill="p.tertiaryContainer" />
-        <text class="sym" x="180" y="92" font-size="34" :fill="p.onTertiaryContainer" :style="iconStyle()">music_note</text>
-        <text x="180" y="152" text-anchor="middle" font-size="22" font-weight="600" :fill="p.onSurface">Song title</text>
-        <text x="180" y="178" text-anchor="middle" font-size="15" :fill="p.onSurfaceVariant">Artist name</text>
-        <path :d="shapePath('cookie', 106, 240, 30)" :fill="p.surfaceContainerHighest" />
-        <text class="sym" x="106" y="240" font-size="30" :fill="p.onSurface" :style="iconStyle()">skip_previous</text>
-        <path :d="shapePath('sunny', 180, 240, 44)" :fill="p.primaryContainer" />
-        <text class="sym" x="180" y="240" font-size="44" :fill="p.onPrimaryContainer" :style="iconStyle()">pause</text>
-        <path :d="shapePath('cookie', 254, 240, 30)" :fill="p.surfaceContainerHighest" />
-        <text class="sym" x="254" y="240" font-size="30" :fill="p.onSurface" :style="iconStyle()">skip_next</text>
-        <text class="sym" x="180" y="306" font-size="20" :fill="p.onSurfaceVariant" :style="iconStyle()">volume_up</text>
+      <!-- Media -->
+      <template v-else-if="media">
+        <path :d="media.arc.track" fill="none" :stroke="p.surfaceContainerHighest" stroke-width="14" stroke-linecap="round" />
+        <path :d="media.arc.ind" fill="none" :stroke="media.arc.color" stroke-width="14" stroke-linecap="round" />
+        <circle :cx="media.arc.kx" :cy="media.arc.ky" r="8" :fill="p.onPrimary" :stroke="media.arc.color" stroke-width="4" />
+        <text class="txt" y="-104" font-size="14" :fill="p.onSurfaceVariant">Spotify</text>
+        <text class="txt" y="-66" font-size="22" font-weight="700" :fill="p.onSurface">{{ media.title }}</text>
+        <text class="txt" y="-36" font-size="16" :fill="p.onSurfaceVariant">{{ media.artist }}</text>
+        <circle cx="-94" cy="44" r="32" :fill="p.secondaryContainer" />
+        <text class="sym" x="-94" y="44" font-size="32" :fill="p.onSecondaryContainer">skip_previous</text>
+        <circle cx="94" cy="44" r="32" :fill="p.secondaryContainer" />
+        <text class="sym" x="94" y="44" font-size="32" :fill="p.onSecondaryContainer">skip_next</text>
+        <!-- Playing: rounded square (radius 30 %); a circle when paused -->
+        <rect x="-50" y="-6" width="100" height="100" rx="30" :fill="p.primaryContainer" />
+        <text class="sym" x="0" y="44" font-size="44" :fill="p.onPrimaryContainer">pause</text>
+        <text class="txt" y="132" font-size="14" :fill="p.onSurfaceVariant">{{ SAMPLE_VOLUME }}</text>
       </template>
 
-      <!-- Stats: M3 expressive gauges -->
-      <template v-else-if="page.type === 'stats'">
-        <g v-for="g in gauges" :key="g.info.value">
-          <path :d="arc(g.x, g.y, g.r, 225, 495)" fill="none" :stroke="p.surfaceContainerHighest" :stroke-width="g.r > 80 ? 14 : 9" stroke-linecap="round" />
-          <path
-            :d="wavyArc(g.x, g.y, g.r, 225, 225 + 270 * g.frac, g.r > 80 ? 2.6 : 1.8, g.r > 80 ? 34 : 22)"
-            fill="none"
-            :stroke="g.color"
-            :stroke-width="g.r > 80 ? 12 : 8"
-            stroke-linecap="round"
-          />
-          <text class="sym" :x="g.x" :y="g.y - g.r * 0.32" :font-size="g.r * 0.36" :fill="p.onSurfaceVariant" :style="iconStyle()">{{ g.info.icon }}</text>
-          <text :x="g.x" :y="g.y + g.r * 0.12" text-anchor="middle" dominant-baseline="central" :font-size="g.r * 0.46" font-weight="600" :fill="p.onSurface">
-            {{ g.v }}<tspan :font-size="g.r * 0.24" :fill="p.onSurfaceVariant">{{ g.info.unit }}</tspan>
-          </text>
-          <text :x="g.x" :y="g.y + g.r * 0.62" text-anchor="middle" dominant-baseline="central" :font-size="Math.max(11, g.r * 0.22)" :fill="p.onSurfaceVariant">{{ g.info.label }}</text>
+      <!-- Stats -->
+      <template v-else-if="gauges.length">
+        <g v-for="g in gauges" :key="g.key" :transform="`translate(${g.x} ${g.y})`">
+          <path :d="g.track" fill="none" :stroke="p.surfaceContainerHighest" :stroke-width="g.width" stroke-linecap="round" />
+          <path :d="g.ind" fill="none" :stroke="g.color" :stroke-width="g.width" stroke-linecap="round" />
+          <text class="txt" y="-6" :font-size="g.valuePx" font-weight="700" :fill="p.onSurface">{{ g.value }}</text>
+          <text class="txt" y="26" :font-size="g.captionPx" :fill="p.onSurfaceVariant">{{ g.caption }}</text>
         </g>
       </template>
 
-      <!-- Dial: one big arc along the edge -->
-      <template v-else-if="page.type === 'dial'">
-        <path :d="arc(180, 180, 156, 225, 495)" fill="none" :stroke="p.surfaceContainerHighest" stroke-width="20" stroke-linecap="round" />
-        <path :d="wavyArc(180, 180, 156, 225, 225 + 270 * 0.65, 3, 40)" fill="none" :stroke="p.primary" stroke-width="16" stroke-linecap="round" />
-        <circle v-bind="{ cx: polar(180, 180, 156, 225 + 270 * 0.65)[0], cy: polar(180, 180, 156, 225 + 270 * 0.65)[1] }" r="15" :fill="p.primary" />
-        <circle v-bind="{ cx: polar(180, 180, 156, 225 + 270 * 0.65)[0], cy: polar(180, 180, 156, 225 + 270 * 0.65)[1] }" r="6" :fill="p.onPrimary" />
-        <path :d="shapePath('flower', 180, 128, 38)" :fill="p.primaryContainer" />
-        <text class="sym" x="180" y="128" font-size="40" :fill="p.onPrimaryContainer" :style="iconStyle()">{{ page.icon }}</text>
-        <text x="180" y="210" text-anchor="middle" dominant-baseline="central" font-size="64" font-weight="600" :fill="p.onSurface">
-          {{ page.source === 'custom' ? '±' : '65' }}
-        </text>
-        <text x="180" y="262" text-anchor="middle" font-size="18" :fill="p.onSurfaceVariant">{{ page.label }}</text>
+      <!-- Dial -->
+      <template v-else-if="dial">
+        <path :d="dial.arc.track" fill="none" :stroke="p.surfaceContainerHighest" stroke-width="14" stroke-linecap="round" />
+        <path :d="dial.arc.ind" fill="none" :stroke="dial.arc.color" stroke-width="14" stroke-linecap="round" />
+        <circle :cx="dial.arc.kx" :cy="dial.arc.ky" r="8" :fill="p.onPrimary" :stroke="dial.arc.color" stroke-width="4" />
+        <text class="sym" y="-54" font-size="64" :fill="p.primary">{{ dial.icon }}</text>
+        <text class="txt" y="14" font-size="56" font-weight="700" :fill="p.onSurface">{{ dial.value }}</text>
+        <text class="txt" y="62" font-size="16" :fill="p.onSurfaceVariant">{{ dial.label }}</text>
       </template>
 
-      <circle v-for="(d, i) in dots" :key="i" :cx="d.x" :cy="d.y" :r="d.on ? 4 : 3" :fill="d.on ? p.onSurface : p.outlineVariant" />
+      <rect v-for="(d, i) in dots" :key="i" :x="d.x" :y="180 - 8 - 6" :width="d.w" height="6" rx="3" :fill="d.on ? p.primary : p.outlineVariant" />
     </g>
-    <circle cx="180" cy="180" r="179" fill="none" :stroke="p.outlineVariant" stroke-width="2" class="bezel" />
   </svg>
 </template>
 
@@ -252,26 +331,32 @@ function pick(id: string) {
     0 0 0 10px #111,
     0 0 0 11px #2a2a2a,
     0 18px 40px rgba(0, 0, 0, 0.45);
-  font-family: var(--font);
   user-select: none;
+}
+.txt {
+  font-family: 'Google Sans Flex', 'Google Sans', system-ui, sans-serif;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 .sym {
   font-family: 'Material Symbols Rounded';
   font-feature-settings: 'liga';
+  font-variation-settings: 'FILL' 1;
   text-anchor: middle;
   dominant-baseline: central;
 }
+.sym.outline {
+  font-variation-settings: 'FILL' 0;
+}
+/* Press: scale to 91 % (transform_scale 232/256) and lighten; the shape stays */
 .btn-g {
-  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.15s var(--ease);
+}
+.btn-g.down {
+  transform: scale(0.906);
 }
 .btn-g.editable {
   cursor: pointer;
-}
-.btn-g.editable:hover {
-  transform: scale(1.06);
-}
-.btn-g.sel {
-  transform: scale(1.04);
 }
 .btn-g:focus-visible {
   outline: none;
@@ -279,6 +364,9 @@ function pick(id: string) {
 .btn-g:focus-visible path:last-of-type {
   stroke: var(--primary);
   stroke-width: 3;
+}
+.bubble {
+  pointer-events: none;
 }
 .ghost {
   cursor: pointer;
@@ -290,8 +378,5 @@ function pick(id: string) {
 }
 .ghost:focus-visible {
   outline: none;
-}
-.bezel {
-  pointer-events: none;
 }
 </style>

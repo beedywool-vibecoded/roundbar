@@ -245,9 +245,12 @@ function show() {
               <button class="btn btn-tonal st add" type="button" :disabled="page.buttons.length >= LIMITS.buttons" @click="addButton">
                 <Icon name="add" :size="18" /> Button
               </button>
+              <button v-if="!page.center" class="btn btn-text st add" type="button" @click="addCenter">
+                <Icon name="add" :size="18" /> Center
+              </button>
             </div>
             <p class="muted small hint">
-              {{ page.buttons.length }} / {{ LIMITS.buttons }} on the ring. Click a button to edit it{{ page.center ? '' : ', or the middle to add a center button' }}.
+              {{ page.buttons.length }} / {{ LIMITS.buttons }} on the ring. Click a button to edit it. Its label shows in the middle, as after a press.{{ page.center ? '' : ' Without a center button the page title is shown there.' }}
             </p>
           </template>
           <p class="muted small hint">Drawn with the device palette ({{ config!.theme.mode }}), with sample values.</p>
@@ -266,7 +269,7 @@ function show() {
         <div class="card">
           <div class="card-head"><h2>Page</h2></div>
           <div class="form">
-            <TextField v-model="title" label="Title (optional)" placeholder="Shown in this configurator" :max="24" />
+            <TextField v-model="title" label="Title (optional)" :placeholder="page.type === 'radial' ? 'Shown in the middle when there is no center button' : 'Shown in this configurator'" :max="24" />
 
             <p v-if="page.type === 'media'" class="muted small" style="margin: 0">
               Shows the current player (MPRIS) with previous, play / pause and next, and the volume on the edge arc. Nothing to set up.

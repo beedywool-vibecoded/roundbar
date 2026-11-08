@@ -1,6 +1,8 @@
 // Guition JC3636W518: ESP32-S3, ST77916 360x360 over QSPI, CST816 touch on I2C.
 #include "board.h"
 
+#include <stdio.h>
+
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/ledc.h"
@@ -29,6 +31,7 @@
 #define BUF_LINES    60
 
 static const char *TAG = "board";
+char touch_info[32] = "none";
 
 static void backlight_init(void)
 {
@@ -116,6 +119,20 @@ lv_display_t *board_init(lv_indev_t **touch)
     esp_lcd_touch_handle_t tp = NULL;
     esp_err_t err = esp_lcd_touch_new_i2c_cst816s(tp_io, &tp_cfg, &tp);
     if (err != ESP_OK) ESP_LOGE(TAG, "touch init failed: %s", esp_err_to_name(err));
+    if (tp) {
+        // esp_lvgl_port only reads the panel when INT fires. Out of the box the
+        // CST816 pulses INT on press/release only, so LVGL never sees a drag.
+        // IrqCtl (0xFA): EnTouch | EnChange -> pulse continuously while touched.
+        // MotionMask (0xEC): EnConLR | EnConUD -> keep streaming during straight swipes.
+        // DisAutoSleep (0xFE): don't drop the first touch after idling.
+        const uint8_t regs[][2] = {{0xFA, 0x60}, {0xEC, 0x06}, {0xFE, 0x01}};
+        for (int i = 0; i < 3; i++) esp_lcd_panel_io_tx_param(tp_io, regs[i][0], &regs[i][1], 1);
+        uint8_t fa = 0, ec = 0, fe = 0;
+        esp_lcd_panel_io_rx_param(tp_io, 0xFA, &fa, 1);
+        esp_lcd_panel_io_rx_param(tp_io, 0xEC, &ec, 1);
+        esp_lcd_panel_io_rx_param(tp_io, 0xFE, &fe, 1);
+        snprintf(touch_info, sizeof(touch_info), "fa=%02x ec=%02x fe=%02x", fa, ec, fe);
+    }
 
     // LVGL
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();

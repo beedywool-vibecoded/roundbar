@@ -34,6 +34,7 @@ type hello struct {
 	FW    string `json:"fw"`
 	Proto int    `json:"proto"`
 	Cfg   string `json:"cfg"`
+	Touch string `json:"touch"`
 }
 
 type Daemon struct {
@@ -195,7 +196,7 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		stale := h.Cfg != d.sha
 		d.sentPro = ""
 		d.mu.Unlock()
-		log.Printf("device fw %s", h.FW)
+		log.Printf("device fw %s, touch %s", h.FW, h.Touch)
 		if stale {
 			d.pushConfig()
 		}

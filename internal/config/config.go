@@ -16,6 +16,7 @@ import (
 type Config struct {
 	Version  int       `json:"version"`
 	Theme    Theme     `json:"theme"`
+	Media    Media     `json:"media"`
 	Device   Device    `json:"device"`
 	Profiles []Profile `json:"profiles"`
 }
@@ -24,6 +25,11 @@ type Theme struct {
 	Seed    string            `json:"seed"`
 	Mode    string            `json:"mode"`
 	Palette map[string]string `json:"palette"`
+}
+
+type Media struct {
+	CoverBackground bool `json:"coverBackground"`
+	CoverColors     bool `json:"coverColors"`
 }
 
 type Device struct {
@@ -61,6 +67,7 @@ type Button struct {
 	Icon  string  `json:"icon"`
 	Label string  `json:"label,omitempty"`
 	Color string  `json:"color,omitempty"`
+	Shape string  `json:"shape,omitempty"`
 	Tap   *Action `json:"tap,omitempty"`
 	Hold  *Action `json:"hold,omitempty"`
 }
@@ -345,6 +352,9 @@ func (b *Button) validate(bp string, pageIDs map[string]bool) error {
 	}
 	if b.Color != "" && !oneOf(b.Color, "primary", "secondary", "tertiary", "error", "surface") {
 		return &Error{Path: bp + ".color", Msg: "unknown color role"}
+	}
+	if b.Shape != "" && !oneOf(b.Shape, "circle", "square", "cookie", "clover", "sunny", "flower", "burst") {
+		return &Error{Path: bp + ".shape", Msg: "unknown shape"}
 	}
 	if b.Tap == nil {
 		return &Error{Path: bp + ".tap", Msg: "required"}

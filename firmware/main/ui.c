@@ -5,6 +5,7 @@
 // spring back with an overshoot; value pages use a 270° arc along the bezel.
 #include "ui.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -208,10 +209,21 @@ static void btn_event(lv_event_t *e)
     }
 }
 
-static const lv_style_prop_t morph_props[] = {LV_STYLE_RADIUS, LV_STYLE_TRANSFORM_SCALE_X, LV_STYLE_TRANSFORM_SCALE_Y, 0};
+// Pressing only squishes and lightens; the shape stays (user preference).
+static const lv_style_prop_t press_props[] = {LV_STYLE_TRANSFORM_SCALE_X, LV_STYLE_TRANSFORM_SCALE_Y, LV_STYLE_BG_COLOR,
+                                              LV_STYLE_IMAGE_RECOLOR, 0};
 static lv_style_transition_dsc_t tr_press, tr_release;
 
-static lv_obj_t *shape_button(lv_obj_t *parent, int size, int radius, int pressed_radius, lv_color_t bg)
+static void squish_on_press(lv_obj_t *o, int size)
+{
+    lv_obj_set_style_transform_pivot_x(o, size / 2, 0);
+    lv_obj_set_style_transform_pivot_y(o, size / 2, 0);
+    lv_obj_set_style_transform_scale(o, 232, LV_STATE_PRESSED);
+    lv_obj_set_style_transition(o, &tr_release, 0);
+    lv_obj_set_style_transition(o, &tr_press, LV_STATE_PRESSED);
+}
+
+static lv_obj_t *shape_button(lv_obj_t *parent, int size, int radius, lv_color_t bg)
 {
     lv_obj_t *o = box(parent);
     lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);
@@ -219,23 +231,78 @@ static lv_obj_t *shape_button(lv_obj_t *parent, int size, int radius, int presse
     lv_obj_set_style_bg_color(o, bg, 0);
     lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(o, radius, 0);
-    lv_obj_set_style_radius(o, pressed_radius, LV_STATE_PRESSED);
-    lv_obj_set_style_transform_pivot_x(o, size / 2, 0);
-    lv_obj_set_style_transform_pivot_y(o, size / 2, 0);
-    lv_obj_set_style_transform_scale(o, 232, LV_STATE_PRESSED);
     lv_obj_set_style_bg_color(o, lv_color_mix(lv_color_white(), bg, 30), LV_STATE_PRESSED);
-    lv_obj_set_style_transition(o, &tr_release, 0);
-    lv_obj_set_style_transition(o, &tr_press, LV_STATE_PRESSED);
+    squish_on_press(o, size);
     return o;
 }
 
-static lv_obj_t *config_button(lv_obj_t *parent, cJSON *b, int size, bool squircle, const lv_font_t *ifont)
+// ---- Material 3 Expressive shapes, rasterised once into A8 masks ----------------------
+
+enum { SH_CIRCLE, SH_SQUARE, SH_COOKIE, SH_CLOVER, SH_SUNNY, SH_FLOWER, SH_BURST, SH_COUNT };
+static const char *const SHAPE_NAMES[SH_COUNT] = {"circle", "square", "cookie", "clover", "sunny", "flower", "burst"};
+static const float SHAPE_LOBES[SH_COUNT] = {0, 0, 9, 4, 8, 6, 12};
+static const float SHAPE_DEPTH[SH_COUNT] = {0, 0, .07f, .17f, .10f, .13f, .05f};
+
+static int shape_id(const char *name, int def)
+{
+    for (int i = 0; name && i < SH_COUNT; i++)
+        if (!strcmp(name, SHAPE_NAMES[i])) return i;
+    return def;
+}
+
+static struct {
+    uint8_t shape;
+    uint8_t size;
+    lv_draw_buf_t *buf;
+} shape_cache[SH_COUNT * 6];
+static int nshape_cache;
+
+static const lv_draw_buf_t *shape_mask(int shape, int size)
+{
+    for (int i = 0; i < nshape_cache; i++)
+        if (shape_cache[i].shape == shape && shape_cache[i].size == size) return shape_cache[i].buf;
+    lv_draw_buf_t *buf = lv_draw_buf_create(size, size, LV_COLOR_FORMAT_A8, LV_STRIDE_AUTO);
+    if (!buf) return NULL;
+    const float c = size / 2.0f, lobes = SHAPE_LOBES[shape], depth = SHAPE_DEPTH[shape];
+    for (int y = 0; y < size; y++) {
+        uint8_t *row = buf->data + y * buf->header.stride;
+        for (int x = 0; x < size; x++) {
+            float fx = x + 0.5f - c, fy = y + 0.5f - c;
+            float d = sqrtf(fx * fx + fy * fy), r = c;
+            if (d > 0.001f) {
+                if (shape == SH_SQUARE) { // squircle |x|^4 + |y|^4 = c^4
+                    float co = fx / d, si = fy / d;
+                    r = c / sqrtf(sqrtf(co * co * co * co + si * si * si * si));
+                } else if (lobes > 0) {
+                    r = c / (1 + depth) * (1 + depth * cosf(lobes * atan2f(fy, fx)));
+                }
+            }
+            float cov = r - d + 0.5f; // one-pixel analytic anti-aliasing
+            row[x] = cov <= 0 ? 0 : cov >= 1 ? 255 : (uint8_t)(cov * 255);
+        }
+    }
+    if (nshape_cache < (int)(sizeof(shape_cache) / sizeof(shape_cache[0]))) {
+        shape_cache[nshape_cache].shape = shape;
+        shape_cache[nshape_cache].size = size;
+        shape_cache[nshape_cache++].buf = buf;
+    }
+    return buf;
+}
+
+static lv_obj_t *config_button(lv_obj_t *parent, cJSON *b, int size, bool center, const lv_font_t *ifont)
 {
     lv_color_t bg, fg;
     theme_role(jstr(b, "color"), &bg, &fg);
-    int r = squircle ? size * 32 / 100 : size / 2;
-    int pr = squircle ? size / 2 : size * 28 / 100; // circles go square, squares go round
-    lv_obj_t *o = shape_button(parent, size, r, pr, bg);
+    int shape = shape_id(jstr(b, "shape"), center ? SH_SQUARE : SH_CIRCLE);
+    lv_obj_t *o = lv_image_create(parent);
+    lv_image_set_src(o, shape_mask(shape, size));
+    lv_obj_set_size(o, size, size);
+    lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_image_recolor(o, bg, 0);
+    lv_obj_set_style_image_recolor_opa(o, LV_OPA_COVER, 0);
+    lv_obj_set_style_image_recolor(o, lv_color_mix(lv_color_white(), bg, 30), LV_STATE_PRESSED);
+    squish_on_press(o, size);
     lv_obj_t *ic = text(o, ifont, fg, theme_icon(jstr(b, "icon")));
     lv_obj_center(ic);
     lv_obj_add_event_cb(o, btn_event, LV_EVENT_SHORT_CLICKED, b);
@@ -272,6 +339,61 @@ static void build_radial(lv_obj_t *tile, cJSON *pg)
 }
 
 // ---- bezel arc ---------------------------------------------------------------------
+//
+// On a round screen a swipe naturally starts at the edge, i.e. on the arc. The
+// first ~10 px decide: moving along the ring drags the value, moving across it
+// horizontally scrolls the pages under the finger. Nothing changes until then.
+
+typedef enum { ARC_IDLE, ARC_UNDECIDED, ARC_DRAG, ARC_SWIPE } arc_mode_t;
+static arc_mode_t arc_mode;
+static lv_point_t arc_p0;
+static int32_t arc_v0, arc_scroll0;
+
+static void arc_gate_event(lv_event_t *e)
+{
+    lv_obj_t *a = lv_event_get_target_obj(e);
+    lv_event_code_t c = lv_event_get_code(e);
+    lv_point_t p;
+    lv_indev_get_point(lv_indev_active(), &p);
+    if (c == LV_EVENT_PRESSED) {
+        arc_mode = ARC_UNDECIDED;
+        arc_p0 = p;
+        arc_v0 = lv_arc_get_value(a);
+        arc_scroll0 = lv_obj_get_scroll_x(tv);
+        return;
+    }
+    int32_t dx = p.x - arc_p0.x, dy = p.y - arc_p0.y;
+    if (c == LV_EVENT_PRESSING) {
+        if (arc_mode == ARC_UNDECIDED) {
+            if (dx * dx + dy * dy < 100) {
+                lv_arc_set_value(a, arc_v0);
+                return;
+            }
+            int32_t rx = arc_p0.x - LCD_W / 2, ry = arc_p0.y - LCD_H / 2;
+            int32_t radial = dx * rx + dy * ry, tangential = dx * ry - dy * rx;
+            bool across = LV_ABS(radial) > LV_ABS(tangential) && LV_ABS(dx) > LV_ABS(dy);
+            arc_mode = across && page_count > 1 ? ARC_SWIPE : ARC_DRAG;
+        }
+        if (arc_mode == ARC_SWIPE) {
+            lv_arc_set_value(a, arc_v0);
+            int32_t x = LV_CLAMP(0, arc_scroll0 - dx, (page_count - 1) * LCD_W);
+            lv_obj_scroll_to_x(tv, x, LV_ANIM_OFF);
+        }
+        return;
+    }
+    if (c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST) {
+        if (arc_mode == ARC_SWIPE) {
+            lv_arc_set_value(a, arc_v0);
+            int target = cur_page;
+            if (dx < -40 && cur_page < page_count - 1) target++;
+            else if (dx > 40 && cur_page > 0) target--;
+            lv_tileview_set_tile_by_index(tv, target, 0, LV_ANIM_ON);
+        }
+        arc_mode = ARC_IDLE;
+    }
+}
+
+#define ARC_DRAGGING() (arc_mode == ARC_DRAG)
 
 static lv_obj_t *bezel_arc(lv_obj_t *parent, lv_color_t ind, bool interactive)
 {
@@ -292,6 +414,10 @@ static lv_obj_t *bezel_arc(lv_obj_t *parent, lv_color_t ind, bool interactive)
         lv_obj_set_style_border_width(a, 4, LV_PART_KNOB);
         lv_obj_set_style_pad_all(a, 3, LV_PART_KNOB);
         lv_arc_set_change_rate(a, 360);
+        lv_obj_add_event_cb(a, arc_gate_event, LV_EVENT_PRESSED, NULL);
+        lv_obj_add_event_cb(a, arc_gate_event, LV_EVENT_PRESSING, NULL);
+        lv_obj_add_event_cb(a, arc_gate_event, LV_EVENT_RELEASED, NULL);
+        lv_obj_add_event_cb(a, arc_gate_event, LV_EVENT_PRESS_LOST, NULL);
     } else {
         lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_KNOB);
         lv_obj_set_style_pad_all(a, 0, LV_PART_KNOB);
@@ -324,6 +450,7 @@ static void arc_drag_event(lv_event_t *e)
 
 static void vol_event(lv_event_t *e)
 {
+    if (!ARC_DRAGGING()) return;
     lv_obj_t *a = lv_event_get_target_obj(e);
     int v = lv_arc_get_value(a);
     if (usb_host_listening()) {
@@ -345,6 +472,7 @@ static void vol_event(lv_event_t *e)
 
 static void mic_event(lv_event_t *e)
 {
+    if (!ARC_DRAGGING()) return;
     lv_obj_t *a = lv_event_get_target_obj(e);
     mic = lv_arc_get_value(a);
     pending_mic = mic;
@@ -393,7 +521,7 @@ static void media_btn_event(lv_event_t *e)
 
 static lv_obj_t *media_btn(lv_obj_t *tile, int size, lv_color_t bg, lv_color_t fg, const char *icon, const lv_font_t *f, const char *cmd)
 {
-    lv_obj_t *b = shape_button(tile, size, size / 2, size * 28 / 100, bg);
+    lv_obj_t *b = shape_button(tile, size, size / 2, bg);
     lv_obj_t *ic = text(b, f, fg, theme_icon(icon));
     lv_obj_center(ic);
     lv_obj_add_event_cb(b, media_btn_event, LV_EVENT_CLICKED, (void *)cmd);
@@ -561,6 +689,7 @@ static void bright_event(lv_event_t *e)
     int v = lv_arc_get_value(a);
     if (v < 5) v = 5;
     if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+        if (!ARC_DRAGGING()) return;
         board_backlight(v);
         lv_label_set_text_fmt(lbl, "%d", v);
     } else {
@@ -586,7 +715,7 @@ static void custom_event(lv_event_t *e)
         cd->acc = 50;
         return;
     }
-    if (dragging == false) return; // ignore the snap-back animation
+    if (!ARC_DRAGGING()) return; // page swipe, or the snap-back animation
     int v = lv_arc_get_value(a);
     cJSON *step_j = cJSON_GetObjectItem(cd->pg, "step");
     int step = cJSON_IsNumber(step_j) && step_j->valueint > 0 ? step_j->valueint : 5;
@@ -843,8 +972,8 @@ void ui_init(lv_display_t *d, lv_indev_t *touch)
 {
     disp = d;
     indev = touch;
-    lv_style_transition_dsc_init(&tr_press, morph_props, lv_anim_path_ease_out, 110, 0, NULL);
-    lv_style_transition_dsc_init(&tr_release, morph_props, lv_anim_path_overshoot, 320, 0, NULL);
+    lv_style_transition_dsc_init(&tr_press, press_props, lv_anim_path_ease_out, 110, 0, NULL);
+    lv_style_transition_dsc_init(&tr_release, press_props, lv_anim_path_overshoot, 320, 0, NULL);
 
     toast = pill(lv_layer_top(), P.schh, P.on_surface, F.body);
     lv_obj_align(toast, LV_ALIGN_TOP_MID, 0, 30);

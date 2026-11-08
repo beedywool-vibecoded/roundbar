@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "board.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "freertos/task.h"
@@ -32,6 +33,7 @@ void proto_hello(void)
     cJSON_AddStringToObject(o, "cfg", store_sha());
     cJSON_AddNumberToObject(o, "w", 360);
     cJSON_AddNumberToObject(o, "h", 360);
+    cJSON_AddStringToObject(o, "touch", touch_info);
     send_json(o);
 }
 

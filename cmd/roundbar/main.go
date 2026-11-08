@@ -136,7 +136,21 @@ func install() error {
 	run("systemctl", "--user", "daemon-reload")
 	run("systemctl", "--user", "enable", "--now", "roundbar.service")
 	run("systemctl", "--user", "restart", "roundbar.service")
-	run("gnome-extensions", "enable", gnomeext.UUID)
+	// GNOME can't enable an extension it hasn't scanned yet (new installs on
+	// Wayland need a re-login), so put it in the enabled list directly.
+	if err := exec.Command("gnome-extensions", "enable", gnomeext.UUID).Run(); err != nil {
+		out, _ := exec.Command("gsettings", "get", "org.gnome.shell", "enabled-extensions").Output()
+		list := strings.TrimSpace(string(out))
+		if !strings.Contains(list, gnomeext.UUID) {
+			switch {
+			case list == "@as []" || list == "[]" || list == "":
+				list = "['" + gnomeext.UUID + "']"
+			default:
+				list = strings.TrimSuffix(list, "]") + ", '" + gnomeext.UUID + "']"
+			}
+			run("gsettings", "set", "org.gnome.shell", "enabled-extensions", list)
+		}
+	}
 	fmt.Println(`
 done. On Wayland GNOME only loads a newly installed extension after you log out and back in;
 until then the daemon runs with the default profile.`)

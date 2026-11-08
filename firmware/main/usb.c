@@ -4,15 +4,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_system.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "keymap.h"
+#include "esp_rom_sys.h"
 #include "rom/ets_sys.h"
 #include "soc/rtc_cntl_reg.h"
-#include "soc/usb_serial_jtag_reg.h"
 #include "store.h"
 #include "tinyusb.h"
 #include "tusb_cdc_acm.h"
@@ -251,13 +252,12 @@ void usb_hid(hid_kind_t kind, const char *arg, const char *ack_id)
 void usb_reboot_to_bootloader(void)
 {
     ESP_LOGI(TAG, "rebooting into download mode");
-    // Hand the PHY back to the built-in USB-Serial-JTAG, which the ROM uses for
-    // download mode, then force download boot on the next reset.
-    CLEAR_PERI_REG_MASK(RTC_CNTL_USB_CONF_REG, RTC_CNTL_SW_HW_USB_PHY_SEL | RTC_CNTL_SW_USB_PHY_SEL | RTC_CNTL_USB_PAD_ENABLE);
-    CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PHY_SEL);
-    SET_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
+    // Drop off the bus first and give the host time to notice, otherwise it
+    // never sees the ROM's download port enumerate after the reset.
+    tud_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(400));
     REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
-    esp_restart();
+    esp_rom_software_reset_system();
 }
 
 // ---- init -----------------------------------------------------------------------
