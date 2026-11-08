@@ -125,6 +125,7 @@ static size_t b64decode(const char *in, uint8_t *out, size_t cap)
     return n;
 }
 
+static void handle_game_art(cJSON *m);
 static void handle_cover(cJSON *m);
 
 static size_t b64encode(const uint8_t *in, size_t n, char *out)
@@ -291,6 +292,13 @@ static void handle(cJSON *m)
         lvgl_port_lock(0);
         ui_assets_changed();
         lvgl_port_unlock();
+    } else if (!strcmp(t, "gameArt")) {
+        handle_game_art(m);
+    } else if (!strcmp(t, "obs") || !strcmp(t, "game")) {
+        lvgl_port_lock(0);
+        if (t[0] == 'o') ui_obs(m);
+        else ui_game(m);
+        lvgl_port_unlock();
     } else if (!strcmp(t, "cover")) {
         handle_cover(m);
     } else if (!strcmp(t, "mediaTheme")) {
@@ -344,6 +352,36 @@ static void handle_cover(cJSON *m)
         ui_cover(cover_buf[cover_back], w, h);
         lvgl_port_unlock();
         cover_back ^= 1; // the shown buffer stays untouched until the next image
+    }
+}
+
+// Steam library art for game pages: same chunk format as covers, own buffers.
+static uint8_t *game_buf[2];
+static int game_back, game_seq = -1;
+static size_t game_len;
+
+static void handle_game_art(cJSON *m)
+{
+    int seq = num(m, "seq", 0), n = num(m, "n", 0), i = num(m, "i", 0);
+    int w = num(m, "w", 360), h = num(m, "h", 360);
+    if (n == 0 || w * h * 2 > COVER_MAX) return;
+    if (!game_buf[0]) {
+        game_buf[0] = heap_caps_malloc(COVER_MAX, MALLOC_CAP_SPIRAM);
+        game_buf[1] = heap_caps_malloc(COVER_MAX, MALLOC_CAP_SPIRAM);
+        if (!game_buf[0] || !game_buf[1]) return;
+    }
+    if (i == 0) {
+        game_seq = seq;
+        game_len = 0;
+    }
+    if (seq != game_seq) return;
+    const char *data = str(m, "data");
+    if (data) game_len += b64decode(data, game_buf[game_back] + game_len, COVER_MAX - game_len);
+    if (i == n - 1 && game_len == (size_t)(w * h * 2)) {
+        lvgl_port_lock(0);
+        ui_game_art(game_buf[game_back], w, h);
+        lvgl_port_unlock();
+        game_back ^= 1;
     }
 }
 

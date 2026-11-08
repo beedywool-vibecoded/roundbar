@@ -100,6 +100,19 @@ static int cover_scrim_pct(void)
     return 100 - (cJSON_IsNumber(opa) ? LV_CLAMP(0, opa->valueint, 100) : 50);
 }
 
+static void game_session_update(void);
+// out = in blended toward `surface` by pct %, in RGB565.
+static void blend_scrim(const uint16_t *in, uint16_t *out, size_t n, lv_color_t surface, int pct)
+{
+    int a = pct * 256 / 100, ia = 256 - a;
+    int sr = surface.red >> 3, sg = surface.green >> 2, sb = surface.blue >> 3;
+    for (size_t i = 0; i < n; i++) {
+        uint16_t v = in[i];
+        int r = ((v >> 11) * ia + sr * a) >> 8, g = (((v >> 5) & 63) * ia + sg * a) >> 8, b = ((v & 31) * ia + sb * a) >> 8;
+        out[i] = (uint16_t)(r << 11 | g << 5 | b);
+    }
+}
+
 // Bakes the surface-colored scrim into the artwork once, so a swipe only copies
 // one opaque image per frame instead of blending a full-screen layer on top.
 static void cover_prepare(lv_color_t surface, int scrim_pct)
@@ -110,15 +123,7 @@ static void cover_prepare(lv_color_t surface, int scrim_pct)
     size_t n = (size_t)cover_w * cover_h;
     if (!cover_blend) cover_blend = heap_caps_malloc(360 * 360 * 2, MALLOC_CAP_SPIRAM);
     if (!cover_blend || n > 360 * 360) return;
-    int a = scrim_pct * 256 / 100, ia = 256 - a;
-    int sr = surface.red >> 3, sg = surface.green >> 2, sb = surface.blue >> 3;
-    const uint16_t *in = (const uint16_t *)cover_src;
-    uint16_t *out = (uint16_t *)cover_blend;
-    for (size_t i = 0; i < n; i++) {
-        uint16_t v = in[i];
-        int r = ((v >> 11) * ia + sr * a) >> 8, g = (((v >> 5) & 63) * ia + sg * a) >> 8, b = ((v & 31) * ia + sb * a) >> 8;
-        out[i] = (uint16_t)(r << 11 | g << 5 | b);
-    }
+    blend_scrim((const uint16_t *)cover_src, (uint16_t *)cover_blend, n, surface, scrim_pct);
     cover_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
     cover_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
     cover_dsc.header.w = cover_w;
@@ -1640,6 +1645,7 @@ static void clock_tick(lv_timer_t *t)
 {
     if (power == OFF || power == ASLEEP) return;
     if (cur_page >= 0 && cur_page < page_count) clock_update(&clocks[cur_page]);
+    game_session_update();
 }
 
 void ui_time(cJSON *m)
@@ -2353,6 +2359,217 @@ void ui_notif_toast(cJSON *n)
 }
 
 
+
+// ---- page: OBS ---------------------------------------------------------------------------
+
+static lv_obj_t *obs_root, *obs_time;
+static char obs_scenes[8][64];
+static uint32_t obs_sig;
+
+static void obs_cmd(const char *request, const char *scene)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "t", "obsCmd");
+    cJSON_AddStringToObject(o, "request", request);
+    if (scene) cJSON_AddStringToObject(o, "scene", scene);
+    char *js = cJSON_PrintUnformatted(o);
+    if (js) usb_send_line(js);
+    free(js);
+    cJSON_Delete(o);
+}
+
+static void obs_record_event(lv_event_t *e) { obs_cmd("ToggleRecord", NULL); }
+static void obs_scene_event(lv_event_t *e) { obs_cmd("SetScene", lv_event_get_user_data(e)); }
+
+static void build_obs(lv_obj_t *tile)
+{
+    obs_root = box(tile);
+    lv_obj_set_size(obs_root, LCD_W, LCD_H);
+    lv_obj_center(obs_root);
+    lv_obj_remove_flag(obs_root, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *l = text(obs_root, F.body, P.on_sv, usb_host_listening() ? "OBS…" : "Connect the PC");
+    lv_obj_center(l);
+}
+
+static void obs_time_set(cJSON *st)
+{
+    cJSON *t = cJSON_GetObjectItem(st, "recTime");
+    int s = cJSON_IsNumber(t) ? t->valueint : 0;
+    if (s >= 3600) lv_label_set_text_fmt(obs_time, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60);
+    else lv_label_set_text_fmt(obs_time, "%d:%02d", s / 60, s % 60);
+}
+
+void ui_obs(cJSON *st)
+{
+    if (!obs_root) return;
+    // Rebuild only when something other than the recording clock changed:
+    // the daemon sends a tick every second while recording.
+    cJSON *rt = cJSON_DetachItemFromObject(st, "recTime");
+    char *js = cJSON_PrintUnformatted(st);
+    uint32_t sig = 2166136261u;
+    for (const char *p = js; p && *p; p++) sig = (sig ^ (uint8_t)*p) * 16777619u;
+    free(js);
+    if (rt) cJSON_AddItemToObject(st, "recTime", rt);
+    if (sig == obs_sig && obs_time) {
+        obs_time_set(st);
+        return;
+    }
+    obs_sig = sig;
+    obs_time = NULL;
+    lv_obj_clean(obs_root);
+    if (!cJSON_IsTrue(cJSON_GetObjectItem(st, "connected"))) {
+        lv_obj_t *ic = text(obs_root, F.icon_xl, P.on_sv, theme_icon("videocam"));
+        lv_obj_align(ic, LV_ALIGN_CENTER, 0, -26);
+        lv_obj_t *l = text(obs_root, F.body, P.on_sv, "Open OBS (set it up in the configurator)");
+        lv_obj_set_width(l, 220);
+        lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+        lv_obj_align(l, LV_ALIGN_CENTER, 0, 36);
+        return;
+    }
+    bool rec = cJSON_IsTrue(cJSON_GetObjectItem(st, "recording")), live_on = cJSON_IsTrue(cJSON_GetObjectItem(st, "streaming"));
+    const char *current = jstr(st, "current");
+    // scenes on the ring, like a shortcut page
+    cJSON *scenes = cJSON_GetObjectItem(st, "scenes");
+    int n = LV_MIN(cJSON_GetArraySize(scenes), 8);
+    for (int i = 0; i < n; i++) {
+        const char *name = cJSON_GetStringValue(cJSON_GetArrayItem(scenes, i));
+        if (!name) continue;
+        strlcpy(obs_scenes[i], name, sizeof(obs_scenes[0]));
+        bool on = current && !strcmp(current, name);
+        // symmetric around the top, leaving the bottom 60° free for the page dots
+        int step = n > 1 ? LV_MIN(300 / (n - 1), 360 / n) : 0;
+        int16_t ang = (int16_t)((270 - step * (n - 1) / 2 + i * step + 360) % 360);
+        lv_obj_t *b = mask_button(obs_root, SH_CIRCLE, 78, on ? P.pc : P.schh);
+        lv_obj_align(b, LV_ALIGN_CENTER, 128 * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, 128 * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
+        lv_obj_t *l = text(b, F.label, on ? P.on_pc : P.on_surface, name);
+        lv_obj_set_size(l, 68, 2 * lv_font_get_line_height(F.label));
+        lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_center(l);
+        lv_obj_add_event_cb(b, obs_scene_event, LV_EVENT_CLICKED, obs_scenes[i]);
+    }
+    // record button in the center
+    lv_obj_t *recb = mask_button(obs_root, shortcut_center_shape(), 104, rec ? P.ec : P.schh);
+    lv_obj_center(recb);
+    lv_obj_t *ri = text(recb, F.icon_l, rec ? P.on_ec : P.on_surface, theme_icon("videocam"));
+    lv_obj_align(ri, LV_ALIGN_CENTER, 0, rec ? -8 : 0);
+    if (rec) {
+        obs_time = text(recb, F.label, P.on_ec, "");
+        obs_time_set(st);
+        lv_obj_align(obs_time, LV_ALIGN_CENTER, 0, 24);
+    }
+    lv_obj_add_event_cb(recb, obs_record_event, LV_EVENT_CLICKED, NULL);
+    if (live_on) { // streaming: a small label at the top of the record button
+        lv_obj_t *lv = text(recb, F.label, rec ? P.on_ec : P.error, "● LIVE");
+        lv_obj_align(lv, LV_ALIGN_CENTER, 0, rec ? -36 : -30);
+        if (!rec) lv_obj_align(ri, LV_ALIGN_CENTER, 0, 6);
+    }
+}
+
+// ---- page: game --------------------------------------------------------------------------
+
+static struct {
+    lv_obj_t *art, *name, *session;
+    int64_t since;
+} gw;
+static uint8_t *game_blend;
+static const uint8_t *game_src;
+static int game_w, game_h;
+static lv_image_dsc_t game_dsc;
+
+static void game_art_apply(void)
+{
+    if (!game_src || !gw.art) return;
+    if (!game_blend) game_blend = heap_caps_malloc(360 * 360 * 2, MALLOC_CAP_SPIRAM);
+    if (!game_blend) return;
+    blend_scrim((const uint16_t *)game_src, (uint16_t *)game_blend, (size_t)game_w * game_h, P.surface, cover_scrim_pct());
+    game_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+    game_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+    game_dsc.header.w = game_w;
+    game_dsc.header.h = game_h;
+    game_dsc.header.stride = game_w * 2;
+    game_dsc.data_size = (uint32_t)game_w * game_h * 2;
+    game_dsc.data = game_blend;
+    lv_image_cache_drop(&game_dsc);
+    lv_image_set_src(gw.art, &game_dsc);
+    lv_obj_remove_flag(gw.art, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ui_game_art(const uint8_t *rgb565, int w, int h)
+{
+    game_src = rgb565;
+    game_w = w;
+    game_h = h;
+    game_art_apply();
+}
+
+static void game_session_update(void)
+{
+    if (!gw.session || !clk.valid || !gw.since) return;
+    int m = (int)((now_utc() - gw.since) / 60);
+    if (m < 60) lv_label_set_text_fmt(gw.session, "%d min", m);
+    else lv_label_set_text_fmt(gw.session, "%d h %02d min", m / 60, m % 60);
+}
+
+void ui_game(cJSON *msg)
+{
+    if (!gw.name) return;
+    const char *name = jstr(msg, "name");
+    bool playing = name && name[0];
+    lv_label_set_text(gw.name, playing ? name : "No game running");
+    cJSON *since = cJSON_GetObjectItem(msg, "since");
+    gw.since = playing && cJSON_IsNumber(since) ? (int64_t)since->valuedouble : 0;
+    if (!playing) lv_label_set_text(gw.session, "Start a Steam game");
+    game_session_update();
+}
+
+static void game_gauge(lv_obj_t *tile, const char *key, const char *caption, int x)
+{
+    if (live.nstat >= MAX_PAGES * 4) return;
+    lv_obj_t *holder = box(tile);
+    lv_obj_set_size(holder, 96, 96);
+    lv_obj_align(holder, LV_ALIGN_CENTER, x, 72);
+    lv_obj_remove_flag(holder, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *a = lv_arc_create(holder);
+    lv_obj_set_size(a, 96, 96);
+    lv_obj_center(a);
+    lv_arc_set_bg_angles(a, ARC_START, ARC_END);
+    lv_arc_set_range(a, 0, 100);
+    lv_arc_set_value(a, 0);
+    lv_obj_set_style_arc_width(a, 8, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(a, 8, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(a, P.schh, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(a, P.tertiary, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(a, true, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_remove_flag(a, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *v = text(holder, F.body, P.on_surface, "–");
+    lv_obj_align(v, LV_ALIGN_CENTER, 0, -4);
+    lv_obj_t *cap = text(holder, F.label, P.on_sv, caption);
+    lv_obj_align(cap, LV_ALIGN_CENTER, 0, 18);
+    live.stat[live.nstat].arc = a;
+    live.stat[live.nstat].val = v;
+    strlcpy(live.stat[live.nstat].key, key, sizeof(live.stat[0].key));
+    live.nstat++;
+}
+
+static void build_game(lv_obj_t *tile)
+{
+    gw.art = lv_image_create(tile);
+    lv_obj_center(gw.art);
+    lv_obj_remove_flag(gw.art, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(gw.art, LV_OBJ_FLAG_HIDDEN);
+    gw.name = text(tile, F.title, P.on_surface, usb_host_listening() ? "" : "Connect the PC");
+    lv_obj_set_width(gw.name, 240);
+    lv_label_set_long_mode(gw.name, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_align(gw.name, LV_ALIGN_CENTER, 0, -54);
+    gw.session = text(tile, F.body, P.on_sv, "");
+    lv_obj_align(gw.session, LV_ALIGN_CENTER, 0, -22);
+    game_gauge(tile, "gpu", "GPU", -54);
+    game_gauge(tile, "gpuTemp", "GPU °C", 54);
+    if (game_src) game_art_apply();
+}
+
 // ---- page: Discord voice --------------------------------------------------------------------
 
 static lv_obj_t *dc_root;
@@ -2554,6 +2771,9 @@ static void build(bool animate)
     mix_w.sliding = false;
     clip_col = NULL;
     dc_root = NULL;
+    obs_root = obs_time = NULL;
+    obs_sig = 0;
+    memset(&gw, 0, sizeof(gw));
     strlcpy(cur_profile, jstr(prof, "id") ?: "default", sizeof(cur_profile));
     memset(&live, 0, sizeof(live));
     memset(&media_live, 0, sizeof(media_live));
@@ -2598,6 +2818,8 @@ static void build(bool animate)
         else if (!strcmp(k, "mixer")) build_mixer(tile);
         else if (!strcmp(k, "clipboard")) build_clipboard(tile);
         else if (!strcmp(k, "discord")) build_discord(tile);
+        else if (!strcmp(k, "obs")) build_obs(tile);
+        else if (!strcmp(k, "game")) build_game(tile);
         else build_radial(tile, pages[i]);
     }
 
