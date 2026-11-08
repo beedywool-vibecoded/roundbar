@@ -523,7 +523,11 @@ func (d *Daemon) syncAssets() {
 	if !connected {
 		return
 	}
-	raw, ok := d.request(map[string]any{"t": "assetsWant"}, "assets", 5*time.Second)
+	var raw json.RawMessage
+	ok := false
+	for try := 0; try < 3 && !ok; try++ { // right after connecting the device may still be building its screen
+		raw, ok = d.request(map[string]any{"t": "assetsWant"}, "assets", 5*time.Second)
+	}
 	if !ok {
 		log.Printf("assets: device did not answer")
 		return
