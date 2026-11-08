@@ -69,6 +69,8 @@ the device keeps a copy in flash so it works without the daemon.
     "screensaver": "off",      // after screensaverAfter s idle: "off" | "clock" | "photos" (dimmed); replaces the dim step
     "screensaverAfter": 60,    // seconds, 10..3600
     "screensaverImages": [],   // asset ids for "photos" (stills only, ≤ 20), synced like image pages (cover fit)
+    "notifications": true,     // pull up from the bottom edge for the notification panel; missing = true
+    "notifToast": true,        // show new notifications briefly on the device; missing = true
     "followPc": true           // screen goes black ~8 s after the PC side disappears (shutdown, daemon stopped,
                                // USB suspend) and wakes when it comes back; missing = true
   },
@@ -97,6 +99,9 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `dial` | `icon`, `label`, `source: "volume"\|"mic"\|"brightness"\|"custom"`, `step?: number` (custom only, 1..20), `onUp?: Action`, `onDown?: Action` (custom only) | one big value arc, drag along the edge |
 | `clock` | `style?: "analog"\|"digital"` (default analog), `weather?: bool` (default true, needs top-level `weather`), `zones?: [{ "label": "Tokyo", "tz": "Asia/Tokyo" }]` (0..3 world clocks, IANA names) | home time large, weather below, world clocks as small dials/rows |
 | `timer` | `minutes?: number[]` (1..4 presets, 1..180, default [5, 15, 25]), `pomodoro?: bool`, `label?` | turn the bezel ring to set minutes, tap the center to start/pause, hold to reset; the ring empties as time runs out; pomodoro alternates 25 min work / 5 min break (4th break 15). At the end the screen pulses and the PC shows a notification. |
+| `mixer` | – | output device chips (tap to switch) and one slider row per app playing sound (icon, name, volume; tap the icon to mute); scrolls vertically |
+| `windows` | – | icons of the open windows on a ring (most recent first, up to 8); tap focuses the window |
+| `clipboard` | – | the last 10 copied texts as a scrolling list; tap one to paste it into the focused app |
 | `touchpad` | `speed?: number` (1..10, default 5) | the device acts as a USB mouse: drag moves the cursor, tap = left click, long-press = right click, double-tap then drag = drag & drop, sliding along the outer ring scrolls. A sideways swipe starting on the ring changes page; a downward swipe from the top of the ring opens quick settings. |
 | `image` | `images: string[]` (asset ids, 1..20; a `.gif` must be alone), `interval?: number` (seconds, 2..3600, default 8), `fit?: "cover"\|"contain"` (default cover) | full-screen picture; several stills cross-fade as a slideshow; a GIF plays |
 
@@ -144,6 +149,8 @@ Swiping down opens a quick settings panel on the device with a row of small numb
 current profile) and two tiles:
 - **Screen off**: backlight off plus panel display-off/sleep: no light at all. A double tap wakes it (single taps
   are ignored). Separate from the idle `sleepAfter`, which still wakes on a single tap.
+- Pulling up from the **bottom** edge opens the notification panel (mirrored GNOME notifications, newest first,
+  scrollable): tap one to open it on the PC, swipe it sideways to dismiss, "Clear all" at the end.
 - **Auto-switch**: when off, `profile` messages from the PC are ignored and a pause badge shows at the top. Stored
   on the device, so it stays off until turned back on.
 
@@ -172,6 +179,10 @@ partition (see §2).
 | `dial` | `source: "volume"\|"mic"`, `value: 0..100` | edge drag, throttled to ≤ 20 Hz. Brightness dials act on the device only; custom dials run their `onUp`/`onDown` actions on the device (daemon-side ones arrive as `action`). |
 | `ack` | `id`, `ok: bool`, `err?` | reply to a PC message that carried an `id` |
 | `assets` | `have: [ids]`, `free` | reply to `assetsWant` |
+| `activate` | `id` | focus a window from a `windows` page |
+| `mixerSet` | `id`, `vol` (0..100) / `mixerMute`: `id` / `output`: `id` | per-app volume, mute, default output |
+| `paste` | `i` | paste clipboard entry i (the daemon puts it on the clipboard, then the device types ctrl+v) |
+| `notifOpen` / `notifDismiss` | `id` / `notifClear` | act on notifications |
 | `timerDone` | `label`, `phase?: "work"\|"break"` | a timer page finished: the daemon shows a desktop notification with a sound |
 | `log` | `msg` | debug |
 
@@ -194,6 +205,12 @@ partition (see §2).
 | `bootloader` | – | reboot into the ROM USB download mode (for flashing) |
 | `time` | `epoch` (unix s), `offset` (local UTC offset, s), `zones: {tz: offset}` | on connect and every hour (DST); the device keeps time from it |
 | `weather` | `city`, `temp`, `code` (WMO), `hi`, `lo`, `units`, `day: bool` | on connect and every 30 min while a clock page or the clock screensaver can show |
+| `icon` | `name`, `w`, `h`, `data` (base64 RGB565A8: RGB565 LE plane then A8 plane) | app icons for mixer / windows / notifications, sent before the list that uses them; the device caches them by name until reboot |
+| `windows` | `list: [{id, app, title, icon}]` | while a `windows` page is visible, on change |
+| `mixer` | `apps: [{id, name, icon, vol, muted}]`, `outputs: [{id, name, active}]` | while a `mixer` page is visible, on change |
+| `clips` | `list: [string]` (newest first, ≤ 10, each ≤ 200 chars) | while a `clipboard` page is visible, on change |
+| `notifs` | `list: [{id, app, title, body, icon}]` (newest first, ≤ 20) | on connect and on every change, if `device.notifications` |
+| `notif` | `id, app, title, body, icon` | a new notification (for the toast), followed by `notifs` |
 | `micInUse` | `on: bool` | whenever capture streams start/stop (default source, excluding monitors) |
 | `assetsWant` | `id` | device replies `{"t":"assets","have":[ids],"free":bytes}` |
 | `asset` | `name`, `n`, `i`, `data` (base64, ≤ 32 KiB raw per chunk), `id` (ack) | one file in `n` chunks; every chunk is acked, the file is renamed into place after the last |

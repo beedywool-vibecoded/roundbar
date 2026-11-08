@@ -68,6 +68,7 @@ type Daemon struct {
 	coverSeq  int
 
 	clockKick         chan struct{}
+	iconsSent         map[string]bool
 	micInUse, micSent bool
 
 	statsStop chan struct{}
@@ -76,7 +77,7 @@ type Daemon struct {
 }
 
 func New() *Daemon {
-	return &Daemon{clockKick: make(chan struct{}, 1), acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
+	return &Daemon{clockKick: make(chan struct{}, 1), iconsSent: map[string]bool{}, acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
 }
 
 func (d *Daemon) Run() error {
@@ -133,6 +134,7 @@ func (d *Daemon) deviceLoop() {
 		d.port = p
 		d.sentPro, d.lastVol, d.lastMic, d.artSent = "", "", "", ""
 		d.micSent = false
+		d.iconsSent = map[string]bool{}
 		d.mu.Unlock()
 		d.notify()
 		_ = p.Send(map[string]any{"t": "hello"})
@@ -223,6 +225,7 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		d.notify()
 		d.kickClock()
 		go d.sendMicInUse()
+		go d.sendNotifs("")
 	case "view":
 		var v View
 		_ = json.Unmarshal(m.Raw, &v)
@@ -239,6 +242,8 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		if json.Unmarshal(m.Raw, &a) == nil {
 			go d.run(a.Action)
 		}
+	case "activate", "mixerSet", "mixerMute", "output", "paste", "notifOpen", "notifDismiss", "notifClear":
+		d.onShellMsg(m.Raw, m.T)
 	case "timerDone":
 		var v struct {
 			Label string `json:"label"`
@@ -320,6 +325,8 @@ func (d *Daemon) onView(v View) {
 		d.sendAudio()
 	case "dial":
 		d.sendAudio()
+	default:
+		d.onShellView(v.Kind)
 	}
 }
 
@@ -369,6 +376,18 @@ func (d *Daemon) desktopLoop() {
 		select {
 		case f := <-d.desk.FocusChanged:
 			d.onFocus(f)
+		case <-d.desk.WindowsChanged:
+			if d.viewKind() == "windows" {
+				d.sendWindows()
+			}
+		case <-d.desk.ClipsChanged:
+			if d.viewKind() == "clipboard" {
+				d.sendClips()
+			}
+		case <-d.desk.NotifsChanged:
+			d.sendNotifs("")
+		case id := <-d.desk.NotifNew:
+			d.sendNotifs(id)
 		case <-d.desk.MediaChanged:
 			d.mu.Lock()
 			on := d.view.Awake && d.view.Kind == "media"
@@ -608,6 +627,10 @@ func (d *Daemon) audioLoop() {
 			select {
 			case <-a.Changed:
 				d.sendAudio()
+			case <-a.Streams:
+				if d.viewKind() == "mixer" {
+					d.sendMixer()
+				}
 			case <-a.Capture:
 				d.mu.Lock()
 				on := d.cfg.Device.MicIndicator == nil || *d.cfg.Device.MicIndicator

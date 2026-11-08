@@ -67,6 +67,8 @@ type Device struct {
 	FollowPc          *bool    `json:"followPc,omitempty"`
 	EdgeDoubleTap     string   `json:"edgeDoubleTap,omitempty"`
 	MicIndicator      *bool    `json:"micIndicator,omitempty"`
+	Notifications     *bool    `json:"notifications,omitempty"`
+	NotifToast        *bool    `json:"notifToast,omitempty"`
 	Screensaver       string   `json:"screensaver,omitempty"`
 	ScreensaverAfter  int      `json:"screensaverAfter,omitempty"`
 	ScreensaverImages []string `json:"screensaverImages,omitempty"`
@@ -403,6 +405,7 @@ func (pg *Page) validate(pp string, pageIDs map[string]bool) error {
 				return fail(pp+".shapes."+k, "unknown shape %q", v)
 			}
 		}
+	case "mixer", "windows", "clipboard":
 	case "clock":
 		if !oneOf(pg.Style, "", "analog", "digital") {
 			return fail(pp+".style", "must be analog or digital")

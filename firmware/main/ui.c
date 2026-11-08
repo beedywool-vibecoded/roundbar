@@ -1973,6 +1973,453 @@ static void saver_show(const char *mode)
     board_backlight(LV_MAX(5, store_brightness() / 2));
 }
 
+
+// ---- app icons pushed by the daemon ---------------------------------------------------------
+
+static struct {
+    char name[96];
+    lv_image_dsc_t dsc;
+} icon_cache[64];
+static int nicons;
+
+static const lv_image_dsc_t *icon_get(const char *name)
+{
+    for (int i = 0; name && i < nicons; i++)
+        if (!strcmp(icon_cache[i].name, name)) return &icon_cache[i].dsc;
+    return NULL;
+}
+
+void ui_icon(const char *name, int w, int h, const uint8_t *data, size_t len)
+{
+    if (!name || len != (size_t)w * h * 3 || icon_get(name) || nicons >= 64) return;
+    uint8_t *px = heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
+    if (!px) return;
+    memcpy(px, data, len);
+    lv_image_dsc_t *d = &icon_cache[nicons].dsc;
+    strlcpy(icon_cache[nicons++].name, name, sizeof(icon_cache[0].name));
+    memset(d, 0, sizeof(*d));
+    d->header.magic = LV_IMAGE_HEADER_MAGIC;
+    d->header.cf = LV_COLOR_FORMAT_RGB565A8;
+    d->header.w = w;
+    d->header.h = h;
+    d->header.stride = w * 2;
+    d->data = px;
+    d->data_size = len;
+}
+
+// An app icon, or a glyph when the PC had none.
+static lv_obj_t *app_icon(lv_obj_t *parent, const char *name, const char *fallback, lv_color_t fg, int zoom256)
+{
+    const lv_image_dsc_t *d = icon_get(name);
+    if (d) {
+        lv_obj_t *im = lv_image_create(parent);
+        lv_image_set_src(im, d);
+        if (zoom256 != 256) lv_image_set_scale(im, zoom256);
+        lv_obj_remove_flag(im, LV_OBJ_FLAG_CLICKABLE);
+        return im;
+    }
+    return text(parent, F.icon_m, fg, theme_icon(fallback));
+}
+
+static void send_simple(const char *t, const char *key, const char *sval, int ival)
+{
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "t", t);
+    if (sval) cJSON_AddStringToObject(o, key, sval);
+    else if (key) cJSON_AddNumberToObject(o, key, ival);
+    char *js = cJSON_PrintUnformatted(o);
+    if (js) usb_send_line(js);
+    free(js);
+    cJSON_Delete(o);
+}
+
+// A vertically scrolling column inside the round screen.
+static lv_obj_t *scroll_column(lv_obj_t *tile, int w, int h, int y)
+{
+    lv_obj_t *col = lv_obj_create(tile);
+    lv_obj_remove_style_all(col);
+    lv_obj_set_size(col, w, h);
+    lv_obj_align(col, LV_ALIGN_CENTER, 0, y);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(col, 8, 0);
+    lv_obj_set_style_pad_ver(col, 40, 0);
+    lv_obj_set_scroll_dir(col, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(col, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_flag(col, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    return col;
+}
+
+static lv_obj_t *card(lv_obj_t *parent, int w)
+{
+    lv_obj_t *c = box(parent);
+    lv_obj_set_size(c, w, LV_SIZE_CONTENT);
+    lv_obj_set_style_radius(c, 24, 0);
+    lv_obj_set_style_bg_color(c, P.sch, 0);
+    lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(c, 12, 0);
+    lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(c, lv_color_mix(lv_color_white(), P.sch, 25), LV_STATE_PRESSED);
+    return c;
+}
+
+// ---- page: windows --------------------------------------------------------------------------
+
+static struct {
+    lv_obj_t *ring, *title;
+} win_w;
+
+static void window_event(lv_event_t *e)
+{
+    const char *id = lv_event_get_user_data(e);
+    send_simple("activate", "id", id, 0);
+}
+
+static void build_windows(lv_obj_t *tile)
+{
+    win_w.ring = box(tile);
+    lv_obj_set_size(win_w.ring, LCD_W, LCD_H);
+    lv_obj_center(win_w.ring);
+    lv_obj_remove_flag(win_w.ring, LV_OBJ_FLAG_CLICKABLE);
+    win_w.title = text(tile, F.body, P.on_sv, usb_host_listening() ? "" : "Connect the PC");
+    lv_obj_set_width(win_w.title, 160);
+    lv_label_set_long_mode(win_w.title, LV_LABEL_LONG_DOT);
+    lv_obj_center(win_w.title);
+}
+
+static char win_ids[8][16];
+
+void ui_windows(cJSON *list)
+{
+    if (!win_w.ring) return;
+    lv_obj_clean(win_w.ring);
+    int n = LV_MIN(cJSON_GetArraySize(list), 8);
+    for (int i = 0; i < n; i++) {
+        cJSON *w = cJSON_GetArrayItem(list, i);
+        strlcpy(win_ids[i], jstr(w, "id") ?: "", sizeof(win_ids[0]));
+        int16_t ang = (int16_t)(270 + i * 360 / LV_MAX(n, 1)) % 360;
+        lv_obj_t *b = box(win_w.ring);
+        lv_obj_set_size(b, 72, 72);
+        lv_obj_set_style_radius(b, 36, 0);
+        lv_obj_set_style_bg_color(b, i == 0 ? P.pc : P.schh, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_bg_color(b, lv_color_mix(lv_color_white(), P.schh, 30), LV_STATE_PRESSED);
+        squish_on_press(b, 72);
+        lv_obj_align(b, LV_ALIGN_CENTER, 124 * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, 124 * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
+        lv_obj_t *ic = app_icon(b, jstr(w, "icon"), "select_window", P.on_surface, 256);
+        lv_obj_center(ic);
+        lv_obj_add_event_cb(b, window_event, LV_EVENT_CLICKED, win_ids[i]);
+    }
+    cJSON *first = cJSON_GetArrayItem(list, 0);
+    lv_label_set_text(win_w.title, first ? (jstr(first, "title") ?: "") : "No windows");
+}
+
+// ---- page: mixer ----------------------------------------------------------------------------
+
+static struct {
+    lv_obj_t *col;
+    bool sliding;
+    char ids[12][16];
+    char outs[6][96];
+    uint32_t last_send;
+} mix_w;
+
+static void mixer_slider_event(lv_event_t *e)
+{
+    lv_event_code_t c = lv_event_get_code(e);
+    const char *id = lv_event_get_user_data(e);
+    lv_obj_t *sl = lv_event_get_target_obj(e);
+    if (c == LV_EVENT_PRESSED) mix_w.sliding = true;
+    if (c == LV_EVENT_VALUE_CHANGED && lv_tick_get() - mix_w.last_send < 80) return; // ≤ ~12 updates/s
+    if (c == LV_EVENT_VALUE_CHANGED || c == LV_EVENT_RELEASED) {
+        mix_w.last_send = lv_tick_get();
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddStringToObject(o, "t", "mixerSet");
+        cJSON_AddStringToObject(o, "id", id);
+        cJSON_AddNumberToObject(o, "vol", lv_slider_get_value(sl));
+        char *js = cJSON_PrintUnformatted(o);
+        if (js) usb_send_line(js);
+        free(js);
+        cJSON_Delete(o);
+    }
+    if (c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST) mix_w.sliding = false;
+}
+
+static void mixer_mute_event(lv_event_t *e) { send_simple("mixerMute", "id", lv_event_get_user_data(e), 0); }
+static void mixer_output_event(lv_event_t *e) { send_simple("output", "id", lv_event_get_user_data(e), 0); }
+
+static void build_mixer(lv_obj_t *tile)
+{
+    mix_w.col = scroll_column(tile, 280, LCD_H, 0);
+    lv_obj_t *l = text(mix_w.col, F.body, P.on_sv, usb_host_listening() ? "" : "Connect the PC");
+    (void)l;
+}
+
+void ui_mixer(cJSON *m)
+{
+    if (!mix_w.col || mix_w.sliding) return;
+    int32_t scroll = lv_obj_get_scroll_y(mix_w.col);
+    lv_obj_clean(mix_w.col);
+    lv_obj_t *head = text(mix_w.col, F.body, P.on_sv, "Volume mixer");
+    (void)head;
+    // outputs
+    cJSON *outs = cJSON_GetObjectItem(m, "outputs"), *o;
+    lv_obj_t *row = box(mix_w.col);
+    lv_obj_set_size(row, 260, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(row, 6, 0);
+    int k = 0;
+    cJSON_ArrayForEach(o, outs)
+    {
+        if (k >= 6) break;
+        strlcpy(mix_w.outs[k], jstr(o, "id") ?: "", sizeof(mix_w.outs[0]));
+        bool act = cJSON_IsTrue(cJSON_GetObjectItem(o, "active"));
+        lv_obj_t *chip = box(row);
+        lv_obj_set_size(chip, LV_SIZE_CONTENT, 32);
+        lv_obj_set_style_pad_hor(chip, 12, 0);
+        lv_obj_set_style_radius(chip, 16, 0);
+        lv_obj_set_style_bg_color(chip, act ? P.secc : P.schh, 0);
+        lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+        lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_t *cl = text(chip, F.label, act ? P.on_secc : P.on_surface, jstr(o, "name") ?: "");
+        lv_obj_set_style_max_width(cl, 200, 0);
+        lv_label_set_long_mode(cl, LV_LABEL_LONG_DOT);
+        lv_obj_center(cl);
+        lv_obj_add_event_cb(chip, mixer_output_event, LV_EVENT_CLICKED, mix_w.outs[k]);
+        k++;
+    }
+    // apps
+    cJSON *apps = cJSON_GetObjectItem(m, "apps"), *a;
+    k = 0;
+    cJSON_ArrayForEach(a, apps)
+    {
+        if (k >= 12) break;
+        strlcpy(mix_w.ids[k], jstr(a, "id") ?: "", sizeof(mix_w.ids[0]));
+        bool muted = cJSON_IsTrue(cJSON_GetObjectItem(a, "muted"));
+        lv_obj_t *c = card(mix_w.col, 260);
+        lv_obj_remove_flag(c, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_pad_all(c, 10, 0);
+        lv_obj_t *ib = box(c);
+        lv_obj_set_size(ib, 44, 44);
+        lv_obj_set_style_radius(ib, 22, 0);
+        lv_obj_set_style_bg_color(ib, muted ? P.ec : P.schh, 0);
+        lv_obj_set_style_bg_opa(ib, LV_OPA_COVER, 0);
+        lv_obj_add_flag(ib, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_t *ic = muted ? text(ib, F.icon_s, P.on_ec, theme_icon("volume_off"))
+                             : app_icon(ib, jstr(a, "icon"), "music_note", P.on_surface, 200);
+        lv_obj_center(ic);
+        lv_obj_add_event_cb(ib, mixer_mute_event, LV_EVENT_CLICKED, mix_w.ids[k]);
+        lv_obj_t *nm = text(c, F.label, P.on_surface, jstr(a, "name") ?: "");
+        lv_obj_set_width(nm, 180);
+        lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_align(nm, LV_TEXT_ALIGN_LEFT, 0);
+        lv_obj_align(nm, LV_ALIGN_TOP_LEFT, 54, 0);
+        lv_obj_t *sl = lv_slider_create(c);
+        lv_obj_set_size(sl, 176, 10);
+        lv_obj_align(sl, LV_ALIGN_TOP_LEFT, 56, 28);
+        lv_slider_set_range(sl, 0, 100);
+        cJSON *v = cJSON_GetObjectItem(a, "vol");
+        lv_slider_set_value(sl, cJSON_IsNumber(v) ? v->valueint : 0, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(sl, P.schh, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(sl, P.primary, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(sl, P.primary, LV_PART_KNOB);
+        lv_obj_set_style_pad_all(sl, 4, LV_PART_KNOB);
+        lv_obj_set_ext_click_area(sl, 12);
+        lv_obj_add_event_cb(sl, mixer_slider_event, LV_EVENT_ALL, mix_w.ids[k]);
+        k++;
+    }
+    if (k == 0) text(mix_w.col, F.body, P.on_sv, "Nothing is playing");
+    lv_obj_update_layout(mix_w.col);
+    lv_obj_scroll_to_y(mix_w.col, scroll, LV_ANIM_OFF);
+}
+
+// ---- page: clipboard ------------------------------------------------------------------------
+
+static lv_obj_t *clip_col;
+
+static void clip_event(lv_event_t *e)
+{
+    send_simple("paste", "i", NULL, (int)(intptr_t)lv_event_get_user_data(e));
+    show_bubble("Pasted");
+}
+
+static void build_clipboard(lv_obj_t *tile)
+{
+    clip_col = scroll_column(tile, 280, LCD_H, 0);
+    text(clip_col, F.body, P.on_sv, usb_host_listening() ? "" : "Connect the PC");
+}
+
+void ui_clips(cJSON *list)
+{
+    if (!clip_col) return;
+    lv_obj_clean(clip_col);
+    text(clip_col, F.body, P.on_sv, "Clipboard");
+    int i = 0;
+    cJSON *it;
+    cJSON_ArrayForEach(it, list)
+    {
+        if (!cJSON_IsString(it) || i >= 10) continue;
+        lv_obj_t *c = card(clip_col, 250);
+        lv_obj_t *l = text(c, F.label, P.on_surface, it->valuestring);
+        lv_obj_set_width(l, 226);
+        lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_LEFT, 0);
+        lv_obj_set_style_max_height(l, 40, 0);
+        lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+        lv_obj_add_event_cb(c, clip_event, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        i++;
+    }
+    if (i == 0) text(clip_col, F.body, P.on_sv, "Nothing copied yet");
+}
+
+// ---- notification panel (pull up from the bottom) -------------------------------------------
+
+static cJSON *notifs; // last list from the PC
+static lv_obj_t *np, *np_col;
+static char np_ids[20][12];
+
+static void np_close(void)
+{
+    if (!np || lv_obj_has_flag(np, LV_OBJ_FLAG_HIDDEN)) return;
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, np);
+    lv_anim_set_values(&a, lv_obj_get_y(np), LCD_H);
+    lv_anim_set_duration(&a, 220);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+    lv_anim_set_exec_cb(&a, qs_y_exec);
+    lv_anim_set_completed_cb(&a, qs_hide_done);
+    lv_anim_start(&a);
+}
+
+static void np_fill(void);
+
+static void np_card_event(lv_event_t *e)
+{
+    const char *id = lv_event_get_user_data(e);
+    lv_event_code_t c = lv_event_get_code(e);
+    if (c == LV_EVENT_GESTURE) {
+        lv_dir_t d = lv_indev_get_gesture_dir(lv_indev_active());
+        if (d == LV_DIR_LEFT || d == LV_DIR_RIGHT) {
+            send_simple("notifDismiss", "id", id, 0);
+            lv_obj_t *card_obj = lv_event_get_current_target_obj(e);
+            lv_obj_add_flag(card_obj, LV_OBJ_FLAG_HIDDEN); // the refreshed list follows
+            if (indev) lv_indev_wait_release(indev);
+        }
+    } else if (c == LV_EVENT_SHORT_CLICKED) {
+        send_simple("notifOpen", "id", id, 0);
+        np_close();
+    }
+}
+
+static void np_event(lv_event_t *e)
+{
+    lv_event_code_t c = lv_event_get_code(e);
+    if (c == LV_EVENT_GESTURE && lv_indev_get_gesture_dir(lv_indev_active()) == LV_DIR_BOTTOM) np_close();
+    else if (c == LV_EVENT_CLICKED && (intptr_t)lv_event_get_user_data(e) == 1) {
+        send_simple("notifClear", NULL, NULL, 0);
+        np_close();
+    }
+}
+
+static void np_fill(void)
+{
+    if (!np_col) return;
+    lv_obj_clean(np_col);
+    text(np_col, F.body, P.on_sv, "Notifications");
+    int i = 0;
+    cJSON *n;
+    cJSON_ArrayForEach(n, notifs)
+    {
+        if (i >= 20) break;
+        strlcpy(np_ids[i], jstr(n, "id") ?: "", sizeof(np_ids[0]));
+        lv_obj_t *c = card(np_col, 270);
+        lv_obj_remove_flag(c, LV_OBJ_FLAG_GESTURE_BUBBLE);
+        lv_obj_t *ic = app_icon(c, jstr(n, "icon"), "notifications", P.on_sv, 180);
+        lv_obj_align(ic, LV_ALIGN_TOP_LEFT, -2, -4);
+        lv_obj_t *app = text(c, F.label, P.on_sv, jstr(n, "app") ?: "");
+        lv_obj_align(app, LV_ALIGN_TOP_LEFT, 40, 0);
+        lv_obj_t *ti = text(c, F.body, P.on_surface, jstr(n, "title") ?: "");
+        lv_obj_set_width(ti, 246);
+        lv_label_set_long_mode(ti, LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_align(ti, LV_TEXT_ALIGN_LEFT, 0);
+        lv_obj_align(ti, LV_ALIGN_TOP_LEFT, 0, 26);
+        const char *body = jstr(n, "body");
+        if (body && body[0]) {
+            lv_obj_t *bo = text(c, F.label, P.on_sv, body);
+            lv_obj_set_width(bo, 246);
+            lv_obj_set_style_max_height(bo, 38, 0);
+            lv_label_set_long_mode(bo, LV_LABEL_LONG_DOT);
+            lv_obj_set_style_text_align(bo, LV_TEXT_ALIGN_LEFT, 0);
+            lv_obj_align(bo, LV_ALIGN_TOP_LEFT, 0, 50);
+        }
+        lv_obj_add_event_cb(c, np_card_event, LV_EVENT_SHORT_CLICKED, np_ids[i]);
+        lv_obj_add_event_cb(c, np_card_event, LV_EVENT_GESTURE, np_ids[i]);
+        i++;
+    }
+    if (i == 0) {
+        text(np_col, F.body, P.on_sv, "No notifications");
+    } else {
+        lv_obj_t *clear = box(np_col);
+        lv_obj_set_size(clear, 140, 40);
+        lv_obj_set_style_radius(clear, 20, 0);
+        lv_obj_set_style_bg_color(clear, P.secc, 0);
+        lv_obj_set_style_bg_opa(clear, LV_OPA_COVER, 0);
+        lv_obj_add_flag(clear, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_t *cl = text(clear, F.label, P.on_secc, "Clear all");
+        lv_obj_center(cl);
+        lv_obj_add_event_cb(clear, np_event, LV_EVENT_CLICKED, (void *)1);
+    }
+}
+
+static void np_open(void)
+{
+    if (power != AWAKE && power != DIM) return;
+    if (np) lv_obj_delete(np);
+    np = box(lv_layer_top());
+    lv_obj_set_size(np, LCD_W, LCD_H);
+    lv_obj_set_style_radius(np, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(np, P.sc, 0);
+    lv_obj_set_style_bg_opa(np, LV_OPA_COVER, 0);
+    lv_obj_add_flag(np, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(np, np_event, LV_EVENT_GESTURE, NULL);
+    np_col = scroll_column(np, 290, LCD_H, 0);
+    np_fill();
+    lv_obj_set_y(np, LCD_H);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, np);
+    lv_anim_set_values(&a, LCD_H, 0);
+    lv_anim_set_duration(&a, 280);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, qs_y_exec);
+    lv_anim_start(&a);
+    if (indev) {
+        arc_mode = ARC_IDLE;
+        dragging = false;
+        tp.mode = TP_IDLE;
+        lv_indev_reset(indev, NULL);
+        lv_indev_wait_release(indev);
+    }
+}
+
+void ui_notifs(cJSON *list)
+{
+    cJSON_Delete(notifs);
+    notifs = cJSON_Duplicate(list, true);
+    if (np && !lv_obj_has_flag(np, LV_OBJ_FLAG_HIDDEN)) np_fill();
+}
+
+void ui_notif_toast(cJSON *n)
+{
+    if (power == OFF || power == ASLEEP) return;
+    char buf[120];
+    const char *app = jstr(n, "app"), *title = jstr(n, "title");
+    snprintf(buf, sizeof(buf), "%s%s%s", app ?: "", app && title ? " · " : "", title ?: "");
+    ui_toast(buf);
+}
+
 // ---- page dots ---------------------------------------------------------------------
 
 static void dot_width_exec(void *o, int32_t v) { lv_obj_set_width(o, v); }
@@ -2031,6 +2478,10 @@ static void build(bool animate)
     if (cJSON_IsObject(ppal)) theme_parse_palette(ppal, &P);
     for (int i = 0; i < MAX_PAGES; i++) clocks[i].used = false;
     memset(&tw, 0, sizeof(tw));
+    win_w.ring = NULL;
+    mix_w.col = NULL;
+    mix_w.sliding = false;
+    clip_col = NULL;
     strlcpy(cur_profile, jstr(prof, "id") ?: "default", sizeof(cur_profile));
     memset(&live, 0, sizeof(live));
     memset(&media_live, 0, sizeof(media_live));
@@ -2071,6 +2522,9 @@ static void build(bool animate)
         else if (!strcmp(k, "touchpad")) build_touchpad(tile, pages[i]);
         else if (!strcmp(k, "clock")) build_clock(tile, pages[i], i);
         else if (!strcmp(k, "timer")) build_timer(tile, pages[i]);
+        else if (!strcmp(k, "windows")) build_windows(tile);
+        else if (!strcmp(k, "mixer")) build_mixer(tile);
+        else if (!strcmp(k, "clipboard")) build_clipboard(tile);
         else build_radial(tile, pages[i]);
     }
 
@@ -2319,10 +2773,11 @@ static void power_tick(lv_timer_t *t)
 
 static lv_indev_read_cb_t touch_read_orig;
 static struct {
-    bool down, armed;
+    bool down, armed, armed_up;
     lv_point_t p0, last;
     uint32_t t0;
 } pull;
+static void np_open_async(void *arg) { np_open(); }
 static struct {
     int side;      // -1 left, 1 right, 0 none
     uint32_t when; // release time of the previous edge tap
@@ -2390,13 +2845,20 @@ static void touch_read_wrap(lv_indev_t *in, lv_indev_data_t *d)
         pull.down = true;
         pull.p0 = p;
         pull.t0 = lv_tick_get();
-        pull.armed = p.y < 64 && (power == AWAKE || power == DIM) && (!qs || lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN));
+        bool panels_closed = (!qs || lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN)) && (!np || lv_obj_has_flag(np, LV_OBJ_FLAG_HIDDEN));
+        bool awake = power == AWAKE || power == DIM;
+        pull.armed = p.y < 64 && awake && panels_closed;
+        pull.armed_up = p.y > LCD_H - 64 && awake && panels_closed && store_get_bool("notifications", true);
         return;
     }
     int32_t dy = p.y - pull.p0.y, dx = LV_ABS(p.x - pull.p0.x);
     if (pull.armed && dy > 50 && dx < dy) {
         pull.armed = false;
         lv_async_call(pull_open_async, NULL);
+    }
+    if (pull.armed_up && -dy > 50 && dx < -dy) {
+        pull.armed_up = false;
+        lv_async_call(np_open_async, NULL);
     }
 }
 

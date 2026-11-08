@@ -3,6 +3,7 @@
 package audio
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -26,6 +27,8 @@ type Audio struct {
 	Changed chan struct{}
 	// Capture receives a value (coalesced) whenever recording streams come or go.
 	Capture chan struct{}
+	// Streams: playback streams or outputs changed (mixer pages).
+	Streams chan struct{}
 }
 
 func Connect() (*Audio, error) {
@@ -34,7 +37,7 @@ func Connect() (*Audio, error) {
 		return nil, err
 	}
 	c.SetTimeout(2 * time.Second)
-	a := &Audio{c: c, closed: make(chan struct{}), Changed: make(chan struct{}, 1), Capture: make(chan struct{}, 1)}
+	a := &Audio{c: c, closed: make(chan struct{}), Changed: make(chan struct{}, 1), Capture: make(chan struct{}, 1), Streams: make(chan struct{}, 1)}
 	c.Callback = func(msg any) {
 		switch m := msg.(type) {
 		case *proto.SubscribeEvent:
@@ -42,6 +45,12 @@ func Connect() (*Audio, error) {
 			if f == proto.EventSink || f == proto.EventSource || f == proto.EventServer {
 				select {
 				case a.Changed <- struct{}{}:
+				default:
+				}
+			}
+			if f == proto.EventSinkSinkInput || f == proto.EventSink {
+				select {
+				case a.Streams <- struct{}{}:
 				default:
 				}
 			}
@@ -69,7 +78,8 @@ func Connect() (*Audio, error) {
 		return nil, err
 	}
 	mask := proto.SubscriptionMaskSink | proto.SubscriptionMaskSource | proto.SubscriptionMaskServer |
-		proto.SubscriptionMaskSourceInput // pulse calls recording streams "source outputs"
+		proto.SubscriptionMaskSourceInput | // pulse calls recording streams "source outputs"
+		proto.SubscriptionMaskSinkInput // per-app playback streams, for the mixer
 	if err := c.Request(&proto.Subscribe{Mask: mask}, nil); err != nil {
 		conn.Close()
 		return nil, err
@@ -152,6 +162,113 @@ func (a *Audio) SetMicVolume(p int) error {
 		return err
 	}
 	return a.c.Request(&proto.SetSourceVolume{SourceIndex: proto.Undefined, SourceName: source, ChannelVolumes: volumes(len(so.ChannelVolumes), p)}, nil)
+}
+
+type App struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Icon  string `json:"icon"`
+	Vol   int    `json:"vol"`
+	Muted bool   `json:"muted"`
+}
+
+type Output struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Active bool   `json:"active"`
+}
+
+// Mixer lists the apps playing sound and the output devices.
+func (a *Audio) Mixer() ([]App, []Output, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	def, _, err := a.defaults()
+	if err != nil {
+		return nil, nil, err
+	}
+	var ins proto.GetSinkInputInfoListReply
+	if err := a.c.Request(&proto.GetSinkInputInfoList{}, &ins); err != nil {
+		return nil, nil, err
+	}
+	var apps []App
+	for _, in := range ins {
+		name := in.Properties["application.name"].String()
+		if name == "" {
+			name = in.MediaName
+		}
+		icon := in.Properties["application.icon_name"].String()
+		if icon == "" {
+			icon = strings.ToLower(in.Properties["application.process.binary"].String())
+		}
+		if strings.HasPrefix(name, "roundbar") || in.Properties["media.role"].String() == "event" {
+			continue // ourselves and short event sounds
+		}
+		apps = append(apps, App{ID: fmt.Sprint(in.SinkInputIndex), Name: strings.TrimSpace(name), Icon: icon,
+			Vol: min(100, pct(in.ChannelVolumes.Avg())), Muted: in.Muted})
+	}
+	var sinks proto.GetSinkInfoListReply
+	if err := a.c.Request(&proto.GetSinkInfoList{}, &sinks); err != nil {
+		return apps, nil, err
+	}
+	var outs []Output
+	for _, s := range sinks {
+		desc := s.Properties["device.description"].String()
+		if desc == "" {
+			desc = s.SinkName
+		}
+		outs = append(outs, Output{ID: s.SinkName, Name: desc, Active: s.SinkName == def})
+	}
+	return apps, outs, nil
+}
+
+func (a *Audio) parseIndex(id string) (uint32, error) {
+	var n uint32
+	_, err := fmt.Sscan(id, &n)
+	return n, err
+}
+
+func (a *Audio) SetAppVolume(id string, p int) error {
+	n, err := a.parseIndex(id)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var ins proto.GetSinkInputInfoListReply
+	if err := a.c.Request(&proto.GetSinkInputInfoList{}, &ins); err != nil {
+		return err
+	}
+	for _, in := range ins {
+		if in.SinkInputIndex == n {
+			return a.c.Request(&proto.SetSinkInputVolume{SinkInputIndex: n, ChannelVolumes: volumes(len(in.ChannelVolumes), p)}, nil)
+		}
+	}
+	return fmt.Errorf("no stream %s", id)
+}
+
+func (a *Audio) ToggleAppMute(id string) error {
+	n, err := a.parseIndex(id)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var ins proto.GetSinkInputInfoListReply
+	if err := a.c.Request(&proto.GetSinkInputInfoList{}, &ins); err != nil {
+		return err
+	}
+	for _, in := range ins {
+		if in.SinkInputIndex == n {
+			return a.c.Request(&proto.SetSinkInputMute{SinkInputIndex: n, Mute: !in.Muted}, nil)
+		}
+	}
+	return fmt.Errorf("no stream %s", id)
+}
+
+func (a *Audio) SetOutput(sink string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.c.Request(&proto.SetDefaultSink{SinkName: sink}, nil)
 }
 
 // MicInUse reports whether any app is recording from a real input (monitor

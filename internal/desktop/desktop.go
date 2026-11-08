@@ -52,6 +52,9 @@ type Desktop struct {
 
 	FocusChanged chan Focus
 	MediaChanged chan struct{} // coalesced
+	// Shell-side lists changed (coalesced). NotifNew carries the id of a new notification.
+	WindowsChanged, ClipsChanged, NotifsChanged chan struct{}
+	NotifNew                                    chan string
 
 	mu      sync.Mutex
 	players map[string]*player // by owner
@@ -63,7 +66,9 @@ func Connect() (*Desktop, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &Desktop{conn: conn, FocusChanged: make(chan Focus, 4), MediaChanged: make(chan struct{}, 1), players: map[string]*player{}}
+	d := &Desktop{conn: conn, FocusChanged: make(chan Focus, 4), MediaChanged: make(chan struct{}, 1), players: map[string]*player{},
+		WindowsChanged: make(chan struct{}, 1), ClipsChanged: make(chan struct{}, 1), NotifsChanged: make(chan struct{}, 1),
+		NotifNew: make(chan string, 4)}
 	if err := conn.AddMatchSignal(dbus.WithMatchInterface(focusIface), dbus.WithMatchObjectPath(focusPath)); err != nil {
 		return nil, err
 	}
@@ -111,6 +116,18 @@ func (d *Desktop) loop(sig chan *dbus.Signal) {
 			case d.FocusChanged <- f:
 			default: // consumer is slow; it will get the next one
 			}
+		case s.Name == focusIface+".WindowsChanged":
+			kick(d.WindowsChanged)
+		case s.Name == focusIface+".ClipboardChanged":
+			kick(d.ClipsChanged)
+		case s.Name == focusIface+".NotificationsChanged":
+			if id, _ := s.Body[0].(string); id != "" {
+				select {
+				case d.NotifNew <- id:
+				default:
+				}
+			}
+			kick(d.NotifsChanged)
 		case s.Name == "org.freedesktop.DBus.NameOwnerChanged" && len(s.Body) == 3:
 			name, _ := s.Body[0].(string)
 			oldOwner, _ := s.Body[1].(string)
@@ -141,6 +158,75 @@ func (d *Desktop) loop(sig chan *dbus.Signal) {
 		}
 	}
 }
+
+func kick(ch chan struct{}) {
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+type Window struct {
+	ID    string `json:"id"`
+	App   string `json:"app"`
+	Title string `json:"title"`
+	Icon  string `json:"icon"`
+}
+
+type Notification struct {
+	ID    string `json:"id"`
+	App   string `json:"app"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Icon  string `json:"icon"`
+}
+
+func (d *Desktop) shell(method string, args ...any) *dbus.Call {
+	return d.conn.Object(focusName, focusPath).Call(focusIface+"."+method, 0, args...)
+}
+
+func (d *Desktop) Windows() ([]Window, error) {
+	var raw [][]string
+	if err := d.shell("Windows").Store(&raw); err != nil {
+		return nil, err
+	}
+	out := make([]Window, 0, len(raw))
+	for _, r := range raw {
+		if len(r) == 4 {
+			out = append(out, Window{ID: r[0], App: r[1], Title: r[2], Icon: r[3]})
+		}
+	}
+	return out, nil
+}
+
+func (d *Desktop) Activate(id string) error { return d.shell("Activate", id).Err }
+
+func (d *Desktop) Notifications() ([]Notification, error) {
+	var raw [][]string
+	if err := d.shell("Notifications").Store(&raw); err != nil {
+		return nil, err
+	}
+	out := make([]Notification, 0, len(raw))
+	for _, r := range raw {
+		if len(r) == 5 {
+			out = append(out, Notification{ID: r[0], App: r[1], Title: r[2], Body: r[3], Icon: r[4]})
+		}
+	}
+	return out, nil
+}
+
+// NotificationAction: "open" or "dismiss".
+func (d *Desktop) NotificationAction(id, action string) error {
+	return d.shell("NotificationAction", id, action).Err
+}
+
+func (d *Desktop) Clipboard() ([]string, error) {
+	var out []string
+	err := d.shell("ClipboardHistory").Store(&out)
+	return out, err
+}
+
+func (d *Desktop) SetClipboard(text string) error { return d.shell("SetClipboard", text).Err }
 
 func (d *Desktop) notifyMedia() {
 	select {

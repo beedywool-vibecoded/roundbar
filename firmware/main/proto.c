@@ -190,6 +190,26 @@ static void handle(cJSON *m)
         else if (t[0] == 'w') ui_weather(m);
         else ui_mic_in_use(flag(m, "on"));
         lvgl_port_unlock();
+    } else if (!strcmp(t, "icon")) {
+        static uint8_t *ibuf;
+        if (!ibuf) ibuf = heap_caps_malloc(64 * 64 * 3, MALLOC_CAP_SPIRAM);
+        const char *data = str(m, "data");
+        size_t n = ibuf && data ? b64decode(data, ibuf, 64 * 64 * 3) : 0;
+        lvgl_port_lock(0);
+        ui_icon(str(m, "name"), num(m, "w", 0), num(m, "h", 0), ibuf, n);
+        lvgl_port_unlock();
+    } else if (!strcmp(t, "windows") || !strcmp(t, "clips") || !strcmp(t, "notifs")) {
+        cJSON *list = cJSON_GetObjectItem(m, "list");
+        lvgl_port_lock(0);
+        if (t[0] == 'w') ui_windows(list);
+        else if (t[0] == 'c') ui_clips(list);
+        else ui_notifs(list);
+        lvgl_port_unlock();
+    } else if (!strcmp(t, "mixer") || !strcmp(t, "notif")) {
+        lvgl_port_lock(0);
+        if (!strcmp(t, "mixer")) ui_mixer(m);
+        else ui_notif_toast(m);
+        lvgl_port_unlock();
     } else if (!strcmp(t, "assetsWant")) {
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "t", "assets");
