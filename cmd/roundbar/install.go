@@ -13,6 +13,7 @@ import (
 	"github.com/beedywool-vibecoded/roundbar/deploy"
 	gnomeext "github.com/beedywool-vibecoded/roundbar/gnome-extension"
 	"github.com/beedywool-vibecoded/roundbar/internal/desktop"
+	"github.com/beedywool-vibecoded/roundbar/internal/udev"
 )
 
 const unit = `[Unit]
@@ -48,27 +49,12 @@ const (
 	systemUnit      = "/usr/lib/systemd/user/roundbar.service"
 	systemDesktop   = "/usr/share/applications/roundbar.desktop"
 	systemExtension = "/usr/share/gnome-shell/extensions/" + gnomeext.UUID
-	etcUdevRule     = "/etc/udev/rules.d/" + deploy.UdevRuleName
+	etcUdevRule     = udev.EtcRule
 )
-
-var udevRulePaths = []string{
-	etcUdevRule,
-	"/usr/lib/udev/rules.d/" + deploy.UdevRuleName,
-	"/lib/udev/rules.d/" + deploy.UdevRuleName,
-}
 
 func exists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
-}
-
-func udevRuleInstalled() bool {
-	for _, p := range udevRulePaths {
-		if exists(p) {
-			return true
-		}
-	}
-	return false
 }
 
 // ask asks a yes/no question on the terminal (even when stdin is a pipe, as
@@ -118,18 +104,10 @@ func asRoot(script, stdin string) error {
 	return cmd.Run()
 }
 
-const udevInstallScript = `set -e
-mkdir -p /etc/udev/rules.d
-cat > ` + etcUdevRule + `
-chmod 644 ` + etcUdevRule + `
-udevadm control --reload
-udevadm trigger --subsystem-match=tty --action=change
-`
-
 // installUdev installs the udev rule that lets the desktop user open the board's
 // serial ports. Without it the daemon gets "permission denied" on /dev/ttyACM*.
 func installUdev(prompt bool) error {
-	if udevRuleInstalled() {
+	if udev.Installed() {
 		fmt.Println("udev rule already installed")
 		return nil
 	}
@@ -145,13 +123,11 @@ the desktop. Installing that rule (` + etcUdevRule + `) needs your password once
 			return nil
 		}
 	}
-	if err := asRoot(udevInstallScript, deploy.UdevRule); err != nil {
+	if err := asRoot(udev.Script, deploy.UdevRule); err != nil {
 		return fmt.Errorf("installing the udev rule failed (%v); run `roundbar udev` to try again", err)
 	}
 	fmt.Println("installed", etcUdevRule)
-	// A daemon that already failed to open the port waits for a hotplug event;
-	// restart it so it tries again with the new permissions.
-	_ = exec.Command("systemctl", "--user", "try-restart", "roundbar.service").Run()
+	udev.RestartDaemon()
 	return nil
 }
 

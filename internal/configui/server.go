@@ -85,6 +85,13 @@ func Run(open bool) error {
 	mux.HandleFunc("POST /api/firmware/update", s.auth(s.postFirmware))
 	mux.HandleFunc("GET /api/firmware/release", s.auth(s.getRelease))
 	mux.HandleFunc("GET /api/assets/{id}", s.auth(s.getAsset))
+	mux.HandleFunc("GET /api/ui", s.auth(s.getUI))
+	mux.HandleFunc("PUT /api/ui", s.auth(s.putUI))
+	mux.HandleFunc("POST /api/udev", s.auth(s.postUdev))
+	mux.HandleFunc("GET /api/apps", s.auth(s.getApps))
+	mux.HandleFunc("GET /api/apps/{id}/icon", s.auth(s.getAppIcon))
+	mux.HandleFunc("GET /api/vesktop", s.auth(s.getVesktop))
+	mux.HandleFunc("POST /api/vesktop", s.auth(s.postVesktop))
 	mux.Handle("/", spa())
 
 	if open {
