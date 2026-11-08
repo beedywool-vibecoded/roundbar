@@ -33,6 +33,7 @@ type Media struct {
 	Playing bool   `json:"playing"`
 	CanNext bool   `json:"canNext"`
 	CanPrev bool   `json:"canPrev"`
+	ArtURL  string `json:"artUrl"`
 }
 
 type player struct {
@@ -235,5 +236,6 @@ func (d *Desktop) Media() (Media, bool) {
 		Playing: best.status == "Playing",
 		CanNext: best.next,
 		CanPrev: best.prev,
+		ArtURL:  metaString(best.meta, "mpris:artUrl"),
 	}, true
 }

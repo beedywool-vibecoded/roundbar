@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "board.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "freertos/task.h"
@@ -86,6 +87,44 @@ static void ack(const char *id, bool ok, const char *err)
     send_json(o);
 }
 
+// ---- album art: chunks of base64 RGB565 into two alternating PSRAM buffers ----
+
+#define COVER_MAX (360 * 360 * 2)
+static uint8_t *cover_buf[2];
+static int cover_back;          // buffer being filled
+static int cover_seq = -1;
+static size_t cover_len;
+
+static int b64val(char c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+static size_t b64decode(const char *in, uint8_t *out, size_t cap)
+{
+    size_t n = 0;
+    uint32_t acc = 0;
+    int bits = 0;
+    for (; *in; in++) {
+        int v = b64val(*in);
+        if (v < 0) continue; // padding / whitespace
+        acc = (acc << 6) | (uint32_t)v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (n < cap) out[n++] = (uint8_t)(acc >> bits);
+        }
+    }
+    return n;
+}
+
+static void handle_cover(cJSON *m);
+
 static const char *str(cJSON *o, const char *k) { return cJSON_GetStringValue(cJSON_GetObjectItem(o, k)); }
 static int num(cJSON *o, const char *k, int def)
 {
@@ -144,6 +183,13 @@ static void handle(cJSON *m)
         lvgl_port_lock(0);
         ui_stats(m);
         lvgl_port_unlock();
+    } else if (!strcmp(t, "cover")) {
+        handle_cover(m);
+    } else if (!strcmp(t, "mediaTheme")) {
+        cJSON *pal = cJSON_GetObjectItem(m, "palette");
+        lvgl_port_lock(0);
+        ui_media_theme(cJSON_IsObject(pal) ? pal : NULL);
+        lvgl_port_unlock();
     } else if (!strcmp(t, "hid")) {
         if (str(m, "keys")) usb_hid(HID_KEYS, str(m, "keys"), id);
         else if (str(m, "text")) usb_hid(HID_TEXT, str(m, "text"), id);
@@ -152,6 +198,38 @@ static void handle(cJSON *m)
     } else if (!strcmp(t, "bootloader")) {
         vTaskDelay(pdMS_TO_TICKS(100));
         usb_reboot_to_bootloader();
+    }
+}
+
+static void handle_cover(cJSON *m)
+{
+    int seq = num(m, "seq", 0), n = num(m, "n", 0), i = num(m, "i", 0);
+    int w = num(m, "w", 360), h = num(m, "h", 360);
+    if (n == 0) {
+        cover_seq = -1;
+        lvgl_port_lock(0);
+        ui_cover(NULL, 0, 0);
+        lvgl_port_unlock();
+        return;
+    }
+    if (w * h * 2 > COVER_MAX) return;
+    if (!cover_buf[0]) {
+        cover_buf[0] = heap_caps_malloc(COVER_MAX, MALLOC_CAP_SPIRAM);
+        cover_buf[1] = heap_caps_malloc(COVER_MAX, MALLOC_CAP_SPIRAM);
+        if (!cover_buf[0] || !cover_buf[1]) return;
+    }
+    if (i == 0) {
+        cover_seq = seq;
+        cover_len = 0;
+    }
+    if (seq != cover_seq) return; // a chunk from an older image
+    const char *data = str(m, "data");
+    if (data) cover_len += b64decode(data, cover_buf[cover_back] + cover_len, COVER_MAX - cover_len);
+    if (i == n - 1 && cover_len == (size_t)(w * h * 2)) {
+        lvgl_port_lock(0);
+        ui_cover(cover_buf[cover_back], w, h);
+        lvgl_port_unlock();
+        cover_back ^= 1; // the shown buffer stays untouched until the next image
     }
 }
 

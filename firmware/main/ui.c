@@ -45,7 +45,7 @@ static struct {
     lv_obj_t *mic_arc[MAX_LIVE], *mic_lbl[MAX_LIVE];
     int nmic;
     struct {
-        lv_obj_t *title, *artist, *player, *play, *play_icon;
+        lv_obj_t *title, *artist, *player, *play, *play_icon, *cover, *scrim;
     } media[MAX_LIVE];
     int nmedia;
     struct {
@@ -59,6 +59,10 @@ static int vol = 50, mic = 50;
 static bool vol_muted, mic_muted;
 static bool dragging;
 static char m_title[128], m_artist[128], m_player[48];
+static palette_t PM;        // media-page palette from the album art
+static bool pm_active;
+static lv_image_dsc_t cover_dsc;
+static bool cover_set;
 static bool m_playing;
 
 typedef enum { AWAKE, DIM, ASLEEP } power_t;
@@ -528,8 +532,37 @@ static lv_obj_t *media_btn(lv_obj_t *tile, int size, lv_color_t bg, lv_color_t f
     return b;
 }
 
+static void build_media_inner(lv_obj_t *tile, cJSON *pg);
+
 static void build_media(lv_obj_t *tile, cJSON *pg)
 {
+    // Media pages may use the album-art palette; every helper reads P, so swap it.
+    palette_t saved = P;
+    if (pm_active) P = PM;
+    build_media_inner(tile, pg);
+    P = saved;
+}
+
+static void build_media_inner(lv_obj_t *tile, cJSON *pg)
+{
+    lv_obj_set_style_bg_color(tile, P.surface, 0);
+    lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+    lv_obj_t *cover = lv_image_create(tile);
+    lv_obj_set_size(cover, LCD_W, LCD_H);
+    lv_obj_center(cover);
+    lv_obj_remove_flag(cover, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *scrim = box(tile); // keeps text readable over any artwork
+    lv_obj_set_size(scrim, LCD_W, LCD_H);
+    lv_obj_center(scrim);
+    lv_obj_set_style_bg_color(scrim, P.surface, 0);
+    lv_obj_set_style_bg_opa(scrim, LV_OPA_50, 0);
+    lv_obj_remove_flag(scrim, LV_OBJ_FLAG_CLICKABLE);
+    if (cover_set) lv_image_set_src(cover, &cover_dsc);
+    else {
+        lv_obj_add_flag(cover, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(scrim, LV_OBJ_FLAG_HIDDEN);
+    }
+
     lv_obj_t *arc = bezel_arc(tile, P.primary, true);
     lv_obj_t *vl = text(tile, F.label, P.on_sv, "");
     lv_obj_align(vl, LV_ALIGN_CENTER, 0, 132);
@@ -537,6 +570,8 @@ static void build_media(lv_obj_t *tile, cJSON *pg)
 
     if (live.nmedia >= MAX_LIVE) return;
     typeof(live.media[0]) *m = &live.media[live.nmedia++];
+    m->cover = cover;
+    m->scrim = scrim;
     m->player = text(tile, F.label, P.on_sv, m_player[0] ? m_player : "Nothing playing");
     lv_obj_align(m->player, LV_ALIGN_CENTER, 0, -104);
 
@@ -572,6 +607,49 @@ void ui_media(const char *title, const char *artist, const char *player, bool pl
         lv_label_set_text(live.media[i].player, m_player[0] ? m_player : "Nothing playing");
         lv_label_set_text(live.media[i].play_icon, theme_icon(playing ? "pause" : "play_arrow"));
         play_morph(live.media[i].play, playing);
+    }
+}
+
+void ui_cover(const uint8_t *rgb565, int w, int h)
+{
+    cover_set = rgb565 != NULL;
+    if (cover_set) {
+        cover_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+        cover_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+        cover_dsc.header.w = w;
+        cover_dsc.header.h = h;
+        cover_dsc.header.stride = w * 2;
+        cover_dsc.data_size = (uint32_t)w * h * 2;
+        cover_dsc.data = rgb565;
+        lv_image_cache_drop(&cover_dsc); // same descriptor, new pixels
+    }
+    for (int i = 0; i < live.nmedia; i++) {
+        if (cover_set) {
+            lv_image_set_src(live.media[i].cover, &cover_dsc);
+            lv_obj_remove_flag(live.media[i].cover, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_remove_flag(live.media[i].scrim, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_invalidate(live.media[i].cover);
+        } else {
+            lv_obj_add_flag(live.media[i].cover, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(live.media[i].scrim, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+static void build(bool animate);
+void ui_media_theme(cJSON *palette)
+{
+    bool was = pm_active;
+    if (palette) {
+        PM = P;
+        theme_parse_palette(palette, &PM);
+        pm_active = true;
+    } else {
+        pm_active = false;
+    }
+    if (was || pm_active) {
+        remember_page();
+        build(false); // media pages pick up PM; the rest keeps the theme
     }
 }
 

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "fontpack.h"
 #include "icons.h"
 
 palette_t P;
@@ -31,38 +32,45 @@ void theme_fonts_init(void)
     F.icon_m = ttf(sym_start, sym_end, 32);
     F.icon_l = ttf(sym_start, sym_end, 44);
     F.icon_xl = ttf(sym_start, sym_end, 64);
+    // Japanese / Chinese / Korean text and color emoji come from the glyph pack.
+    fontpack_attach((lv_font_t *)F.title, (lv_font_t *)F.body, (lv_font_t *)F.label);
 }
 
-static lv_color_t col(cJSON *pal, const char *k, uint32_t def)
+static lv_color_t col(cJSON *pal, const char *k, lv_color_t def)
 {
     const char *s = cJSON_GetStringValue(cJSON_GetObjectItem(pal, k));
     if (s && s[0] == '#' && strlen(s) == 7) return lv_color_hex(strtoul(s + 1, NULL, 16));
-    return lv_color_hex(def);
+    return def;
+}
+
+void theme_parse_palette(cJSON *pal, palette_t *out)
+{
+    palette_t d = *out;
+    out->surface = col(pal, "surface", d.surface);
+    out->sc = col(pal, "surfaceContainer", d.sc);
+    out->sch = col(pal, "surfaceContainerHigh", d.sch);
+    out->schh = col(pal, "surfaceContainerHighest", d.schh);
+    out->on_surface = col(pal, "onSurface", d.on_surface);
+    out->on_sv = col(pal, "onSurfaceVariant", d.on_sv);
+    out->primary = col(pal, "primary", d.primary);
+    out->on_primary = col(pal, "onPrimary", d.on_primary);
+    out->pc = col(pal, "primaryContainer", d.pc);
+    out->on_pc = col(pal, "onPrimaryContainer", d.on_pc);
+    out->secc = col(pal, "secondaryContainer", d.secc);
+    out->on_secc = col(pal, "onSecondaryContainer", d.on_secc);
+    out->tertiary = col(pal, "tertiary", d.tertiary);
+    out->tc = col(pal, "tertiaryContainer", d.tc);
+    out->on_tc = col(pal, "onTertiaryContainer", d.on_tc);
+    out->error = col(pal, "error", d.error);
+    out->ec = col(pal, "errorContainer", d.ec);
+    out->on_ec = col(pal, "onErrorContainer", d.on_ec);
+    out->outline = col(pal, "outline", d.outline);
+    out->outline_v = col(pal, "outlineVariant", d.outline_v);
 }
 
 void theme_load(cJSON *cfg)
 {
-    cJSON *pal = cJSON_GetObjectItem(cJSON_GetObjectItem(cfg, "theme"), "palette");
-    P.surface = col(pal, "surface", 0x141218);
-    P.sc = col(pal, "surfaceContainer", 0x211F26);
-    P.sch = col(pal, "surfaceContainerHigh", 0x2B2930);
-    P.schh = col(pal, "surfaceContainerHighest", 0x36343B);
-    P.on_surface = col(pal, "onSurface", 0xE6E0E9);
-    P.on_sv = col(pal, "onSurfaceVariant", 0xCAC4D0);
-    P.primary = col(pal, "primary", 0xD0BCFF);
-    P.on_primary = col(pal, "onPrimary", 0x381E72);
-    P.pc = col(pal, "primaryContainer", 0x4F378B);
-    P.on_pc = col(pal, "onPrimaryContainer", 0xEADDFF);
-    P.secc = col(pal, "secondaryContainer", 0x4A4458);
-    P.on_secc = col(pal, "onSecondaryContainer", 0xE8DEF8);
-    P.tertiary = col(pal, "tertiary", 0xEFB8C8);
-    P.tc = col(pal, "tertiaryContainer", 0x633B48);
-    P.on_tc = col(pal, "onTertiaryContainer", 0xFFD8E4);
-    P.error = col(pal, "error", 0xF2B8B5);
-    P.ec = col(pal, "errorContainer", 0x8C1D18);
-    P.on_ec = col(pal, "onErrorContainer", 0xF9DEDC);
-    P.outline = col(pal, "outline", 0x938F99);
-    P.outline_v = col(pal, "outlineVariant", 0x49454F);
+    theme_parse_palette(cJSON_GetObjectItem(cJSON_GetObjectItem(cfg, "theme"), "palette"), &P);
 }
 
 void theme_role(const char *role, lv_color_t *bg, lv_color_t *fg)

@@ -14,3 +14,8 @@ void ui_toast(const char *text);
 void ui_media(const char *title, const char *artist, const char *player, bool playing);
 void ui_level(const char *kind, int value, bool muted); // "volume" | "mic"
 void ui_stats(cJSON *msg);
+// Blurred album art for media pages (RGB565, w*h), NULL to clear. The buffer must
+// stay valid until the next call.
+void ui_cover(const uint8_t *rgb565, int w, int h);
+// Palette for media pages only ({role: "#RRGGBB"}), NULL restores the theme.
+void ui_media_theme(cJSON *palette);

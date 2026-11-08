@@ -5,8 +5,11 @@ package daemon
 
 import (
 	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
 	"log"
 	"os/exec"
 	"strings"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/beedywool-vibecoded/roundbar/internal/audio"
 	"github.com/beedywool-vibecoded/roundbar/internal/config"
+	"github.com/beedywool-vibecoded/roundbar/internal/cover"
 	"github.com/beedywool-vibecoded/roundbar/internal/desktop"
 	"github.com/beedywool-vibecoded/roundbar/internal/device"
 	"github.com/beedywool-vibecoded/roundbar/internal/stats"
@@ -55,6 +59,10 @@ type Daemon struct {
 	desk  *desktop.Desktop
 	audio *audio.Audio
 	stats *stats.Reader
+
+	artSent   string             // artwork URL (+ settings) the device currently shows
+	artCancel context.CancelFunc // in-flight artwork job
+	coverSeq  int
 
 	statsStop chan struct{}
 	watchers  map[chan struct{}]bool
@@ -116,7 +124,7 @@ func (d *Daemon) deviceLoop() {
 		log.Printf("device on %s", path)
 		d.mu.Lock()
 		d.port = p
-		d.sentPro, d.lastVol, d.lastMic = "", "", ""
+		d.sentPro, d.lastVol, d.lastMic, d.artSent = "", "", "", ""
 		d.mu.Unlock()
 		d.notify()
 		_ = p.Send(map[string]any{"t": "hello"})
@@ -398,12 +406,72 @@ func (d *Daemon) sendMedia() {
 		return
 	}
 	m, ok := d.desk.Media()
+	d.syncCover(m.ArtURL)
 	if !ok {
 		d.send(map[string]any{"t": "media", "title": "", "artist": "", "album": "", "playing": false, "player": ""})
 		return
 	}
 	d.send(map[string]any{"t": "media", "title": m.Title, "artist": m.Artist, "album": m.Album,
 		"playing": m.Playing, "canNext": m.CanNext, "canPrev": m.CanPrev, "player": m.Player})
+}
+
+// ---- album art ------------------------------------------------------------
+
+// syncCover makes the device show the artwork for artURL (blurred background
+// and/or palette, per config). Work runs off the caller's goroutine and is
+// cancelled when the track changes again.
+func (d *Daemon) syncCover(artURL string) {
+	d.mu.Lock()
+	bg, colors := d.cfg.Media.CoverBackground, d.cfg.Media.CoverColors
+	dark := d.cfg.Theme.Mode != "light"
+	errs := map[string]string{}
+	for _, k := range []string{"error", "errorContainer", "onErrorContainer"} {
+		errs[k] = d.cfg.Theme.Palette[k]
+	}
+	key := fmt.Sprintf("%s|%v|%v|%v", artURL, bg, colors, dark)
+	if key == d.artSent {
+		d.mu.Unlock()
+		return
+	}
+	d.artSent = key
+	if d.artCancel != nil {
+		d.artCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	d.artCancel = cancel
+	d.coverSeq++
+	seq := d.coverSeq
+	d.mu.Unlock()
+
+	go func() {
+		var img image.Image
+		if artURL != "" && (bg || colors) {
+			var err error
+			if img, err = cover.Load(ctx, artURL); err != nil {
+				log.Printf("artwork: %v", err)
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if img != nil && colors {
+			d.send(map[string]any{"t": "mediaTheme", "palette": cover.Palette(img, dark, errs)})
+		} else {
+			d.send(map[string]any{"t": "mediaTheme", "palette": nil})
+		}
+		if img == nil || !bg {
+			d.send(map[string]any{"t": "cover", "seq": seq, "n": 0})
+			return
+		}
+		chunks := cover.Chunks(cover.Blurred(img), 32*1024)
+		for i, c := range chunks {
+			if ctx.Err() != nil {
+				return
+			}
+			d.send(map[string]any{"t": "cover", "seq": seq, "n": len(chunks), "i": i,
+				"w": cover.Size, "h": cover.Size, "data": base64.StdEncoding.EncodeToString(c)})
+		}
+	}()
 }
 
 // ---- audio --------------------------------------------------------------
@@ -577,6 +645,13 @@ func (d *Daemon) reload() error {
 	}
 	d.setConfig(c, raw)
 	log.Printf("config reloaded")
+	d.mu.Lock()
+	d.artSent = "" // the cover settings may have changed
+	onMedia := d.view.Awake && d.view.Kind == "media"
+	d.mu.Unlock()
+	if onMedia {
+		go d.sendMedia()
+	}
 	d.pushConfig()
 	d.syncProfile(true)
 	d.notify()

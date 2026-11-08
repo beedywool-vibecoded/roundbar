@@ -25,5 +25,23 @@ if [[ -z $port ]]; then
   echo "waiting for the board: unplug it and plug it back in (Ctrl-C to give up)…"
   until port=$(dl_port) && [[ -n $port ]]; do sleep 0.02; done
 fi
+# CJK + emoji glyph pack: build it if missing, write it only when it changed.
+extra=()
+[[ -f fonts.bin ]] || (cd ../.. && go run ./tools/fontpack -out firmware/build/fonts.bin)
+sum=$(sha256sum fonts.bin | cut -d' ' -f1)
+if [[ "$(cat .fonts-flashed 2>/dev/null)" != "$sum" || ${FORCE_FONTS:-0} == 1 ]]; then
+  extra=(0x450000 fonts.bin)
+  echo "font pack changed: writing it too (takes about a minute)"
+fi
+
+# The ROM's own USB download port (reached via `roundbar bootloader`) can't be
+# reset through RTS like USB-Serial-JTAG (303a:1001); use the watchdog instead.
+before=default-reset after=hard-reset
+if [[ $(cat /sys/class/tty/$(basename "$port")/device/../idProduct) != 1001 ]]; then
+  before=no-reset after=watchdog-reset # ROM CDC rejects DTR/RTS ioctls
+fi
+
 echo "flashing via $port"
-python -m esptool --chip esp32s3 -p "$port" --before default-reset --after hard-reset write-flash @flash_args
+python -m esptool --chip esp32s3 -p "$port" --before $before --after $after write-flash @flash_args "${extra[@]}"
+[[ ${#extra[@]} -gt 0 ]] && echo "$sum" > .fonts-flashed
+exit 0

@@ -1,5 +1,7 @@
 # Name,   Type, SubType, Offset,   Size
 nvs,      data, nvs,     0x9000,   0x6000
 phy_init, data, phy,     0xf000,   0x1000
-factory,  app,  factory, 0x10000,  0x300000
-cfg,      data, nvs,     0x310000, 0x40000
+factory,  app,  factory, 0x10000,  0x400000
+cfg,      data, nvs,     0x410000, 0x40000
+# CJK + emoji glyph pack from tools/fontpack, written by tools/flash.sh
+fonts,    data, 0x40,    0x450000, 0xBB0000

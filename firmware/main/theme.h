@@ -28,6 +28,8 @@ extern fonts_t F;
 
 void theme_fonts_init(void);
 void theme_load(cJSON *cfg);
+// Fill `out` from a {role: "#RRGGBB"} object, falling back to the current P.
+void theme_parse_palette(cJSON *pal, palette_t *out);
 // container / on-container pair for a button color role
 void theme_role(const char *role, lv_color_t *bg, lv_color_t *fg);
 // UTF-8 for an icon name ("" if unknown)
