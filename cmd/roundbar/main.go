@@ -14,6 +14,7 @@ import (
 	gnomeext "github.com/beedywool-vibecoded/roundbar/gnome-extension"
 	"github.com/beedywool-vibecoded/roundbar/internal/configui"
 	"github.com/beedywool-vibecoded/roundbar/internal/daemon"
+	"github.com/beedywool-vibecoded/roundbar/internal/desktop"
 	"github.com/beedywool-vibecoded/roundbar/internal/ipc"
 )
 
@@ -24,7 +25,7 @@ const usage = `usage: roundbar <command>
   status       print daemon and device status
   bootloader   reboot the device into USB download mode, for flashing
   screenshot   save what the device shows as a PNG (roundbar screenshot out.png)
-  install      install the systemd user service, GNOME extension and app launcher
+  install      install the systemd user service, app launcher (and on GNOME its extension)
 `
 
 func main() {
@@ -124,6 +125,21 @@ func install() error {
 		return err
 	}
 
+	run := func(name string, args ...string) {
+		out, err := exec.Command(name, args...).CombinedOutput()
+		if err != nil {
+			fmt.Printf("  %s %s: %v %s\n", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		}
+	}
+	backend := desktop.Detect()
+	if backend != desktop.BackendGnome {
+		run("systemctl", "--user", "daemon-reload")
+		run("systemctl", "--user", "enable", "--now", "roundbar.service")
+		run("systemctl", "--user", "restart", "roundbar.service")
+		fmt.Printf("\ndone. Desktop backend: %s (no extension needed).\n", backend)
+		return nil
+	}
+
 	extDir := filepath.Join(home, ".local/share/gnome-shell/extensions", gnomeext.UUID)
 	err = fs.WalkDir(gnomeext.Files, gnomeext.UUID, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -137,13 +153,6 @@ func install() error {
 	})
 	if err != nil {
 		return err
-	}
-
-	run := func(name string, args ...string) {
-		out, err := exec.Command(name, args...).CombinedOutput()
-		if err != nil {
-			fmt.Printf("  %s %s: %v %s\n", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
-		}
 	}
 	run("systemctl", "--user", "daemon-reload")
 	run("systemctl", "--user", "enable", "--now", "roundbar.service")

@@ -2,7 +2,7 @@ package desktop
 
 import "testing"
 
-// Talks to the running GNOME Shell extension; skipped when it isn't there.
+// Talks to the running session (on GNOME, the extension); skipped when nothing answers.
 func TestShellLists(t *testing.T) {
 	d, err := Connect()
 	if err != nil {
@@ -20,5 +20,5 @@ func TestShellLists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("%d windows, %d notifications", len(ws), len(ns))
+	t.Logf("%+v: %d windows, %d notifications", d.Info(), len(ws), len(ns))
 }
