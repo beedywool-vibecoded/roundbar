@@ -50,6 +50,7 @@ type Device struct {
 	KeyboardLayout string `json:"keyboardLayout"`
 	Rotation       int    `json:"rotation"` // degrees clockwise: 0, 90, 180, 270
 	FollowPc       *bool  `json:"followPc,omitempty"`
+	EdgeDoubleTap  string `json:"edgeDoubleTap,omitempty"`
 }
 
 type Profile struct {
@@ -254,6 +255,8 @@ func (c *Config) Validate() error {
 		return fail("device.longPressMs", "must be 200..2000")
 	case !oneOf(d.KeyboardLayout, "fr", "us"):
 		return fail("device.keyboardLayout", "must be fr or us")
+	case !oneOf(d.EdgeDoubleTap, "", "page", "quickSettings", "screenOff", "off"):
+		return fail("device.edgeDoubleTap", "must be page, quickSettings, screenOff or off")
 	case d.Rotation != 0 && d.Rotation != 90 && d.Rotation != 180 && d.Rotation != 270:
 		return fail("device.rotation", "must be 0, 90, 180 or 270")
 	}

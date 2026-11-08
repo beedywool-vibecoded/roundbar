@@ -60,6 +60,8 @@ the device keeps a copy in flash so it works without the daemon.
     "longPressMs": 450,
     "keyboardLayout": "fr",    // host layout used to turn characters into HID keycodes: "fr" | "us"
     "rotation": 0,             // screen rotation, degrees clockwise: 0 | 90 | 180 | 270 (touch follows)
+    "edgeDoubleTap": "page",   // double tap near the left/right edge: "page" (prev/next, instant) |
+                               // "quickSettings" | "screenOff" | "off"; missing = "page"
     "followPc": true           // screen goes black ~8 s after the PC side disappears (shutdown, daemon stopped,
                                // USB suspend) and wakes when it comes back; missing = true
   },

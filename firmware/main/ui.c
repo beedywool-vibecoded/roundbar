@@ -881,7 +881,20 @@ static lv_image_dsc_t *load_asset(const char *name, bool gif)
     d->header.cf = LV_COLOR_FORMAT_RAW; // the JPEG / GIF decoders read their own headers
     d->data = buf;
     d->data_size = len;
-    (void)gif;
+    if (!gif) { // LVGL takes in-memory JPEG dimensions from the descriptor: read them from SOFn
+        for (size_t i = 2; i + 9 < len;) {
+            if (buf[i] != 0xFF) break;
+            uint8_t m = buf[i + 1];
+            uint16_t seg = (uint16_t)(buf[i + 2] << 8 | buf[i + 3]);
+            if (m >= 0xC0 && m <= 0xC3) {
+                d->header.h = buf[i + 5] << 8 | buf[i + 6];
+                d->header.w = buf[i + 7] << 8 | buf[i + 8];
+                d->header.stride = d->header.w * 3;
+                break;
+            }
+            i += 2 + seg;
+        }
+    }
     return d;
 }
 
@@ -1109,10 +1122,6 @@ static void build_touchpad(lv_obj_t *tile, cJSON *pg)
     lv_obj_set_style_arc_opa(ring, LV_OPA_TRANSP, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, LV_PART_KNOB);
     lv_obj_remove_flag(ring, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_t *up = text(tile, F.icon_s, P.on_sv, theme_icon("expand_less"));
-    lv_obj_align(up, LV_ALIGN_TOP_MID, 0, 8);
-    lv_obj_t *dn = text(tile, F.icon_s, P.on_sv, theme_icon("expand_more"));
-    lv_obj_align(dn, LV_ALIGN_BOTTOM_MID, 0, -8);
     lv_obj_t *ic = text(tile, F.icon_xl, P.on_sv, theme_icon("mouse"));
     lv_obj_align(ic, LV_ALIGN_CENTER, 0, -18);
     lv_obj_set_style_opa(ic, LV_OPA_60, 0);
@@ -1343,6 +1352,10 @@ static void qs_open(void)
     lv_anim_set_exec_cb(&a, qs_y_exec);
     lv_anim_start(&a);
     if (indev) { // the pull must not also press, drag or scroll whatever was under the finger
+        // lv_indev_reset drops the pressed widget without PRESS_LOST: undo our own drag state too
+        arc_mode = ARC_IDLE;
+        dragging = false;
+        tp.mode = TP_IDLE;
         lv_indev_reset(indev, NULL);
         lv_indev_wait_release(indev);
     }
@@ -1678,15 +1691,57 @@ static void power_tick(lv_timer_t *t)
 static lv_indev_read_cb_t touch_read_orig;
 static struct {
     bool down, armed;
-    lv_point_t p0;
+    lv_point_t p0, last;
+    uint32_t t0;
 } pull;
+static struct {
+    int side;      // -1 left, 1 right, 0 none
+    uint32_t when; // release time of the previous edge tap
+} edge;
 
 static void pull_open_async(void *arg) { qs_open(); }
+
+static void edge_action_async(void *arg)
+{
+    int side = (int)(intptr_t)arg;
+    const char *a = jstr(cJSON_GetObjectItem(store_config(), "device"), "edgeDoubleTap");
+    if (!a) a = "page";
+    arc_mode = ARC_IDLE;
+    dragging = false;
+    if (!strcmp(a, "page")) goto_index(cur_page + side, false); // instant, no slide
+    else if (!strcmp(a, "quickSettings")) qs_open();
+    else if (!strcmp(a, "screenOff")) screen_off();
+}
+
+// A short, still tap in the left/right edge band; returns -1/1, or 0.
+static int edge_tap(lv_point_t p0, lv_point_t p1, uint32_t dur)
+{
+    int32_t dx = p1.x - p0.x, dy = p1.y - p0.y;
+    if (dur > 300 || dx * dx + dy * dy > 15 * 15) return 0;
+    int32_t cx = p0.x - LCD_W / 2, cy = p0.y - LCD_H / 2;
+    if (cx * cx + cy * cy < 135 * 135 || LV_ABS(cy) > LV_ABS(cx)) return 0; // outer ring, left/right quarters
+    return cx < 0 ? -1 : 1;
+}
 
 static void touch_read_wrap(lv_indev_t *in, lv_indev_data_t *d)
 {
     touch_read_orig(in, d);
     if (d->state != LV_INDEV_STATE_PRESSED) {
+        if (pull.down && power != OFF && power != ASLEEP) {
+            int side = edge_tap(pull.p0, pull.last, lv_tick_get() - pull.t0);
+            const char *a = jstr(cJSON_GetObjectItem(store_config(), "device"), "edgeDoubleTap");
+            if (side && !(a && !strcmp(a, "off"))) {
+                if (edge.side == side && lv_tick_get() - edge.when < 400) {
+                    edge.side = 0;
+                    lv_async_call(edge_action_async, (void *)(intptr_t)side);
+                } else {
+                    edge.side = side;
+                    edge.when = lv_tick_get();
+                }
+            } else {
+                edge.side = 0;
+            }
+        }
         pull.down = false;
         return;
     }
@@ -1701,9 +1756,11 @@ static void touch_read_wrap(lv_indev_t *in, lv_indev_data_t *d)
         p.y = p.x;
         p.x = LCD_H - t - 1;
     }
+    pull.last = p;
     if (!pull.down) {
         pull.down = true;
         pull.p0 = p;
+        pull.t0 = lv_tick_get();
         pull.armed = p.y < 64 && (power == AWAKE || power == DIM) && (!qs || lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN));
         return;
     }

@@ -384,8 +384,6 @@ const dots = computed(() => {
       <!-- Touchpad -->
       <template v-else-if="touchpad">
         <circle r="161" fill="none" :stroke="p.surfaceContainerHigh" stroke-width="22" />
-        <text class="sym" y="-160" font-size="18" :fill="p.onSurfaceVariant">expand_less</text>
-        <text class="sym" y="155" font-size="18" :fill="p.onSurfaceVariant">expand_more</text>
         <text class="sym" y="-14" font-size="56" :fill="p.onSurfaceVariant">mouse</text>
         <text class="txt" y="34" font-size="16" :fill="p.onSurfaceVariant">Touchpad</text>
       </template>

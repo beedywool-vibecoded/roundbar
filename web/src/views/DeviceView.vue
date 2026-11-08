@@ -7,10 +7,17 @@ import M3Switch from '@/components/M3Switch.vue'
 import NumField from '@/components/NumField.vue'
 import { PAGE_TYPES, ROTATIONS } from '@/lib/model'
 import { config, daemonUp, findProfile, live } from '@/lib/store'
-import type { KeyboardLayout } from '@/lib/types'
+import type { EdgeDoubleTap, KeyboardLayout } from '@/lib/types'
 
 const dev = computed(() => config.value!.device)
 const st = computed(() => live.status)
+
+const EDGE_TAPS: { id: EdgeDoubleTap; label: string }[] = [
+  { id: 'page', label: 'Change page' },
+  { id: 'quickSettings', label: 'Quick settings' },
+  { id: 'screenOff', label: 'Screen off' },
+  { id: 'off', label: 'Off' },
+]
 
 const LAYOUTS: { id: KeyboardLayout; label: string; hint: string }[] = [
   { id: 'fr', label: 'French (AZERTY)', hint: 'fr' },
@@ -165,6 +172,27 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
           </div>
           <M3Slider v-model="dev.longPressMs" label="Long press" :min="200" :max="1500" :step="25" :format="(v) => `${v} ms`" />
           <p class="muted small" style="margin: 0">How long a button is held before its long-press action runs.</p>
+        </div>
+        <div class="setting">
+          <div class="grow">
+            <div>Double tap on the edge</div>
+            <div class="muted small">Two quick taps near the left or right edge of the screen. "Change page" jumps to the previous / next page instantly.</div>
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Double tap on the edge">
+            <button
+              v-for="g in EDGE_TAPS"
+              :key="g.id"
+              type="button"
+              role="radio"
+              class="st"
+              :class="{ on: dev.edgeDoubleTap === g.id }"
+              :aria-checked="dev.edgeDoubleTap === g.id"
+              @click="dev.edgeDoubleTap = g.id"
+            >
+              <Icon v-if="dev.edgeDoubleTap === g.id" name="check" :size="18" />
+              {{ g.label }}
+            </button>
+          </div>
         </div>
         <div class="setting">
           <div class="grow">

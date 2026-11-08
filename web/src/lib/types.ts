@@ -50,7 +50,11 @@ export interface DeviceSettings {
   keyboardLayout: KeyboardLayout
   /** Screen off when the PC goes away, on when it comes back. Missing = true */
   followPc: boolean
+  /** Double tap near the left/right edge. Missing = "page" */
+  edgeDoubleTap: EdgeDoubleTap
 }
+
+export type EdgeDoubleTap = 'page' | 'quickSettings' | 'screenOff' | 'off'
 
 export type MediaCmd = 'play_pause' | 'next' | 'prev' | 'vol_up' | 'vol_down' | 'mute'
 export type MicCmd = 'toggle' | 'mute' | 'unmute'

@@ -225,7 +225,7 @@ export function starterConfig(): Config {
     version: 1,
     theme: { seed: DEFAULT_SEED, mode: 'dark', palette: devicePalette(DEFAULT_SEED, 'dark') },
     media: { coverBackground: true, coverColors: true, ...MEDIA_DEFAULTS },
-    device: { brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr', followPc: true },
+    device: { brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr', followPc: true, edgeDoubleTap: 'page' },
     profiles: [
       {
         id: 'default',
@@ -283,6 +283,7 @@ export function normalize(raw: unknown): Config {
   }
   if (!(ROTATIONS as readonly unknown[]).includes(cfg.device.rotation)) cfg.device.rotation = 0
   if (typeof cfg.device.followPc !== 'boolean') cfg.device.followPc = true
+  if (!['page', 'quickSettings', 'screenOff', 'off'].includes(cfg.device.edgeDoubleTap)) cfg.device.edgeDoubleTap = 'page'
   for (const p of cfg.profiles) {
     p.match ??= []
     p.pages ??= []
