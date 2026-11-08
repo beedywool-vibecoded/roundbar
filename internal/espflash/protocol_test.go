@@ -28,6 +28,11 @@ func TestSlipEncode(t *testing.T) {
 	}
 }
 
+type timeoutErr struct{}
+
+func (timeoutErr) Error() string { return "i/o timeout" }
+func (timeoutErr) Timeout() bool { return true }
+
 // chunkPort hands out a fixed byte stream a few bytes at a time.
 type chunkPort struct {
 	data []byte
@@ -184,7 +189,7 @@ func TestUncompressedPerBlock(t *testing.T) {
 }
 
 func TestPad4(t *testing.T) {
-	if got := pad4([]byte{1, 2, 3, 4, 5}); !bytes.Equal(got, []byte{1, 2, 3, 4, 5, 0xFF, 0xFF, 0xFF}) {
+	if got := Pad4([]byte{1, 2, 3, 4, 5}); !bytes.Equal(got, []byte{1, 2, 3, 4, 5, 0xFF, 0xFF, 0xFF}) {
 		t.Fatalf("% x", got)
 	}
 }

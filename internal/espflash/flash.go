@@ -26,8 +26,8 @@ func Compress(img []byte) []byte {
 	return buf.Bytes()
 }
 
-// pad4 pads to a multiple of 4 bytes with 0xFF (erased flash), as esptool does.
-func pad4(b []byte) []byte {
+// Pad4 pads to a multiple of 4 bytes with 0xFF (erased flash), as esptool does.
+func Pad4(b []byte) []byte {
 	if len(b)%4 == 0 {
 		return b
 	}
@@ -94,7 +94,7 @@ func (l *Loader) WriteFlash(addr uint32, img []byte, progress func(done, total i
 	if addr%0x1000 != 0 {
 		return fmt.Errorf("address 0x%x is not sector aligned", addr)
 	}
-	img = pad4(img)
+	img = Pad4(img)
 	l.wrote = false
 	err := l.writeDeflated(addr, img, progress)
 	var se *StatusError
@@ -182,7 +182,7 @@ func (l *Loader) writePlain(addr uint32, img []byte, progress func(done, total i
 // Matches reports whether the flash at addr already holds img (same MD5),
 // so unchanged parts (the 9 MB font pack) are not rewritten.
 func (l *Loader) Matches(addr uint32, img []byte) (bool, error) {
-	img = pad4(img)
+	img = Pad4(img)
 	got, err := l.FlashMD5(addr, uint32(len(img)))
 	if err != nil {
 		return false, err
