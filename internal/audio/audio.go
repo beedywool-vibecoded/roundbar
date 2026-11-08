@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/beedywool-vibecoded/roundbar/internal/icons"
 	"github.com/jfreymuth/pulse/proto"
 )
 
@@ -187,9 +188,15 @@ func (a *Audio) Mixer() ([]App, []Output, error) {
 		if name == "" {
 			name = in.MediaName
 		}
-		icon := in.Properties["application.icon_name"].String()
+		binary := in.Properties["application.process.binary"].String()
+		// The app's desktop entry knows its real icon; PipeWire's icon_name is often
+		// generic (Electron apps like Vesktop report Chromium's).
+		icon := icons.ForApp(binary, name, in.Properties["application.id"].String())
 		if icon == "" {
-			icon = strings.ToLower(in.Properties["application.process.binary"].String())
+			icon = in.Properties["application.icon_name"].String()
+		}
+		if icon == "" {
+			icon = strings.ToLower(binary)
 		}
 		if strings.HasPrefix(name, "roundbar") || in.Properties["media.role"].String() == "event" {
 			continue // ourselves and short event sounds

@@ -57,6 +57,7 @@ func (d *Daemon) sendWindows() {
 	}
 	ws, err := d.desk.Windows()
 	if err != nil {
+		log.Printf("windows: %v", err)
 		return
 	}
 	if len(ws) > 8 {
@@ -115,6 +116,7 @@ func (d *Daemon) sendNotifs(newID string) {
 	}
 	list, err := d.desk.Notifications()
 	if err != nil {
+		log.Printf("notifications: %v", err)
 		return
 	}
 	for i := range list {

@@ -10,9 +10,9 @@ import ImageList from '@/components/ImageList.vue'
 import DiscordCard from '@/components/DiscordCard.vue'
 import FirmwareCard from '@/components/FirmwareCard.vue'
 import type { ImageBinding } from '@/lib/assets'
-import { LIMITS, PAGE_TYPES, ROTATIONS, SCREENSAVER_DEFAULTS } from '@/lib/model'
+import { LIMITS, PAGE_TYPES, ROTATIONS } from '@/lib/model'
 import { config, daemonUp, findProfile, issuesUnder, live } from '@/lib/store'
-import type { EdgeDoubleTap, KeyboardLayout, Screensaver } from '@/lib/types'
+import type { EdgeDoubleTap, KeyboardLayout } from '@/lib/types'
 
 const dev = computed(() => config.value!.device)
 
@@ -25,23 +25,6 @@ onMounted(async () => {
   setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250)
 })
 
-// ---- screen saver ----
-const SAVERS: { id: Screensaver; label: string; icon: string }[] = [
-  { id: 'off', label: 'Off', icon: 'block' },
-  { id: 'clock', label: 'Clock', icon: 'schedule' },
-  { id: 'photos', label: 'Photos', icon: 'photo_library' },
-]
-const SAVER_MAX = 600
-const saverAfter = computed({
-  get: () => Math.min(SAVER_MAX, Math.max(SCREENSAVER_DEFAULTS.minAfter, dev.value.screensaverAfter)),
-  set: (v: number) => (dev.value.screensaverAfter = v),
-})
-// Bound to this device object, so an upload finishing later still lands here
-const photos: ImageBinding = {
-  get: () => config.value!.device.screensaverImages,
-  set: (ids) => (config.value!.device.screensaverImages = ids),
-}
-const photoIssue = computed(() => issuesUnder('device.screensaverImages')[0]?.message)
 const st = computed(() => live.status)
 
 const EDGE_TAPS: { id: EdgeDoubleTap; label: string }[] = [
@@ -154,55 +137,6 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
 
         <FirmwareCard />
 
-        <section class="card">
-          <div class="card-head"><h2>Screen saver</h2></div>
-          <div class="setting">
-            <div class="grow">
-              <div>Mode</div>
-              <div class="muted small">
-                {{ dev.screensaver === 'off' ? 'The screen dims when idle' : dev.screensaver === 'clock' ? 'A clock when idle, instead of dimming' : 'Your photos, dimmed, when idle, instead of dimming' }}
-              </div>
-            </div>
-            <div class="seg" role="radiogroup" aria-label="Screen saver">
-              <button
-                v-for="m in SAVERS"
-                :key="m.id"
-                type="button"
-                role="radio"
-                class="st"
-                :class="{ on: dev.screensaver === m.id }"
-                :aria-checked="dev.screensaver === m.id"
-                @click="dev.screensaver = m.id"
-              >
-                <Icon v-if="dev.screensaver === m.id" name="check" :size="18" />
-                {{ m.label }}
-              </button>
-            </div>
-          </div>
-          <div v-if="dev.screensaver !== 'off'" class="setting col">
-            <div class="row-head">
-              <span>Start after</span>
-              <span class="muted">{{ seconds(saverAfter) }}</span>
-            </div>
-            <M3Slider v-model="saverAfter" label="Start after" :min="10" :max="SAVER_MAX" :step="10" :format="seconds" />
-            <p v-if="dev.screensaverAfter > SAVER_MAX" class="muted small" style="margin: 0">
-              The config sets {{ seconds(dev.screensaverAfter) }}; moving the slider replaces it.
-            </p>
-          </div>
-          <div v-if="dev.screensaver === 'photos'" class="setting col">
-            <div class="row-head">
-              <span>Photos</span>
-              <span class="muted small">{{ dev.screensaverImages.length }} / {{ LIMITS.images }}</span>
-            </div>
-            <ImageList
-              :bind="photos"
-              owner="The screen saver"
-              title="Drop photos here"
-              hint="Still pictures only, cropped to fill the round screen. They cross-fade one after another."
-            />
-            <p v-if="photoIssue" class="tf-help err" style="margin: 0">{{ photoIssue }}</p>
-          </div>
-        </section>
       </div>
 
       <div class="right">

@@ -58,19 +58,16 @@ func (m Media) BlurOrDefault() int {
 }
 
 type Device struct {
-	Brightness        int      `json:"brightness"`
-	DimAfter          int      `json:"dimAfter"`
-	SleepAfter        int      `json:"sleepAfter"`
-	LongPressMs       int      `json:"longPressMs"`
-	KeyboardLayout    string   `json:"keyboardLayout"`
-	Rotation          int      `json:"rotation"` // degrees clockwise: 0, 90, 180, 270
-	FollowPc          *bool    `json:"followPc,omitempty"`
-	EdgeDoubleTap     string   `json:"edgeDoubleTap,omitempty"`
-	Notifications     *bool    `json:"notifications,omitempty"`
-	NotifToast        *bool    `json:"notifToast,omitempty"`
-	Screensaver       string   `json:"screensaver,omitempty"`
-	ScreensaverAfter  int      `json:"screensaverAfter,omitempty"`
-	ScreensaverImages []string `json:"screensaverImages,omitempty"`
+	Brightness     int    `json:"brightness"`
+	DimAfter       int    `json:"dimAfter"`
+	SleepAfter     int    `json:"sleepAfter"`
+	LongPressMs    int    `json:"longPressMs"`
+	KeyboardLayout string `json:"keyboardLayout"`
+	Rotation       int    `json:"rotation"` // degrees clockwise: 0, 90, 180, 270
+	FollowPc       *bool  `json:"followPc,omitempty"`
+	EdgeDoubleTap  string `json:"edgeDoubleTap,omitempty"`
+	Notifications  *bool  `json:"notifications,omitempty"`
+	NotifToast     *bool  `json:"notifToast,omitempty"`
 }
 
 type Profile struct {
@@ -284,21 +281,10 @@ func (c *Config) Validate() error {
 		return fail("device.longPressMs", "must be 200..2000")
 	case !oneOf(d.KeyboardLayout, "fr", "us"):
 		return fail("device.keyboardLayout", "must be fr or us")
-	case !oneOf(d.Screensaver, "", "off", "clock", "photos"):
-		return fail("device.screensaver", "must be off, clock or photos")
-	case d.ScreensaverAfter != 0 && (d.ScreensaverAfter < 10 || d.ScreensaverAfter > 3600):
-		return fail("device.screensaverAfter", "must be 10..3600 seconds")
-	case len(d.ScreensaverImages) > 20:
-		return fail("device.screensaverImages", "at most 20 images")
 	case !oneOf(d.EdgeDoubleTap, "", "page", "quickSettings", "screenOff", "off"):
 		return fail("device.edgeDoubleTap", "must be page, quickSettings, screenOff or off")
 	case d.Rotation != 0 && d.Rotation != 90 && d.Rotation != 180 && d.Rotation != 270:
 		return fail("device.rotation", "must be 0, 90, 180 or 270")
-	}
-	for k, id := range d.ScreensaverImages {
-		if !assetRe.MatchString(id) || strings.HasSuffix(id, ".gif") {
-			return fail(fmt.Sprintf("device.screensaverImages[%d]", k), "must be a still image asset")
-		}
 	}
 	if w := c.Weather; w != nil {
 		switch {
@@ -421,8 +407,8 @@ func (pg *Page) validate(pp string, pageIDs map[string]bool) error {
 			}
 		}
 	case "timer":
-		if len(pg.Minutes) > 4 {
-			return fail(pp+".minutes", "at most 4 presets")
+		if len(pg.Minutes) > 3 {
+			return fail(pp+".minutes", "at most 3 presets")
 		}
 		for k, m := range pg.Minutes {
 			if m < 1 || m > 180 {

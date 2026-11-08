@@ -32,13 +32,12 @@ export const LIMITS = {
   images: 20,
   zones: 3,
   zoneLabel: 16,
-  timerPresets: 4,
+  timerPresets: 3,
   timerLabel: 24,
 } as const
 
 export const CLOCK_DEFAULTS = { style: 'analog', weather: true } as const
 export const TIMER_DEFAULTS = { minutes: [5, 15, 25] as readonly number[], minMinutes: 1, maxMinutes: 180 } as const
-export const SCREENSAVER_DEFAULTS = { after: 60, minAfter: 10, maxAfter: 3600 } as const
 
 // ---- time zones (IANA names, as the browser knows them) ----
 let zoneList: string[] | null = null
@@ -284,9 +283,6 @@ export function starterConfig(): Config {
       brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr',
       followPc: true,
       edgeDoubleTap: 'page',
-      screensaver: 'off',
-      screensaverAfter: SCREENSAVER_DEFAULTS.after,
-      screensaverImages: [],
       notifications: true,
       notifToast: true,
     },
@@ -350,10 +346,6 @@ export function normalize(raw: unknown): Config {
   if (!['page', 'quickSettings', 'screenOff', 'off'].includes(cfg.device.edgeDoubleTap)) cfg.device.edgeDoubleTap = 'page'
   if (typeof cfg.device.notifications !== 'boolean') cfg.device.notifications = true
   if (typeof cfg.device.notifToast !== 'boolean') cfg.device.notifToast = true
-  if (!['off', 'clock', 'photos'].includes(cfg.device.screensaver)) cfg.device.screensaver = 'off'
-  if (typeof cfg.device.screensaverAfter !== 'number' || !Number.isFinite(cfg.device.screensaverAfter))
-    cfg.device.screensaverAfter = SCREENSAVER_DEFAULTS.after
-  cfg.device.screensaverImages = Array.isArray(cfg.device.screensaverImages) ? cfg.device.screensaverImages.filter((x) => typeof x === 'string') : []
   if (cfg.weather != null && (typeof cfg.weather !== 'object' || Array.isArray(cfg.weather))) delete cfg.weather
   for (const p of cfg.profiles) {
     p.match ??= []
@@ -555,16 +547,6 @@ export function validate(c: Config, icons: Set<string>): Issue[] {
   if (!/^#[0-9a-f]{6}$/i.test(c.theme.seed)) out.push({ path: 'theme.seed', message: 'Seed must be a #RRGGBB color' })
   if (typeof d.notifications !== 'boolean') out.push({ path: 'device.notifications', message: 'Notification panel must be on or off' })
   if (typeof d.notifToast !== 'boolean') out.push({ path: 'device.notifToast', message: 'New notifications must be on or off' })
-  if (!['off', 'clock', 'photos'].includes(d.screensaver)) out.push({ path: 'device.screensaver', message: 'Screen saver must be off, clock or photos' })
-  if (!(Number.isInteger(d.screensaverAfter) && d.screensaverAfter >= SCREENSAVER_DEFAULTS.minAfter && d.screensaverAfter <= SCREENSAVER_DEFAULTS.maxAfter))
-    out.push({ path: 'device.screensaverAfter', message: `Screen saver delay must be ${SCREENSAVER_DEFAULTS.minAfter} to ${SCREENSAVER_DEFAULTS.maxAfter} s` })
-  if (d.screensaverImages.length > LIMITS.images) out.push({ path: 'device.screensaverImages', message: `At most ${LIMITS.images} screen saver photos` })
-  d.screensaverImages.forEach((id, i) => {
-    if (!ASSET_ID_RE.test(id)) out.push({ path: `device.screensaverImages[${i}]`, message: `Unknown image "${id}"` })
-    else if (isGif(id)) out.push({ path: `device.screensaverImages[${i}]`, message: 'The screen saver shows still pictures only, not GIFs' })
-  })
-  if (d.screensaver === 'photos' && !d.screensaverImages.length)
-    out.push({ path: 'device.screensaverImages', message: 'Add a photo for the screen saver, or pick another mode' })
   const w = c.weather
   if (w) {
     if (typeof w.city !== 'string' || !w.city.trim()) out.push({ path: 'weather.city', message: 'Weather city is empty' })

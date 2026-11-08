@@ -933,10 +933,8 @@ static slideshow_t *slides[MAX_PAGES];
 
 static void slide_fade_exec(void *o, int32_t v) { lv_obj_set_style_opa(o, (lv_opa_t)v, 0); }
 
-static void saver_photo_tick(void);
 static void slideshow_tick(lv_timer_t *t)
 {
-    saver_photo_tick();
     if (power != AWAKE && power != DIM) return;
     int p = cur_page;
     slideshow_t *ss = p >= 0 && p < page_count ? slides[p] : NULL;
@@ -1462,7 +1460,7 @@ static const char *weather_icon(int code, bool day)
     return "cloud";
 }
 
-// ---- clock widgets (pages and the screen saver share them) -----------------------------------
+// ---- clock widgets -----------------------------------
 
 typedef struct {
     bool used, analog;
@@ -1471,8 +1469,7 @@ typedef struct {
     char tz[3][40], zname[3][17];
     int nz;
 } clock_w;
-static clock_w clocks[MAX_PAGES + 1]; // last slot: screen saver
-#define SAVER_CLOCK MAX_PAGES
+static clock_w clocks[MAX_PAGES];
 
 static void hand(lv_obj_t *line, lv_point_precise_t *pts, int angle10, int len)
 {
@@ -1577,7 +1574,7 @@ static void build_clock_into(lv_obj_t *parent, cJSON *pg, clock_w *c, bool force
         for (char *u = c->zname[c->nz]; *u; u++)
             if (*u == '_') *u = ' ';
         c->zone_lbl[c->nz] = text(parent, F.label, P.on_sv, "");
-        lv_obj_align(c->zone_lbl[c->nz], LV_ALIGN_CENTER, 0, (c->analog ? 56 : 62) + c->nz * 20); // world clocks below
+        lv_obj_align(c->zone_lbl[c->nz], LV_ALIGN_CENTER, 0, (c->analog ? 72 : 82) + c->nz * 20); // world clocks below
         c->nz++;
     }
     if (c->analog) { // hands last so they draw on top
@@ -1613,12 +1610,10 @@ static void build_clock(lv_obj_t *tile, cJSON *pg, int page)
     build_clock_into(tile, pg, &clocks[page], false, true);
 }
 
-static lv_obj_t *saver;
 static void clock_tick(lv_timer_t *t)
 {
     if (power == OFF || power == ASLEEP) return;
     if (cur_page >= 0 && cur_page < page_count) clock_update(&clocks[cur_page]);
-    if (saver) clock_update(&clocks[SAVER_CLOCK]);
 }
 
 void ui_time(cJSON *m)
@@ -1652,7 +1647,7 @@ void ui_weather(cJSON *m)
     wx.day = cJSON_IsTrue(cJSON_GetObjectItem(m, "day"));
     strlcpy(wx.city, jstr(m, "city") ?: "", sizeof(wx.city));
     wx.valid = true;
-    for (int i = 0; i <= MAX_PAGES; i++) clock_update(&clocks[i]);
+    for (int i = 0; i < MAX_PAGES; i++) clock_update(&clocks[i]);
 }
 
 // ---- timer / pomodoro ----------------------------------------------------------------------
@@ -1846,12 +1841,12 @@ static void build_timer(lv_obj_t *tile, cJSON *pg)
     lv_obj_add_event_cb(tw.reset, timer_button_event, LV_EVENT_CLICKED, (void *)1);
 
     if (!tmr.pomodoro) {
-        int presets[4] = {5, 15, 25, 0}, n = 3;
+        int presets[3] = {5, 15, 25}, n = 3;
         cJSON *mins = cJSON_GetObjectItem(pg, "minutes");
         if (cJSON_IsArray(mins) && cJSON_GetArraySize(mins) > 0) {
             n = 0;
             cJSON *mm;
-            cJSON_ArrayForEach(mm, mins) if (cJSON_IsNumber(mm) && n < 4) presets[n++] = mm->valueint;
+            cJSON_ArrayForEach(mm, mins) if (cJSON_IsNumber(mm) && n < 3) presets[n++] = mm->valueint;
         }
         lv_obj_t *row = box(tile);
         tw.presets = row; // hidden while a countdown is running or paused
@@ -1876,110 +1871,6 @@ static void build_timer(lv_obj_t *tile, cJSON *pg)
     }
     timer_show();
 }
-
-// ---- screen saver ---------------------------------------------------------------------------
-
-static struct {
-    const uint8_t *raw[20];
-    size_t len[20];
-    int n, i, front;
-    uint8_t *px[2];
-    lv_image_dsc_t dsc[2];
-    lv_obj_t *img[2];
-    uint32_t last;
-} ssv;
-
-static void saver_hide(void)
-{
-    if (!saver) return;
-    lv_obj_delete(saver);
-    saver = NULL;
-    clocks[SAVER_CLOCK].used = false;
-    lv_image_cache_drop(NULL);
-    for (int i = 0; i < ssv.n; i++) free((void *)ssv.raw[i]);
-    free(ssv.px[0]);
-    free(ssv.px[1]);
-    memset(&ssv, 0, sizeof(ssv));
-    if (power == AWAKE) board_backlight(store_brightness());
-}
-
-static void saver_event(lv_event_t *e)
-{
-    if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
-        lv_display_trigger_activity(disp);
-        if (indev) lv_indev_wait_release(indev); // the waking touch presses nothing
-        saver_hide();
-    }
-}
-
-static void saver_photo_tick(void)
-{
-    if (!saver || ssv.n < 2 || lv_tick_get() - ssv.last < 8000) return;
-    ssv.last = lv_tick_get();
-    int next = (ssv.i + 1) % ssv.n, back = ssv.front ^ 1;
-    if (!decode_jpeg(ssv.raw[next], ssv.len[next], &ssv.dsc[back], ssv.px[back], SLIDE_BUF)) return;
-    lv_obj_set_style_opa(ssv.img[back], LV_OPA_TRANSP, 0);
-    lv_image_set_src(ssv.img[back], &ssv.dsc[back]);
-    lv_obj_move_foreground(ssv.img[back]);
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, ssv.img[back]);
-    lv_anim_set_values(&a, 0, 255);
-    lv_anim_set_duration(&a, 900);
-    lv_anim_set_exec_cb(&a, slide_fade_exec);
-    lv_anim_start(&a);
-    ssv.i = next;
-    ssv.front = back;
-}
-
-static void saver_show(const char *mode)
-{
-    if (saver) return;
-    saver = box(lv_layer_top());
-    lv_obj_set_size(saver, LCD_W, LCD_H);
-    lv_obj_set_style_bg_color(saver, P.surface, 0);
-    lv_obj_set_style_bg_opa(saver, LV_OPA_COVER, 0);
-    lv_obj_add_flag(saver, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(saver, saver_event, LV_EVENT_PRESSED, NULL);
-    bool photos = !strcmp(mode, "photos");
-    if (photos) {
-        cJSON *it;
-        cJSON_ArrayForEach(it, cJSON_GetObjectItem(cJSON_GetObjectItem(store_config(), "device"), "screensaverImages"))
-        {
-            if (!cJSON_IsString(it) || ssv.n >= 20) continue;
-            char name[48];
-            device_name(name, sizeof(name), it->valuestring, "cover");
-            size_t len;
-            uint8_t *raw = assets_load(name, &len);
-            if (raw) {
-                ssv.raw[ssv.n] = raw;
-                ssv.len[ssv.n++] = len;
-            }
-        }
-        if (ssv.n) {
-            ssv.px[0] = heap_caps_malloc(SLIDE_BUF, MALLOC_CAP_SPIRAM);
-            ssv.px[1] = ssv.n > 1 ? heap_caps_malloc(SLIDE_BUF, MALLOC_CAP_SPIRAM) : NULL;
-            for (int k = 0; k < 2; k++) {
-                ssv.img[k] = lv_image_create(saver);
-                lv_obj_center(ssv.img[k]);
-                lv_obj_remove_flag(ssv.img[k], LV_OBJ_FLAG_CLICKABLE);
-            }
-            if (ssv.px[0] && decode_jpeg(ssv.raw[0], ssv.len[0], &ssv.dsc[0], ssv.px[0], SLIDE_BUF))
-                lv_image_set_src(ssv.img[0], &ssv.dsc[0]);
-            ssv.last = lv_tick_get();
-        } else {
-            photos = false; // nothing synced: fall back to the clock
-        }
-    }
-    if (!photos) {
-        cJSON *pg = cJSON_CreateObject();
-        cJSON_AddStringToObject(pg, "style", "digital");
-        build_clock_into(saver, pg, &clocks[SAVER_CLOCK], true, true);
-        cJSON_Delete(pg);
-    }
-    board_backlight(LV_MAX(5, store_brightness() / 2));
-}
-
 
 // ---- app icons pushed by the daemon ---------------------------------------------------------
 
@@ -2187,7 +2078,7 @@ void ui_mixer(cJSON *m)
         lv_obj_set_style_bg_opa(ib, LV_OPA_COVER, 0);
         lv_obj_add_flag(ib, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_t *ic = muted ? text(ib, F.icon_s, P.on_ec, theme_icon("volume_off"))
-                             : app_icon(ib, jstr(a, "icon"), "music_note", P.on_surface, 200);
+                             : app_icon(ib, jstr(a, "icon"), "music_note", P.on_surface, 256); // native size: crisp
         lv_obj_center(ic);
         lv_obj_add_event_cb(ib, mixer_mute_event, LV_EVENT_CLICKED, mix_w.ids[k]);
         lv_obj_t *nm = text(c, F.label, P.on_surface, jstr(a, "name") ?: "");
@@ -2789,7 +2680,6 @@ static void screen_off(void)
 {
     if (power == OFF) return;
     power = OFF;
-    saver_hide();
     board_backlight(0);
     board_panel_sleep(true); // display off + sleep in: no light at all
     make_shield();
@@ -2830,18 +2720,12 @@ static void power_tick(lv_timer_t *t)
     if (sleep_s > 0 && idle > (uint32_t)sleep_s * 1000) {
         if (power != ASLEEP) {
             power = ASLEEP;
-            saver_hide();
-            board_backlight(0);
+                    board_backlight(0);
             make_shield();
                     sync_gifs();
             ui_announce();
         }
-    } else if (strcmp(jstr(cJSON_GetObjectItem(store_config(), "device"), "screensaver") ?: "off", "off") &&
-               power == AWAKE && !saver && (!qs || lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN)) &&
-               idle > (uint32_t)LV_MAX(10, store_get_int("screensaverAfter", 60)) * 1000) {
-        saver_show(jstr(cJSON_GetObjectItem(store_config(), "device"), "screensaver"));
-    } else if (!saver && dim_s > 0 && idle > (uint32_t)dim_s * 1000 &&
-               !strcmp(jstr(cJSON_GetObjectItem(store_config(), "device"), "screensaver") ?: "off", "off")) {
+    } else if (dim_s > 0 && idle > (uint32_t)dim_s * 1000) {
         if (power == AWAKE) {
             power = DIM;
             board_backlight(store_brightness() / 4);

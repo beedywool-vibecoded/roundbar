@@ -52,19 +52,12 @@ export interface DeviceSettings {
   followPc: boolean
   /** Double tap near the left/right edge. Missing = "page" */
   edgeDoubleTap: EdgeDoubleTap
-  /** Replaces the dim step after screensaverAfter seconds idle. Missing = "off" */
-  screensaver: Screensaver
-  /** Seconds, 10..3600. Missing = 60 */
-  screensaverAfter: number
-  /** Asset ids for "photos", stills only, up to 20 */
-  screensaverImages: string[]
   /** Pull up from the bottom edge for the notification panel. Missing = true */
   notifications: boolean
   /** Show new notifications briefly. Missing = true */
   notifToast: boolean
 }
 
-export type Screensaver = 'off' | 'clock' | 'photos'
 
 export type WeatherUnits = 'metric' | 'imperial'
 export interface Weather {

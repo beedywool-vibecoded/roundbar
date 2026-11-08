@@ -244,11 +244,6 @@ func deviceGIF(raw []byte, contain bool) ([]byte, error) {
 // Wanted lists the device files a config needs: name -> (asset id, fit).
 func Wanted(c *config.Config) map[string][2]string {
 	m := map[string][2]string{}
-	if c.Device.Screensaver == "photos" {
-		for _, id := range c.Device.ScreensaverImages {
-			m[DeviceName(id, "cover")] = [2]string{id, "cover"}
-		}
-	}
 	for _, p := range c.Profiles {
 		for _, pg := range p.Pages {
 			if pg.Type != "image" {

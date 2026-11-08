@@ -185,16 +185,15 @@ func (d *Desktop) shell(method string, args ...any) *dbus.Call {
 	return d.conn.Object(focusName, focusPath).Call(focusIface+"."+method, 0, args...)
 }
 
+// D-Bus structs (a(ssss)) decode into Go structs with matching fields, not [][]string.
 func (d *Desktop) Windows() ([]Window, error) {
-	var raw [][]string
+	var raw []struct{ ID, App, Title, Icon string }
 	if err := d.shell("Windows").Store(&raw); err != nil {
 		return nil, err
 	}
 	out := make([]Window, 0, len(raw))
 	for _, r := range raw {
-		if len(r) == 4 {
-			out = append(out, Window{ID: r[0], App: r[1], Title: r[2], Icon: r[3]})
-		}
+		out = append(out, Window{ID: r.ID, App: r.App, Title: r.Title, Icon: r.Icon})
 	}
 	return out, nil
 }
@@ -202,15 +201,13 @@ func (d *Desktop) Windows() ([]Window, error) {
 func (d *Desktop) Activate(id string) error { return d.shell("Activate", id).Err }
 
 func (d *Desktop) Notifications() ([]Notification, error) {
-	var raw [][]string
+	var raw []struct{ ID, App, Title, Body, Icon string }
 	if err := d.shell("Notifications").Store(&raw); err != nil {
 		return nil, err
 	}
 	out := make([]Notification, 0, len(raw))
 	for _, r := range raw {
-		if len(r) == 5 {
-			out = append(out, Notification{ID: r[0], App: r[1], Title: r[2], Body: r[3], Icon: r[4]})
-		}
+		out = append(out, Notification{ID: r.ID, App: r.App, Title: r.Title, Body: r.Body, Icon: r.Icon})
 	}
 	return out, nil
 }

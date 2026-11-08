@@ -48,13 +48,10 @@ type weatherNow struct {
 	Day   bool    `json:"day"`
 }
 
-// needsWeather: a clock page with weather on, or the clock screen saver.
+// needsWeather: a clock page with weather on.
 func needsWeather(c *config.Config) bool {
 	if c.Weather == nil {
 		return false
-	}
-	if c.Device.Screensaver == "clock" {
-		return true
 	}
 	for _, p := range c.Profiles {
 		for _, pg := range p.Pages {

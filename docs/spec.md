@@ -65,9 +65,6 @@ the device keeps a copy in flash so it works without the daemon.
     "rotation": 0,             // screen rotation, degrees clockwise: 0 | 90 | 180 | 270 (touch follows)
     "edgeDoubleTap": "page",   // double tap near the left/right edge: "page" (prev/next, instant) |
                                // "quickSettings" | "screenOff" | "off"; missing = "page"
-    "screensaver": "off",      // after screensaverAfter s idle: "off" | "clock" | "photos" (dimmed); replaces the dim step
-    "screensaverAfter": 60,    // seconds, 10..3600
-    "screensaverImages": [],   // asset ids for "photos" (stills only, ≤ 20), synced like image pages (cover fit)
     "notifications": true,     // pull up from the bottom edge for the notification panel; missing = true
     "notifToast": true,        // show new notifications briefly on the device; missing = true
     "followPc": true           // screen goes black ~8 s after the PC side disappears (shutdown, daemon stopped,
@@ -97,7 +94,7 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `stats` | `items: ("cpu"\|"cpuTemp"\|"ram"\|"gpu"\|"gpuTemp"\|"vram")[]` (1..4) | M3 expressive gauges |
 | `dial` | `icon`, `label`, `source: "volume"\|"mic"\|"brightness"\|"custom"`, `step?: number` (custom only, 1..20), `onUp?: Action`, `onDown?: Action` (custom only) | one big value arc, drag along the edge |
 | `clock` | `style?: "analog"\|"digital"` (default analog), `weather?: bool` (default true, needs top-level `weather`), `zones?: [{ "label": "Tokyo", "tz": "Asia/Tokyo" }]` (0..3 world clocks, IANA names) | home time large, weather below, world clocks as small dials/rows |
-| `timer` | `minutes?: number[]` (1..4 presets, 1..180, default [5, 15, 25]), `pomodoro?: bool`, `label?` | turn the bezel ring to set minutes, tap the center to start/pause, hold to reset; the ring empties as time runs out; pomodoro alternates 25 min work / 5 min break (4th break 15). At the end the screen pulses and the PC shows a notification. |
+| `timer` | `minutes?: number[]` (1..3 presets, 1..180, default [5, 15, 25]), `pomodoro?: bool`, `label?` | turn the bezel ring to set minutes, tap the center to start/pause, hold to reset; the ring empties as time runs out; pomodoro alternates 25 min work / 5 min break (4th break 15). At the end the screen pulses and the PC shows a notification. |
 | `mixer` | – | one slider row per app playing sound (icon, name, volume; tap the icon to mute); scrolls vertically |
 | `windows` | – | icons of the open windows on a ring (most recent first, up to 8); tap focuses the window |
 | `clipboard` | – | the last 10 copied texts as a scrolling list; tap one to paste it into the focused app |
@@ -205,7 +202,7 @@ partition (see §2).
 | `show` | `profile`, `page` | configurator preview: jump to a page |
 | `bootloader` | – | reboot into the ROM USB download mode (for flashing) |
 | `time` | `epoch` (unix s), `offset` (local UTC offset, s), `zones: {tz: offset}` | on connect and every hour (DST); the device keeps time from it |
-| `weather` | `city`, `temp`, `code` (WMO), `hi`, `lo`, `units`, `day: bool` | on connect and every 30 min while a clock page or the clock screensaver can show |
+| `weather` | `city`, `temp`, `code` (WMO), `hi`, `lo`, `units`, `day: bool` | on connect and every 30 min while a clock page can show |
 | `icon` | `name`, `w`, `h`, `data` (base64 RGB565A8: RGB565 LE plane then A8 plane) | app icons for mixer / windows / notifications, sent before the list that uses them; the device caches them by name until reboot |
 | `windows` | `list: [{id, app, title, icon}]` | while a `windows` page is visible, on change |
 | `mixer` | `apps: [{id, name, icon, vol, muted}]` | while a `mixer` page is visible, on change |

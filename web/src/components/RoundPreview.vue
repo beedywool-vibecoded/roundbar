@@ -259,7 +259,7 @@ const clock = computed(() => {
   const analog = (pg.style ?? CLOCK_DEFAULTS.style) === 'analog'
   // Same layout as the device: weather above the home time, world clocks below it.
   const base = analog ? -66 : -92 // weather row
-  const rowsTop = analog ? 56 : 62
+  const rowsTop = analog ? 72 : 82
   const rows = zones.map((text, i) => ({ y: rowsTop + i * 20, text }))
   const hourAngle = ((h % 12) + m / 60) * 30 - 90
   const minAngle = (m + sec / 60) * 6 - 90
