@@ -50,7 +50,7 @@ static struct {
     lv_obj_t *mic_arc[MAX_LIVE], *mic_lbl[MAX_LIVE];
     int nmic;
     struct {
-        lv_obj_t *title, *artist, *player, *play, *play_icon, *cover, *scrim;
+        lv_obj_t *title, *artist, *player, *play, *play_icon, *cover;
         uint8_t play_shape, playing_shape;
     } media[MAX_LIVE];
     int nmedia;
@@ -89,6 +89,46 @@ static palette_t PM;        // media-page palette from the album art
 static bool pm_active;
 static lv_image_dsc_t cover_dsc;
 static bool cover_set;
+static const uint8_t *cover_src; // as received (RGB565)
+static uint8_t *cover_blend;     // with the readability scrim baked in
+static int cover_w, cover_h;
+static uint32_t cover_key;
+
+static int cover_scrim_pct(void)
+{
+    cJSON *opa = cJSON_GetObjectItem(cJSON_GetObjectItem(store_config(), "media"), "coverOpacity");
+    return 100 - (cJSON_IsNumber(opa) ? LV_CLAMP(0, opa->valueint, 100) : 50);
+}
+
+// Bakes the surface-colored scrim into the artwork once, so a swipe only copies
+// one opaque image per frame instead of blending a full-screen layer on top.
+static void cover_prepare(lv_color_t surface, int scrim_pct)
+{
+    if (!cover_src) return;
+    uint32_t key = (uint32_t)(uintptr_t)cover_src ^ lv_color_to_u32(surface) * 31u ^ (uint32_t)scrim_pct << 24;
+    if (key == cover_key && cover_dsc.data == cover_blend) return;
+    size_t n = (size_t)cover_w * cover_h;
+    if (!cover_blend) cover_blend = heap_caps_malloc(360 * 360 * 2, MALLOC_CAP_SPIRAM);
+    if (!cover_blend || n > 360 * 360) return;
+    int a = scrim_pct * 256 / 100, ia = 256 - a;
+    int sr = surface.red >> 3, sg = surface.green >> 2, sb = surface.blue >> 3;
+    const uint16_t *in = (const uint16_t *)cover_src;
+    uint16_t *out = (uint16_t *)cover_blend;
+    for (size_t i = 0; i < n; i++) {
+        uint16_t v = in[i];
+        int r = ((v >> 11) * ia + sr * a) >> 8, g = (((v >> 5) & 63) * ia + sg * a) >> 8, b = ((v & 31) * ia + sb * a) >> 8;
+        out[i] = (uint16_t)(r << 11 | g << 5 | b);
+    }
+    cover_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+    cover_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
+    cover_dsc.header.w = cover_w;
+    cover_dsc.header.h = cover_h;
+    cover_dsc.header.stride = cover_w * 2;
+    cover_dsc.data_size = (uint32_t)n * 2;
+    cover_dsc.data = cover_blend;
+    cover_key = key;
+    lv_image_cache_drop(&cover_dsc); // same descriptor, new pixels
+}
 static bool m_playing;
 
 typedef enum { AWAKE, DIM, ASLEEP, OFF } power_t; // OFF: quick settings / PC gone, double tap wakes
@@ -573,18 +613,12 @@ static void build_media_inner(lv_obj_t *tile, cJSON *pg)
     lv_obj_set_size(cover, LCD_W, LCD_H);
     lv_obj_center(cover);
     lv_obj_remove_flag(cover, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_t *scrim = box(tile); // keeps text readable over any artwork
-    lv_obj_set_size(scrim, LCD_W, LCD_H);
-    lv_obj_center(scrim);
-    lv_obj_set_style_bg_color(scrim, P.surface, 0);
-    cJSON *opa = cJSON_GetObjectItem(cJSON_GetObjectItem(store_config(), "media"), "coverOpacity");
-    int cover_pct = cJSON_IsNumber(opa) ? LV_CLAMP(0, opa->valueint, 100) : 50;
-    lv_obj_set_style_bg_opa(scrim, (lv_opa_t)((100 - cover_pct) * 255 / 100), 0);
-    lv_obj_remove_flag(scrim, LV_OBJ_FLAG_CLICKABLE);
-    if (cover_set) lv_image_set_src(cover, &cover_dsc);
-    else {
+    if (cover_set) {
+        cover_prepare(P.surface, cover_scrim_pct()); // P is the media palette here
+        lv_image_set_src(cover, &cover_dsc);
+        lv_obj_set_style_bg_opa(tile, LV_OPA_TRANSP, 0); // the opaque cover covers it
+    } else {
         lv_obj_add_flag(cover, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(scrim, LV_OBJ_FLAG_HIDDEN);
     }
 
     lv_obj_t *arc = bezel_arc(tile, P.primary, true);
@@ -595,7 +629,6 @@ static void build_media_inner(lv_obj_t *tile, cJSON *pg)
     if (live.nmedia >= MAX_LIVE) return;
     typeof(live.media[0]) *m = &live.media[live.nmedia++];
     m->cover = cover;
-    m->scrim = scrim;
     m->player = text(tile, F.label, P.on_sv, m_player[0] ? m_player : "Nothing playing");
     lv_obj_align(m->player, LV_ALIGN_CENTER, 0, -104);
 
@@ -640,25 +673,20 @@ void ui_media(const char *title, const char *artist, const char *player, bool pl
 void ui_cover(const uint8_t *rgb565, int w, int h)
 {
     cover_set = rgb565 != NULL;
-    if (cover_set) {
-        cover_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
-        cover_dsc.header.cf = LV_COLOR_FORMAT_RGB565;
-        cover_dsc.header.w = w;
-        cover_dsc.header.h = h;
-        cover_dsc.header.stride = w * 2;
-        cover_dsc.data_size = (uint32_t)w * h * 2;
-        cover_dsc.data = rgb565;
-        lv_image_cache_drop(&cover_dsc); // same descriptor, new pixels
-    }
+    cover_src = rgb565;
+    cover_w = w;
+    cover_h = h;
+    if (cover_set) cover_prepare(pm_active ? PM.surface : P.surface, cover_scrim_pct());
     for (int i = 0; i < live.nmedia; i++) {
+        lv_obj_t *tile = lv_obj_get_parent(live.media[i].cover);
         if (cover_set) {
             lv_image_set_src(live.media[i].cover, &cover_dsc);
             lv_obj_remove_flag(live.media[i].cover, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_remove_flag(live.media[i].scrim, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_opa(tile, LV_OPA_TRANSP, 0);
             lv_obj_invalidate(live.media[i].cover);
         } else {
             lv_obj_add_flag(live.media[i].cover, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(live.media[i].scrim, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
         }
     }
 }
