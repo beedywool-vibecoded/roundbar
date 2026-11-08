@@ -68,10 +68,12 @@ type Daemon struct {
 	artCancel context.CancelFunc // in-flight artwork job
 	coverSeq  int
 
-	clockKick   chan struct{}
-	discord     *discord.Client
-	discordKick chan struct{}
-	iconsSent   map[string]bool
+	clockKick     chan struct{}
+	discord       *discord.Client
+	discordLive   discord.State // from Vesktop via DevTools
+	discordLiveAt time.Time
+	discordKick   chan struct{}
+	iconsSent     map[string]bool
 
 	statsStop chan struct{}
 	watchers  map[chan struct{}]bool
@@ -105,6 +107,8 @@ func (d *Daemon) Run() error {
 	go d.audioLoop()
 	go d.clockLoop()
 	go d.discord.Run(d.done, d.discordKick)
+	cdp := &discord.CDP{OnState: d.setDiscordLive}
+	go cdp.Run(d.done, d.hasDiscordPage)
 	go d.discordLoop()
 	go d.watchConfig()
 	go d.serveSocket()
@@ -774,7 +778,7 @@ func (d *Daemon) status() Status {
 	}
 	pid, _ := d.profileFor(d.focus)
 	rec := append([]desktop.Focus{}, d.recent...)
-	disc := d.discord.State()
+	disc := d.discordStateLocked()
 	return Status{Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/beedywool-vibecoded/roundbar/internal/discord"
 	"github.com/beedywool-vibecoded/roundbar/internal/icons"
 )
 
@@ -216,8 +217,50 @@ func (d *Daemon) onShellMsg(m json.RawMessage, t string) bool {
 	return true
 }
 
+// discordStateLocked prefers Vesktop's live state (heartbeat every 30 s) over
+// the official client's RPC. Caller holds d.mu.
+func (d *Daemon) discordStateLocked() discord.State {
+	if d.discordLive.Connected && time.Since(d.discordLiveAt) < 75*time.Second {
+		return d.discordLive
+	}
+	return d.discord.State()
+}
+
+func (d *Daemon) discordState() discord.State {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.discordStateLocked()
+}
+
+func (d *Daemon) hasDiscordPage() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, p := range d.cfg.Profiles {
+		for _, pg := range p.Pages {
+			if pg.Type == "discord" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (d *Daemon) setDiscordLive(st discord.State) {
+	st.Controls = false // your own keybinds handle mute/deafen in Vesktop
+	if len(st.Members) > 12 {
+		st.Members = st.Members[:12]
+	}
+	d.mu.Lock()
+	d.discordLive, d.discordLiveAt = st, time.Now()
+	d.mu.Unlock()
+	if d.viewKind() == "discord" {
+		go d.sendDiscord()
+	}
+	d.notify()
+}
+
 func (d *Daemon) sendDiscord() {
-	st := d.discord.State()
+	st := d.discordState()
 	for _, m := range st.Members {
 		d.sendIcons(m.Avatar)
 	}
