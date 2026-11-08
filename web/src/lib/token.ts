@@ -12,7 +12,10 @@ function capture(): string {
     } catch {
       // storage blocked: the token lasts until the tab reloads
     }
-    history.replaceState(null, '', `${location.pathname}${location.search}#/`)
+    // Optional `&r=/device` opens a given route after the token is taken out.
+    const r = /[#&]r=([^&]+)/.exec(location.hash)?.[1]
+    const route = r && decodeURIComponent(r).startsWith('/') ? decodeURIComponent(r) : '/'
+    history.replaceState(null, '', `${location.pathname}${location.search}#${route}`)
     return t
   }
   try {
