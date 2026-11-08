@@ -15,6 +15,7 @@
 
 <img src="https://img.shields.io/badge/carte-ESP32--S3_360%C3%97360-4A4458?style=flat-square&logo=espressif&logoColor=white" alt="ESP32-S3 360×360">
 <img src="https://img.shields.io/badge/bureau-GNOME_Wayland-633B48?style=flat-square&logo=linux&logoColor=white" alt="GNOME Wayland">
+<img src="https://img.shields.io/badge/aussi-KDE_%C2%B7_Hyprland_%C2%B7_sway_%C2%B7_X11-4A4458?style=flat-square&logo=linux&logoColor=white" alt="Aussi KDE, Hyprland, sway, X11">
 <img src="https://img.shields.io/badge/USB-clavier_%2B_souris-4F378B?style=flat-square" alt="Clavier et souris USB">
 <img src="https://img.shields.io/badge/daemon-~0%25_CPU_%C2%B7_15_Mo-4A4458?style=flat-square" alt="Daemon ~0 % CPU, 15 Mo">
 <img src="https://img.shields.io/badge/binaire-1_fichier-633B48?style=flat-square" alt="Un seul binaire">
@@ -39,7 +40,7 @@
 
 > **Roundbar** est un contrôleur tactile rond à fabriquer soi-même, dans l'esprit du Flexbar : une
 > **Guition JC3636W518C** (ESP32-S3, écran IPS tactile rond de 1,8" en 360×360) branchée en USB.
-> Ses pages **changent toutes seules selon l'app au premier plan** sur un PC Linux sous GNOME (Wayland) :
+> Ses pages **changent toutes seules selon l'app au premier plan** sur un PC Linux (GNOME, KDE Plasma, Hyprland, sway et les autres compositeurs wlroots, ou X11) :
 > raccourcis, lecture en cours, jauges système, molettes, minuteur, mixeur et bien d'autres, en
 > **Material 3 Expressive**. La carte se présente comme un **clavier et une souris USB**, donc les
 > raccourcis marchent même sans le logiciel côté PC. Tout se règle dans un **configurateur web** avec
@@ -203,7 +204,7 @@ puissance et VRAM ; le log de MangoHud n'est activé que pendant que la page est
 
 ### Gestes et panneaux
 On tire vers le bas pour les **réglages rapides** : sauts de page, **écran vraiment éteint** (réveil par
-double tap) et pause de la bascule automatique. On tire vers le haut pour les **notifications** de GNOME.
+double tap) et pause de la bascule automatique. On tire vers le haut pour les **notifications** du bureau.
 Les pages **tournent en boucle**, et un **double tap sur le bord** change de page, ouvre les réglages rapides ou éteint l'écran, au choix.
 
 </td>
@@ -238,7 +239,7 @@ l'emploi, et des captures de l'écran de la carte avec `roundbar screenshot out.
 <img src=".github/assets/section-install-light.svg#gh-light-mode-only" alt="03 | Installation" width="100%">
 <img src=".github/assets/section-install-dark.svg#gh-dark-mode-only" alt="03 | Installation" width="100%">
 
-Il faut Go, Node et npm, sur un bureau GNOME en Wayland :
+Il faut Go, Node et npm, sur un bureau Linux (GNOME de préférence, voir [Bureaux](#bureaux)) :
 
 ```sh
 make install
@@ -249,10 +250,23 @@ make install
 | 1 | Compile le configurateur (Vue 3) et le binaire Go qui l'embarque |
 | 2 | Installe `~/.local/bin/roundbar` |
 | 3 | Installe et démarre le service systemd utilisateur `roundbar daemon` |
-| 4 | Installe l'extension GNOME `roundbar@beedy` et le lanceur d'app |
+| 4 | Installe le lanceur d'app et, sous GNOME, l'extension `roundbar@beedy` |
 
-Déconnecte-toi puis reconnecte-toi **une fois** pour que GNOME charge l'extension. Ouvre ensuite
+Sous GNOME, déconnecte-toi puis reconnecte-toi **une fois** pour qu'il charge l'extension. Ouvre ensuite
 **Roundbar** depuis la grille d'apps, ou lance `roundbar config`.
+
+<a name="bureaux"></a>
+**Bureaux.** Le daemon choisit tout seul comment suivre le bureau (`roundbar status` affiche lequel) :
+
+| Bureau | App au premier plan | Fenêtres | Notifications | Presse-papiers |
+| --- | --- | --- | --- | --- |
+| GNOME (Wayland ou X11) | extension | oui | oui | oui |
+| KDE Plasma 6 (et 5) | script KWin chargé par le daemon | oui | oui | Klipper |
+| Hyprland, sway, river, niri, labwc, Wayfire… | `wlr-foreign-toplevel` | oui | oui | `data-control` |
+| Autres compositeurs Wayland | – | liste seule si `ext-foreign-toplevel-list` | oui | si `data-control` |
+| XFCE, Cinnamon, MATE, i3… (X11) | EWMH | oui | oui | oui |
+
+Les jeux Steam apparaissent partout comme `steam_app_<id>`. `ROUNDBAR_DESKTOP=gnome|kde|wayland|x11` force un choix.
 
 | Commande | Rôle |
 | --- | --- |
@@ -261,7 +275,7 @@ Déconnecte-toi puis reconnecte-toi **une fois** pour que GNOME charge l'extensi
 | `roundbar screenshot out.png` | Enregistre ce qu'affiche la carte en PNG |
 | `roundbar bootloader` | Redémarre la carte en mode téléchargement USB, pour la flasher |
 | `roundbar daemon` | Le pont entre la carte et le bureau (lancé par le service systemd) |
-| `roundbar install` | Installe le service, l'extension GNOME et le lanceur |
+| `roundbar install` | Installe le service, le lanceur et, sous GNOME, l'extension |
 
 <br>
 
@@ -330,7 +344,7 @@ du configurateur fait la même chose.
 <tr><td><code>internal/config</code></td><td>Lecture, validation et surveillance (inotify) de <code>~/.config/roundbar/config.json</code>.</td></tr>
 <tr><td><code>internal/daemon</code></td><td>Le pont événementiel entre la carte et le bureau.</td></tr>
 <tr><td><code>internal/device</code></td><td>Connexion USB CDC et messages JSON avec la carte.</td></tr>
-<tr><td><code>internal/desktop</code></td><td>Focus, fenêtres, notifications et presse-papiers via l'extension GNOME (D-Bus), MPRIS, actions.</td></tr>
+<tr><td><code>internal/desktop</code></td><td>Focus, fenêtres, notifications et presse-papiers selon le bureau (extension GNOME, script KWin, protocoles Wayland, X11), MPRIS.</td></tr>
 <tr><td><code>internal/audio</code></td><td>Volume, micro et mixeur par app (PipeWire).</td></tr>
 <tr><td><code>internal/stats</code></td><td>CPU, RAM, GPU et températures lus dans <code>/proc</code>, hwmon et amdgpu.</td></tr>
 <tr><td><code>internal/cover</code></td><td>Pochettes : fond flouté et palette tirée de l'image.</td></tr>
