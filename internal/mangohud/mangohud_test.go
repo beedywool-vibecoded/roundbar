@@ -74,7 +74,7 @@ func frames(n int, ft float64, gpu int) string {
 func TestPicksTheRenderingProcess(t *testing.T) {
 	dir := t.TempDir()
 	s := &Session{dir: dir, before: map[string]bool{}, tails: map[string]*tail{},
-		conns: map[string]net.Conn{"@mangohud-1": nil}, lastScan: time.Now()}
+		conns: map[string]*ctl{"@mangohud-1": nil}, lastScan: time.Now()}
 	old := filepath.Join(dir, "old_2026-01-01_00-00-00.csv")
 	_ = os.WriteFile(old, []byte(header+frames(10, 5, 1)), 0o644)
 	s.before[old] = true
@@ -134,12 +134,77 @@ func TestStopRemovesOnlyNewFiles(t *testing.T) {
 	dir := t.TempDir()
 	keep := filepath.Join(dir, "bench.csv")
 	_ = os.WriteFile(keep, nil, 0o644)
-	s := &Session{dir: dir, before: map[string]bool{keep: true}, conns: nil, finished: make(chan struct{}, 1)}
+	s := &Session{dir: dir, before: map[string]bool{keep: true}, conns: nil}
 	_ = os.WriteFile(filepath.Join(dir, "g_2026.csv"), nil, 0o644)
 	_ = os.WriteFile(filepath.Join(dir, "g_2026_summary.csv"), nil, 0o644)
 	s.Stop()
 	left, _ := filepath.Glob(filepath.Join(dir, "*"))
 	if len(left) != 1 || left[0] != keep {
 		t.Fatalf("left %v", left)
+	}
+}
+
+// MangoHud serves one client and never accepts another after it: a second page
+// visit must reuse the first connection instead of dialing again.
+func TestControlConnectionIsReused(t *testing.T) {
+	prefix := fmt.Sprintf("rbtest-%d-", os.Getpid())
+	l, err := net.Listen("unix", "@"+prefix+"1")
+	if err != nil {
+		t.Skip("abstract unix sockets unavailable:", err)
+	}
+	defer l.Close()
+	cmds := make(chan string, 16)
+	accepts := 0
+	go func() {
+		c, err := l.Accept() // exactly once, like MangoHud
+		if err != nil {
+			return
+		}
+		accepts++
+		_, _ = c.Write([]byte(":MangoHudControlVersion=1;"))
+		buf := make([]byte, 64)
+		var acc string
+		for {
+			n, err := c.Read(buf)
+			if err != nil {
+				return
+			}
+			acc += string(buf[:n])
+			for {
+				i := strings.IndexByte(acc, ';')
+				if i < 0 {
+					break
+				}
+				cmd := acc[:i+1]
+				acc = acc[i+1:]
+				cmds <- cmd
+				if cmd == ":logging=0;" {
+					_, _ = c.Write([]byte(":LoggingFinished;"))
+				}
+			}
+		}
+	}()
+	expect := func(want string) {
+		select {
+		case got := <-cmds:
+			if got != want {
+				t.Fatalf("got %q, want %q", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("no %q", want)
+		}
+	}
+	for visit := 0; visit < 3; visit++ {
+		s := &Session{prefix: prefix, dir: t.TempDir(), before: map[string]bool{}, conns: map[string]*ctl{}, tails: map[string]*tail{}}
+		s.connect()
+		if len(s.conns) != 1 {
+			t.Fatalf("visit %d: not connected", visit)
+		}
+		expect(":logging=1;")
+		s.Stop()
+		expect(":logging=0;")
+	}
+	if accepts != 1 {
+		t.Fatalf("dialed %d times", accepts)
 	}
 }
