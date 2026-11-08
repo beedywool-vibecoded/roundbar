@@ -31,5 +31,5 @@ void app_main(void)
     QueueHandle_t lines = xQueueCreate(8, sizeof(char *));
     usb_init(lines);
     proto_start(lines);
-    ESP_LOGI("main", "roundbar %s up", FW_VERSION);
+    ESP_LOGI("main", "Roundbar up");
 }

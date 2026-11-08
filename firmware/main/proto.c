@@ -6,6 +6,7 @@
 
 #include "assets.h"
 #include "board.h"
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -30,7 +31,7 @@ void proto_hello(void)
 {
     cJSON *o = cJSON_CreateObject();
     cJSON_AddStringToObject(o, "t", "hello");
-    cJSON_AddStringToObject(o, "fw", FW_VERSION);
+    cJSON_AddStringToObject(o, "fw", esp_app_get_description()->version); // git describe at build
     cJSON_AddNumberToObject(o, "proto", 1);
     cJSON_AddStringToObject(o, "cfg", store_sha());
     cJSON_AddNumberToObject(o, "w", 360);
@@ -204,6 +205,10 @@ static void handle(cJSON *m)
         if (t[0] == 'w') ui_windows(list);
         else if (t[0] == 'c') ui_clips(list);
         else ui_notifs(list);
+        lvgl_port_unlock();
+    } else if (!strcmp(t, "discord")) {
+        lvgl_port_lock(0);
+        ui_discord(cJSON_GetObjectItem(m, "state"));
         lvgl_port_unlock();
     } else if (!strcmp(t, "mixer") || !strcmp(t, "notif")) {
         lvgl_port_lock(0);

@@ -38,7 +38,7 @@ type server struct {
 	token string
 
 	mu      sync.Mutex
-	clients map[chan []byte]bool
+	clients map[chan []byte]bool // payloads are complete SSE frames
 	last    []byte
 	idle    *time.Timer
 }
@@ -77,6 +77,9 @@ func Run(open bool) error {
 	mux.HandleFunc("POST /api/run", s.auth(s.forward("run")))
 	mux.HandleFunc("GET /api/events", s.auth(s.events))
 	mux.HandleFunc("POST /api/assets", s.auth(s.postAsset))
+	mux.HandleFunc("GET /api/firmware", s.auth(s.getFirmware))
+	mux.HandleFunc("POST /api/discord", s.auth(s.postDiscord))
+	mux.HandleFunc("POST /api/firmware/update", s.auth(s.postFirmware))
 	mux.HandleFunc("GET /api/assets/{id}", s.auth(s.getAsset))
 	mux.Handle("/", spa())
 
@@ -167,6 +170,22 @@ func (s *server) postAsset(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(info)
 }
 
+// postDiscord saves the Discord app credentials (kept by the daemon in
+// discord.json, never in the config that goes to the device).
+func (s *server) postDiscord(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4096))
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, "bad body", "")
+		return
+	}
+	if err := ipc.Call(ipc.Request{Op: "discord", Action: body}, nil); err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error(), "")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"ok":true}`))
+}
+
 func (s *server) getAsset(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if strings.ContainsAny(id, "/\\") || strings.HasPrefix(id, ".") {
@@ -226,14 +245,23 @@ func (s *server) watchDaemon() {
 
 func (s *server) broadcast(b []byte) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if string(b) == string(s.last) {
+		s.mu.Unlock()
 		return
 	}
 	s.last = b
+	s.mu.Unlock()
+	s.broadcastEvent("status", b)
+}
+
+// broadcastEvent sends one SSE event to every client.
+func (s *server) broadcastEvent(event string, data []byte) {
+	frame := []byte("event: " + event + "\ndata: " + string(data) + "\n\n")
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for ch := range s.clients {
 		select {
-		case ch <- b:
+		case ch <- frame:
 		default:
 		}
 	}
@@ -247,7 +275,7 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	ch := make(chan []byte, 4)
+	ch := make(chan []byte, 64)
 	s.mu.Lock()
 	s.clients[ch] = true
 	s.idle.Stop()
@@ -261,12 +289,12 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.Unlock()
 	}()
-	write := func(b []byte) bool {
-		_, err := io.WriteString(w, "event: status\ndata: "+string(b)+"\n\n")
+	write := func(frame []byte) bool {
+		_, err := w.Write(frame)
 		fl.Flush()
 		return err == nil
 	}
-	if last != nil && !write(last) {
+	if last != nil && !write([]byte("event: status\ndata: "+string(last)+"\n\n")) {
 		return
 	}
 	ping := time.NewTicker(25 * time.Second)

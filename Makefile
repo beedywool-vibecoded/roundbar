@@ -12,7 +12,7 @@ web:
 	cd web && npm install --no-audit --no-fund && npm run build
 
 go:
-	go build -trimpath -ldflags="-s -w" -o $(BIN) ./cmd/roundbar
+	go build -trimpath -ldflags="-s -w -X github.com/beedywool-vibecoded/roundbar/internal/configui.RepoDir=$(CURDIR)" -o $(BIN) ./cmd/roundbar
 
 test:
 	go test ./...

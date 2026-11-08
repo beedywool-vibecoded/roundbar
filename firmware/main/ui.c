@@ -1977,7 +1977,7 @@ static void saver_show(const char *mode)
 // ---- app icons pushed by the daemon ---------------------------------------------------------
 
 static struct {
-    char name[96];
+    char name[128]; // icon names can be avatar URLs
     lv_image_dsc_t dsc;
 } icon_cache[64];
 static int nicons;
@@ -2420,6 +2420,99 @@ void ui_notif_toast(cJSON *n)
     ui_toast(buf);
 }
 
+
+// ---- page: Discord voice --------------------------------------------------------------------
+
+static lv_obj_t *dc_root;
+
+static void dc_toggle_event(lv_event_t *e) { send_simple("discordToggle", "what", lv_event_get_user_data(e), 0); }
+
+static lv_obj_t *dc_button(lv_obj_t *parent, int size, bool on, const char *icon, lv_color_t on_bg, lv_color_t on_fg,
+                           const char *what)
+{
+    lv_obj_t *b = box(parent);
+    lv_obj_set_size(b, size, size);
+    lv_obj_set_style_radius(b, on ? size * 30 / 100 : size / 2, 0); // active = rounded square (M3E toggle)
+    lv_obj_set_style_bg_color(b, on ? on_bg : P.schh, 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    squish_on_press(b, size);
+    lv_obj_t *ic = text(b, size > 70 ? F.icon_l : F.icon_m, on ? on_fg : P.on_surface, theme_icon(icon));
+    lv_obj_center(ic);
+    lv_obj_add_event_cb(b, dc_toggle_event, LV_EVENT_CLICKED, (void *)what);
+    return b;
+}
+
+static void build_discord(lv_obj_t *tile)
+{
+    dc_root = box(tile);
+    lv_obj_set_size(dc_root, LCD_W, LCD_H);
+    lv_obj_center(dc_root);
+    lv_obj_remove_flag(dc_root, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *l = text(dc_root, F.body, P.on_sv, usb_host_listening() ? "Discord…" : "Connect the PC");
+    lv_obj_center(l);
+}
+
+void ui_discord(cJSON *st)
+{
+    if (!dc_root) return;
+    lv_obj_clean(dc_root);
+    if (!cJSON_IsTrue(cJSON_GetObjectItem(st, "connected"))) {
+        lv_obj_t *ic = text(dc_root, F.icon_xl, P.on_sv, theme_icon("headset_mic"));
+        lv_obj_align(ic, LV_ALIGN_CENTER, 0, -30);
+        const char *err = jstr(st, "error");
+        lv_obj_t *l = text(dc_root, F.body, P.on_sv, err && err[0] ? err : "Set up Discord in the configurator");
+        lv_obj_set_width(l, 220);
+        lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+        lv_obj_align(l, LV_ALIGN_CENTER, 0, 34);
+        return;
+    }
+    bool mute = cJSON_IsTrue(cJSON_GetObjectItem(st, "mute")), deaf = cJSON_IsTrue(cJSON_GetObjectItem(st, "deaf"));
+    const char *channel = jstr(st, "channel");
+    cJSON *members = cJSON_GetObjectItem(st, "members");
+    int n = LV_MIN(cJSON_GetArraySize(members), 8);
+    for (int i = 0; i < n; i++) {
+        cJSON *m = cJSON_GetArrayItem(members, i);
+        bool speaking = cJSON_IsTrue(cJSON_GetObjectItem(m, "speaking")), muted = cJSON_IsTrue(cJSON_GetObjectItem(m, "muted"));
+        int16_t ang = (int16_t)(270 + i * 360 / LV_MAX(n, 1)) % 360;
+        lv_obj_t *av = box(dc_root);
+        lv_obj_set_size(av, 56, 56);
+        lv_obj_set_style_radius(av, 28, 0);
+        lv_obj_set_style_bg_color(av, P.schh, 0);
+        lv_obj_set_style_bg_opa(av, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(av, speaking ? 4 : 0, 0);
+        lv_obj_set_style_border_color(av, lv_color_hex(0x23A55A), 0); // Discord's speaking green
+        lv_obj_remove_flag(av, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(av, LV_ALIGN_CENTER, 132 * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, 132 * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
+        lv_obj_t *ic = app_icon(av, jstr(m, "avatar"), "person", P.on_surface, 256);
+        lv_obj_center(ic);
+        if (muted) {
+            lv_obj_t *badge = box(av);
+            lv_obj_set_size(badge, 22, 22);
+            lv_obj_set_style_radius(badge, 11, 0);
+            lv_obj_set_style_bg_color(badge, P.ec, 0);
+            lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+            lv_obj_align(badge, LV_ALIGN_BOTTOM_RIGHT, 4, 4);
+            lv_obj_t *bi = text(badge, F.label, P.on_ec, theme_icon("mic_off"));
+            lv_obj_set_style_text_font(bi, F.icon_s, 0);
+            lv_obj_set_style_transform_scale(bi, 160, 0);
+            lv_obj_center(bi);
+        }
+    }
+    lv_obj_t *ch = text(dc_root, F.body, P.on_sv, channel && channel[0] ? channel : "Not in a voice channel");
+    lv_obj_set_width(ch, 170);
+    lv_label_set_long_mode(ch, LV_LABEL_LONG_DOT);
+    lv_obj_align(ch, LV_ALIGN_CENTER, 0, -64);
+    lv_obj_t *mb = dc_button(dc_root, 76, mute, mute ? "mic_off" : "mic", P.ec, P.on_ec, "mute");
+    lv_obj_align(mb, LV_ALIGN_CENTER, -44, 6);
+    lv_obj_t *db = dc_button(dc_root, 76, deaf, deaf ? "headset_off" : "headphones", P.ec, P.on_ec, "deaf");
+    lv_obj_align(db, LV_ALIGN_CENTER, 44, 6);
+    if (channel && channel[0]) {
+        lv_obj_t *lb = dc_button(dc_root, 48, true, "call_end", P.error, P.on_primary, "leave");
+        lv_obj_align(lb, LV_ALIGN_CENTER, 0, 78);
+    }
+}
+
 // ---- page dots ---------------------------------------------------------------------
 
 static void dot_width_exec(void *o, int32_t v) { lv_obj_set_width(o, v); }
@@ -2482,6 +2575,7 @@ static void build(bool animate)
     mix_w.col = NULL;
     mix_w.sliding = false;
     clip_col = NULL;
+    dc_root = NULL;
     strlcpy(cur_profile, jstr(prof, "id") ?: "default", sizeof(cur_profile));
     memset(&live, 0, sizeof(live));
     memset(&media_live, 0, sizeof(media_live));
@@ -2525,6 +2619,7 @@ static void build(bool animate)
         else if (!strcmp(k, "windows")) build_windows(tile);
         else if (!strcmp(k, "mixer")) build_mixer(tile);
         else if (!strcmp(k, "clipboard")) build_clipboard(tile);
+        else if (!strcmp(k, "discord")) build_discord(tile);
         else build_radial(tile, pages[i]);
     }
 

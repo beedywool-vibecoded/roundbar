@@ -102,6 +102,7 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `mixer` | – | output device chips (tap to switch) and one slider row per app playing sound (icon, name, volume; tap the icon to mute); scrolls vertically |
 | `windows` | – | icons of the open windows on a ring (most recent first, up to 8); tap focuses the window |
 | `clipboard` | – | the last 10 copied texts as a scrolling list; tap one to paste it into the focused app |
+| `discord` | – | your Discord voice channel: members around the ring (avatar, speaking = green ring, muted badge), big mute / deafen buttons, leave; "Not in a voice channel" otherwise. Needs a Discord application set up in the configurator (Device view). |
 | `touchpad` | `speed?: number` (1..10, default 5) | the device acts as a USB mouse: drag moves the cursor, tap = left click, long-press = right click, double-tap then drag = drag & drop, sliding along the outer ring scrolls. A sideways swipe starting on the ring changes page; a downward swipe from the top of the ring opens quick settings. |
 | `image` | `images: string[]` (asset ids, 1..20; a `.gif` must be alone), `interval?: number` (seconds, 2..3600, default 8), `fit?: "cover"\|"contain"` (default cover) | full-screen picture; several stills cross-fade as a slideshow; a GIF plays |
 
@@ -181,6 +182,7 @@ partition (see §2).
 | `assets` | `have: [ids]`, `free` | reply to `assetsWant` |
 | `activate` | `id` | focus a window from a `windows` page |
 | `mixerSet` | `id`, `vol` (0..100) / `mixerMute`: `id` / `output`: `id` | per-app volume, mute, default output |
+| `discordToggle` | `what: "mute"\|"deaf"\|"leave"` | Discord voice controls |
 | `paste` | `i` | paste clipboard entry i (the daemon puts it on the clipboard, then the device types ctrl+v) |
 | `notifOpen` / `notifDismiss` | `id` / `notifClear` | act on notifications |
 | `timerDone` | `label`, `phase?: "work"\|"break"` | a timer page finished: the daemon shows a desktop notification with a sound |
@@ -211,6 +213,7 @@ partition (see §2).
 | `clips` | `list: [string]` (newest first, ≤ 10, each ≤ 200 chars) | while a `clipboard` page is visible, on change |
 | `notifs` | `list: [{id, app, title, body, icon}]` (newest first, ≤ 20) | on connect and on every change, if `device.notifications` |
 | `notif` | `id, app, title, body, icon` | a new notification (for the toast), followed by `notifs` |
+| `discord` | `state: {connected, user, channel, members: [{id, name, avatar, muted, speaking}], mute, deaf, error}` | while a `discord` page is visible, on change (avatars arrive first as `icon`s named by URL) |
 | `micInUse` | `on: bool` | whenever capture streams start/stop (default source, excluding monitors) |
 | `assetsWant` | `id` | device replies `{"t":"assets","have":[ids],"free":bytes}` |
 | `asset` | `name`, `n`, `i`, `data` (base64, ≤ 32 KiB raw per chunk), `id` (ack) | one file in `n` chunks; every chunk is acked, the file is renamed into place after the last |
@@ -244,4 +247,7 @@ sent as `Authorization: Bearer <token>` on every API call.
 | POST | `/api/run` | `{"action":Action}` → test it |
 | POST | `/api/assets` | raw image body (`Content-Type: image/*`, ≤ 20 MB) → converted → `{"id","kind":"image"\|"gif","w","h","size"}`; `415 {"error"}` if it isn't an image |
 | GET | `/api/assets/<id>` | the converted file (for thumbnails and previews) |
+| GET | `/api/firmware` | `{repo, repoOk, idf, built, running}`: can this machine build & flash, and which version is built |
+| POST | `/api/firmware/update` | builds and flashes; progress comes as SSE `flash` events `{line}` then `{done, ok}` |
+| POST | `/api/discord` | `{clientId, clientSecret}` → stored by the daemon in `discord.json` (0600), then it connects; state in status `.discord` |
 | GET | `/api/events?t=<token>` | SSE: `status` events (same JSON as `/api/status`) whenever it changes. Token in the query because EventSource can't set headers. Also the liveness signal: the server exits 10 s after the last client is gone. |

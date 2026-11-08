@@ -6,11 +6,16 @@ import (
 	"encoding/binary"
 	"image"
 	"image/draw"
+	_ "image/jpeg"
 	_ "image/png"
+	"io"
+	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
@@ -106,7 +111,34 @@ func load(path string) image.Image {
 	return img
 }
 
+// fetchRound downloads an image (Discord avatars) and gives it a round alpha mask.
+func fetchRound(u string) image.Image {
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Get(u)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	img, _, err := image.Decode(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil
+	}
+	dst := image.NewNRGBA(image.Rect(0, 0, Size, Size))
+	xdraw.CatmullRom.Scale(dst, dst.Bounds(), img, img.Bounds(), xdraw.Src, nil)
+	c := float64(Size) / 2
+	for y := 0; y < Size; y++ {
+		for x := 0; x < Size; x++ {
+			d := math.Hypot(float64(x)+0.5-c, float64(y)+0.5-c)
+			cov := math.Max(0, math.Min(1, c-d+0.5))
+			o := dst.PixOffset(x, y)
+			dst.Pix[o+3] = uint8(float64(dst.Pix[o+3]) * cov)
+		}
+	}
+	return dst
+}
+
 // Bitmap returns the icon as RGB565 LE plane + A8 plane (Size×Size), or nil.
+// name is an icon theme name, a file path, or an https URL (made round).
 func Bitmap(name string) []byte {
 	if name == "" {
 		return nil
@@ -118,8 +150,14 @@ func Bitmap(name string) []byte {
 	}
 	mu.Unlock()
 	var out []byte
-	if p := find(name); p != "" {
-		if img := load(p); img != nil {
+	var src image.Image
+	if strings.HasPrefix(name, "https://") {
+		src = fetchRound(name)
+	} else if p := find(name); p != "" {
+		src = load(p)
+	}
+	{
+		if img := src; img != nil {
 			dst := image.NewNRGBA(image.Rect(0, 0, Size, Size))
 			if b := img.Bounds(); b.Dx() == Size && b.Dy() == Size {
 				draw.Draw(dst, dst.Bounds(), img, b.Min, draw.Src)

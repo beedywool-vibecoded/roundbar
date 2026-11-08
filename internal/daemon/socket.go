@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/beedywool-vibecoded/roundbar/internal/config"
+	"github.com/beedywool-vibecoded/roundbar/internal/discord"
 	"github.com/beedywool-vibecoded/roundbar/internal/ipc"
 )
 
@@ -72,6 +73,29 @@ func (d *Daemon) handle(c net.Conn) {
 			if err := d.reload(); err != nil {
 				_ = enc.Encode(map[string]string{"error": err.Error()})
 				continue
+			}
+			_ = enc.Encode(ok)
+		case "discord": // save Discord app credentials from the configurator
+			var cr struct {
+				ClientID     string `json:"clientId"`
+				ClientSecret string `json:"clientSecret"`
+			}
+			if err := json.Unmarshal(req.Action, &cr); err != nil || cr.ClientID == "" || cr.ClientSecret == "" {
+				_ = enc.Encode(map[string]string{"error": "client id and secret are required"})
+				continue
+			}
+			old, _ := discord.LoadCreds()
+			c := &discord.Creds{ClientID: cr.ClientID, ClientSecret: cr.ClientSecret}
+			if old != nil && old.ClientID == cr.ClientID && old.ClientSecret == cr.ClientSecret {
+				c = old // keep tokens
+			}
+			if err := discord.SaveCreds(c); err != nil {
+				_ = enc.Encode(map[string]string{"error": err.Error()})
+				continue
+			}
+			select {
+			case d.discordKick <- struct{}{}:
+			default:
 			}
 			_ = enc.Encode(ok)
 		case "bootloader":

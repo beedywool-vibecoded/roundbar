@@ -23,6 +23,7 @@ import (
 	"github.com/beedywool-vibecoded/roundbar/internal/cover"
 	"github.com/beedywool-vibecoded/roundbar/internal/desktop"
 	"github.com/beedywool-vibecoded/roundbar/internal/device"
+	"github.com/beedywool-vibecoded/roundbar/internal/discord"
 	"github.com/beedywool-vibecoded/roundbar/internal/stats"
 )
 
@@ -68,6 +69,8 @@ type Daemon struct {
 	coverSeq  int
 
 	clockKick         chan struct{}
+	discord           *discord.Client
+	discordKick       chan struct{}
 	iconsSent         map[string]bool
 	micInUse, micSent bool
 
@@ -77,7 +80,7 @@ type Daemon struct {
 }
 
 func New() *Daemon {
-	return &Daemon{clockKick: make(chan struct{}, 1), iconsSent: map[string]bool{}, acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
+	return &Daemon{clockKick: make(chan struct{}, 1), discord: discord.New(), discordKick: make(chan struct{}, 1), iconsSent: map[string]bool{}, acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
 }
 
 func (d *Daemon) Run() error {
@@ -102,6 +105,8 @@ func (d *Daemon) Run() error {
 	}
 	go d.audioLoop()
 	go d.clockLoop()
+	go d.discord.Run(d.done, d.discordKick)
+	go d.discordLoop()
 	go d.watchConfig()
 	go d.serveSocket()
 	d.deviceLoop() // blocks
@@ -242,6 +247,16 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		if json.Unmarshal(m.Raw, &a) == nil {
 			go d.run(a.Action)
 		}
+	case "discordToggle":
+		var v struct {
+			What string `json:"what"`
+		}
+		_ = json.Unmarshal(m.Raw, &v)
+		go func() {
+			if err := d.discord.Toggle(v.What); err != nil {
+				log.Printf("discord: %v", err)
+			}
+		}()
 	case "activate", "mixerSet", "mixerMute", "output", "paste", "notifOpen", "notifDismiss", "notifClear":
 		d.onShellMsg(m.Raw, m.T)
 	case "timerDone":
@@ -745,6 +760,7 @@ type Status struct {
 	RecentApps []desktop.Focus `json:"recentApps"`
 	View       View            `json:"view"`
 	Extension  bool            `json:"extension"`
+	Discord    discord.State   `json:"discord"`
 }
 
 type DeviceStatus struct {
@@ -764,7 +780,8 @@ func (d *Daemon) status() Status {
 	}
 	pid, _ := d.profileFor(d.focus)
 	rec := append([]desktop.Focus{}, d.recent...)
-	return Status{Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
+	disc := d.discord.State()
+	return Status{Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
 }
 
 // notify wakes every socket watcher (coalesced per watcher).

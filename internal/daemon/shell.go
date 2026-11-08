@@ -140,6 +140,8 @@ func (d *Daemon) onShellView(kind string) {
 		go d.sendMixer()
 	case "clipboard":
 		go d.sendClips()
+	case "discord":
+		go d.sendDiscord()
 	}
 }
 
@@ -206,4 +208,21 @@ func (d *Daemon) onShellMsg(m json.RawMessage, t string) bool {
 		return false
 	}
 	return true
+}
+
+func (d *Daemon) sendDiscord() {
+	st := d.discord.State()
+	for _, m := range st.Members {
+		d.sendIcons(m.Avatar)
+	}
+	d.send(map[string]any{"t": "discord", "state": st})
+}
+
+func (d *Daemon) discordLoop() {
+	for range d.discord.Changed {
+		if d.viewKind() == "discord" {
+			d.sendDiscord()
+		}
+		d.notify() // the configurator shows the connection state
+	}
 }
