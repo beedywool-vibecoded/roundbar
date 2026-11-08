@@ -64,7 +64,7 @@ type Member struct {
 }
 
 type State struct {
-	Connected bool     `json:"connected"` // a source is live (RPC session or the Vencord plugin)
+	Connected bool     `json:"connected"` // RPC session authenticated
 	Controls  bool     `json:"controls"`  // mute/deafen can be toggled from the device (RPC only)
 	User      string   `json:"user,omitempty"`
 	Channel   string   `json:"channel,omitempty"` // "" = not in voice

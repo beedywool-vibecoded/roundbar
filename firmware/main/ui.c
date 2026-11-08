@@ -2406,7 +2406,7 @@ void ui_discord(cJSON *st)
         }
     }
     bool controls = cJSON_IsTrue(cJSON_GetObjectItem(st, "controls"));
-    if (!controls) { // Vencord plugin: live members only, your keybinds handle mute/deafen
+    if (!controls) { // no mute/deafen control available: show the channel only
         lv_obj_t *ch = text(dc_root, F.title, P.on_surface, channel && channel[0] ? channel : "Not in voice");
         lv_obj_set_width(ch, 170);
         lv_label_set_long_mode(ch, LV_LABEL_LONG_DOT);
