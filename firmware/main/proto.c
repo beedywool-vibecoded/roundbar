@@ -311,7 +311,8 @@ static void handle(cJSON *m)
         ui_media_theme(cJSON_IsObject(pal) ? pal : NULL);
         lvgl_port_unlock();
     } else if (!strcmp(t, "hid")) {
-        if (str(m, "keys")) usb_hid(HID_KEYS, str(m, "keys"), id);
+        if (str(m, "keys") && num(m, "hold", 0) > 0) usb_hid_hold(str(m, "keys"), num(m, "hold", 0), id);
+        else if (str(m, "keys")) usb_hid(HID_KEYS, str(m, "keys"), id);
         else if (str(m, "text")) usb_hid(HID_TEXT, str(m, "text"), id);
         else if (str(m, "media")) usb_hid(HID_MEDIA, str(m, "media"), id);
         else ack(id, false, "nothing to type");

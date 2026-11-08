@@ -204,7 +204,7 @@ partition (see §2).
 | `volume` | `value: 0..100`, `muted: bool` | on change, and once when a page that shows volume becomes visible |
 | `mic` | `muted: bool`, `value: 0..100` | same |
 | `stats` | any of `cpu ram gpu vram` (0..100 %), `cpuTemp gpuTemp` (°C) | every 1.5 s while a `stats` page is visible and the screen is awake |
-| `hid` | `keys?: string`, `text?: string`, `media?: string` | macro steps and configurator tests, typed by the device. With an `id`, acked once typed. |
+| `hid` | `keys?: string`, `text?: string`, `media?: string`, `hold?: ms` | macro steps and configurator tests, typed by the device. With an `id`, acked once typed. `hold` keeps a `keys` combo down that long (1..2000 ms; for programs that poll the keyboard, like MangoHud every 100 ms); older firmware ignores it and taps. |
 | `show` | `profile`, `page` | configurator preview: jump to a page |
 | `bootloader` | – | reboot into the ROM USB download mode (for flashing) |
 | `time` | `epoch` (unix s), `offset` (local UTC offset, s), `zones: {tz: offset}` | on connect and every hour (DST); the device keeps time from it |

@@ -2,6 +2,7 @@ package mangohud
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"os"
@@ -134,7 +135,13 @@ func TestStopRemovesOnlyNewFiles(t *testing.T) {
 	dir := t.TempDir()
 	keep := filepath.Join(dir, "bench.csv")
 	_ = os.WriteFile(keep, nil, 0o644)
-	s := &Session{dir: dir, before: map[string]bool{keep: true}, conns: nil}
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	go func() { _, _ = io.Copy(io.Discard, c2) }()
+	ours := &ctl{c: c1, dead: make(chan struct{}), finished: make(chan struct{}, 1)}
+	ours.answered.Store(true) // a game accepted our request: the new logs are ours
+	close(ours.dead)
+	s := &Session{dir: dir, before: map[string]bool{keep: true}, conns: map[string]*ctl{"@mangohud-1": ours}}
 	_ = os.WriteFile(filepath.Join(dir, "g_2026.csv"), nil, 0o644)
 	_ = os.WriteFile(filepath.Join(dir, "g_2026_summary.csv"), nil, 0o644)
 	s.Stop()
@@ -209,60 +216,14 @@ func TestControlConnectionIsReused(t *testing.T) {
 	}
 }
 
-func TestToggleKeys(t *testing.T) {
-	for in, want := range map[string]string{
-		"":                  "shift+f2", // MangoHud's default
-		"Shift_L+F2":        "shift+f2",
-		"Control_R+Alt_L+l": "ctrl+alt+l",
-		"Super_L+F12":       "super+f12",
-	} {
-		if got := toggleKeys(in); got != want {
-			t.Errorf("toggleKeys(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-// When the socket never answers (the game's drawing instance has none), the
-// session presses the logging shortcut once, only while the game is focused,
-// and presses it again on leaving if the log is still growing.
-func TestShortcutFallback(t *testing.T) {
+// Logs the user started with MangoHud's own shortcut (no game answered us) stay.
+func TestStopKeepsUserLogs(t *testing.T) {
 	dir := t.TempDir()
-	var pressed []string
-	focused := true
-	s := &Session{dir: dir, before: map[string]bool{}, conns: map[string]*ctl{}, tails: map[string]*tail{},
-		combo: "shift+f2", started: time.Now().Add(-2 * time.Second), lastScan: time.Now(),
-		keys: Keys{Press: func(k string) { pressed = append(pressed, k) }, Focused: func() bool { return focused }}}
-	if sn := s.Poll(); sn.Hint != "waiting" || len(pressed) != 1 {
-		t.Fatalf("first poll: %+v, pressed %v", sn, pressed)
-	}
-	s.Poll()
-	if len(pressed) != 1 {
-		t.Fatal("pressed twice")
-	}
-	// MangoHud starts writing; on leave it's still growing: press again
-	f := filepath.Join(dir, "game_2026.csv")
-	_ = os.WriteFile(f, []byte(header+frames(10, 6, 90)), 0o644)
-	s.Poll()
-	go func() {
-		for i := 0; i < 10; i++ {
-			time.Sleep(100 * time.Millisecond)
-			fh, _ := os.OpenFile(f, os.O_APPEND|os.O_WRONLY, 0)
-			_, _ = fh.WriteString(frames(1, 6, 90))
-			fh.Close()
-		}
-	}()
+	s := &Session{dir: dir, before: map[string]bool{}, conns: map[string]*ctl{}}
+	mine := filepath.Join(dir, "game_2026-11-08_22-00-00.csv")
+	_ = os.WriteFile(mine, []byte(header), 0o644)
 	s.Stop()
-	if len(pressed) != 2 {
-		t.Fatalf("pressed %v on leave", pressed)
-	}
-}
-
-func TestShortcutNeverIntoAnotherApp(t *testing.T) {
-	var pressed int
-	s := &Session{dir: t.TempDir(), before: map[string]bool{}, conns: map[string]*ctl{}, tails: map[string]*tail{},
-		combo: "shift+f2", started: time.Now().Add(-2 * time.Second), lastScan: time.Now(),
-		keys: Keys{Press: func(string) { pressed++ }, Focused: func() bool { return false }}}
-	if sn := s.Poll(); sn.Hint != "noGame" || pressed != 0 {
-		t.Fatalf("%+v pressed %d", sn, pressed)
+	if _, err := os.Stat(mine); err != nil {
+		t.Fatal("deleted the user's own log")
 	}
 }
