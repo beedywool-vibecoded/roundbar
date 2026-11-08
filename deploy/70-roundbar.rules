@@ -1,0 +1,4 @@
+# Give the logged-in desktop user access to Espressif serial ports (the board
+# while flashing, and roundbar itself) without group membership or re-login.
+# sudo cp deploy/70-roundbar.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger -s tty
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", TAG+="uaccess"

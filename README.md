@@ -26,8 +26,11 @@ the app grid (or run `roundbar config`) to configure.
 
 ## Firmware
 
-Needs ESP-IDF v6 (`. ~/esp/esp-idf-v6.0.3/export.sh`) and access to the serial port
-(`sudo usermod -aG uucp $USER` on Arch, `dialout` elsewhere).
+Needs ESP-IDF v6 (`. ~/esp/esp-idf-v6.0.3/export.sh`) and access to the serial port:
+
+```sh
+sudo cp deploy/70-roundbar.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger -s tty
+```
 
 ```sh
 make flash

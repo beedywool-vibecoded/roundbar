@@ -19,7 +19,7 @@
 
 static const char *TAG = "usb";
 
-#define LINE_MAX (64 * 1024 + 256)
+#define RX_LINE_MAX (64 * 1024 + 256)
 
 enum { ITF_CDC = 0, ITF_CDC_DATA, ITF_HID, ITF_TOTAL };
 enum { RID_KBD = 1, RID_CONSUMER = 2 };
@@ -114,7 +114,7 @@ static void cdc_rx(int itf, cdcacm_event_t *event)
             line_len = 0;
             line_overflow = false;
         } else if (c != '\r') {
-            if (line_len < LINE_MAX - 1) line_buf[line_len++] = c;
+            if (line_len < RX_LINE_MAX - 1) line_buf[line_len++] = c;
             else line_overflow = true;
         }
     }
@@ -265,7 +265,7 @@ void usb_reboot_to_bootloader(void)
 void usb_init(QueueHandle_t lines)
 {
     line_q = lines;
-    line_buf = heap_caps_malloc(LINE_MAX, MALLOC_CAP_SPIRAM);
+    line_buf = heap_caps_malloc(RX_LINE_MAX, MALLOC_CAP_SPIRAM);
     tx_mu = xSemaphoreCreateMutex();
     hid_q = xQueueCreate(16, sizeof(hid_job_t));
 
