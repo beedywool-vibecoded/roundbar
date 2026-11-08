@@ -300,6 +300,7 @@ func (d *Daemon) screenshot() ([]byte, error) {
 			w, h, stride, n = s.W, s.H, s.Stride, s.N
 			buf = append(buf, b...)
 		case <-time.After(10 * time.Second):
+			d.relink("no screenshot")
 			return nil, errors.New("the device did not send a screenshot")
 		}
 	}
