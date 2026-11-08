@@ -652,7 +652,7 @@ func (d *Daemon) audioLoop() {
 				}
 			case <-a.Capture:
 				d.mu.Lock()
-				on := d.cfg.Device.MicIndicator == nil || *d.cfg.Device.MicIndicator
+				on := d.cfg.Device.MicIndicator != nil && *d.cfg.Device.MicIndicator // off unless enabled
 				d.mu.Unlock()
 				if on {
 					d.sendMicInUse()

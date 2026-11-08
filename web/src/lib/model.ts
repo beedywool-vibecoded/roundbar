@@ -284,7 +284,7 @@ export function starterConfig(): Config {
       brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr',
       followPc: true,
       edgeDoubleTap: 'page',
-      micIndicator: true,
+      micIndicator: false,
       screensaver: 'off',
       screensaverAfter: SCREENSAVER_DEFAULTS.after,
       screensaverImages: [],
@@ -349,7 +349,7 @@ export function normalize(raw: unknown): Config {
   if (!(ROTATIONS as readonly unknown[]).includes(cfg.device.rotation)) cfg.device.rotation = 0
   if (typeof cfg.device.followPc !== 'boolean') cfg.device.followPc = true
   if (!['page', 'quickSettings', 'screenOff', 'off'].includes(cfg.device.edgeDoubleTap)) cfg.device.edgeDoubleTap = 'page'
-  if (typeof cfg.device.micIndicator !== 'boolean') cfg.device.micIndicator = true
+  if (typeof cfg.device.micIndicator !== 'boolean') cfg.device.micIndicator = false
   if (typeof cfg.device.notifications !== 'boolean') cfg.device.notifications = true
   if (typeof cfg.device.notifToast !== 'boolean') cfg.device.notifToast = true
   if (!['off', 'clock', 'photos'].includes(cfg.device.screensaver)) cfg.device.screensaver = 'off'

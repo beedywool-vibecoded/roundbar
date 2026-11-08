@@ -1378,8 +1378,16 @@ static void qs_build(void)
     qs_auto_tile = qs_tile(qs, "sync", "Auto-switch", 70, 2);
     qs_style_auto();
 
-    lv_obj_t *hint = text(qs, F.icon_s, P.on_sv, theme_icon("expand_less"));
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -40);
+    lv_obj_t *close = box(qs); // same pill as the notification panel's close button
+    lv_obj_set_size(close, 64, 40);
+    lv_obj_align(close, LV_ALIGN_BOTTOM_MID, 0, -8);
+    lv_obj_set_style_radius(close, 20, 0);
+    lv_obj_set_style_bg_color(close, P.schh, 0);
+    lv_obj_set_style_bg_opa(close, LV_OPA_COVER, 0);
+    lv_obj_add_flag(close, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *ci = text(close, F.icon_m, P.on_surface, theme_icon("expand_less"));
+    lv_obj_center(ci);
+    lv_obj_add_event_cb(close, qs_event, LV_EVENT_CLICKED, (void *)3);
 }
 
 static void qs_open(void)
@@ -1657,8 +1665,11 @@ static struct {
 } tmr = {.set_s = 25 * 60, .left_ms = 25 * 60 * 1000};
 
 static struct {
-    lv_obj_t *arc, *time_lbl, *state_icon, *phase_lbl;
+    lv_obj_t *arc, *time_lbl, *state_icon, *phase_lbl, *presets, *reset;
 } tw;
+
+// Idle = stopped at the full duration: only then can the ring and presets change it.
+static bool timer_idle(void) { return !tmr.running && tmr.left_ms == tmr.set_s * 1000; }
 
 static void timer_show(void)
 {
@@ -1666,13 +1677,25 @@ static void timer_show(void)
     int s = (tmr.left_ms + 999) / 1000;
     lv_label_set_text_fmt(tw.time_lbl, "%d:%02d", s / 60, s % 60);
     lv_label_set_text(tw.state_icon, theme_icon(tmr.running ? "pause" : "play_arrow"));
-    if (tmr.running || tmr.left_ms != tmr.set_s * 1000) { // counting: ring shows what's left
+    bool idle = timer_idle();
+    if (!idle) { // counting or paused: the ring only shows what's left, read-only until reset
         lv_arc_set_range(tw.arc, 0, 1000);
         lv_arc_set_value(tw.arc, tmr.set_s ? (int32_t)((int64_t)tmr.left_ms * 1000 / (tmr.set_s * 1000)) : 0);
+        lv_obj_remove_flag(tw.arc, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_opa(tw.arc, LV_OPA_TRANSP, LV_PART_KNOB);
     } else { // stopped at full: the ring sets the minutes
         lv_arc_set_range(tw.arc, 0, 120);
         lv_arc_set_value(tw.arc, tmr.set_s / 60);
+        if (!tmr.pomodoro) {
+            lv_obj_add_flag(tw.arc, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_style_opa(tw.arc, LV_OPA_COVER, LV_PART_KNOB);
+        }
     }
+    if (tw.presets) {
+        if (idle) lv_obj_remove_flag(tw.presets, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(tw.presets, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (tw.reset) lv_obj_set_style_opa(tw.reset, idle ? LV_OPA_40 : LV_OPA_COVER, 0);
     if (tw.phase_lbl)
         lv_label_set_text(tw.phase_lbl, tmr.pomodoro ? (tmr.phase ? "Break" : "Focus") : (tmr.label[0] ? tmr.label : ""));
 }
@@ -1742,12 +1765,12 @@ static void timer_tick(lv_timer_t *t)
     timer_show();
 }
 
-static void timer_center_event(lv_event_t *e)
+static void timer_button_event(lv_event_t *e)
 {
-    if (lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED) {
+    if (!(intptr_t)lv_event_get_user_data(e)) { // play / pause
         tmr.running = !tmr.running;
         tmr.last = lv_tick_get();
-    } else { // long press: reset
+    } else { // reset
         tmr.running = false;
         if (tmr.pomodoro) {
             tmr.phase = 0;
@@ -1770,7 +1793,7 @@ static void timer_arc_event(lv_event_t *e)
 
 static void timer_preset_event(lv_event_t *e)
 {
-    if (tmr.running) return;
+    if (!timer_idle()) return;
     tmr.set_s = (int)(intptr_t)lv_event_get_user_data(e) * 60;
     tmr.left_ms = tmr.set_s * 1000;
     timer_show();
@@ -1790,20 +1813,34 @@ static void build_timer(lv_obj_t *tile, cJSON *pg)
     lv_obj_add_event_cb(tw.arc, arc_drag_event, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(tw.arc, timer_arc_event, LV_EVENT_VALUE_CHANGED, NULL);
 
-    lv_obj_t *center = box(tile); // tap: start/pause, hold: reset
-    lv_obj_set_size(center, 200, 200);
-    lv_obj_center(center);
-    lv_obj_set_style_radius(center, LV_RADIUS_CIRCLE, 0);
-    lv_obj_add_flag(center, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(center, timer_center_event, LV_EVENT_SHORT_CLICKED, NULL);
-    lv_obj_add_event_cb(center, timer_center_event, LV_EVENT_LONG_PRESSED, NULL);
-
-    tw.state_icon = text(tile, F.icon_m, P.primary, "");
-    lv_obj_align(tw.state_icon, LV_ALIGN_CENTER, 0, -62);
     tw.time_lbl = text(tile, F.big, P.on_surface, "");
-    lv_obj_align(tw.time_lbl, LV_ALIGN_CENTER, 0, -6);
+    lv_obj_align(tw.time_lbl, LV_ALIGN_CENTER, 0, -40);
     tw.phase_lbl = text(tile, F.body, P.on_sv, "");
-    lv_obj_align(tw.phase_lbl, LV_ALIGN_CENTER, 0, 42);
+    lv_obj_align(tw.phase_lbl, LV_ALIGN_CENTER, 0, 2);
+
+    // play/pause and reset, side by side
+    lv_obj_t *play = box(tile);
+    lv_obj_set_size(play, 64, 64);
+    lv_obj_set_style_radius(play, 20, 0);
+    lv_obj_set_style_bg_color(play, P.pc, 0);
+    lv_obj_set_style_bg_opa(play, LV_OPA_COVER, 0);
+    lv_obj_add_flag(play, LV_OBJ_FLAG_CLICKABLE);
+    squish_on_press(play, 64);
+    lv_obj_align(play, LV_ALIGN_CENTER, -38, 54);
+    tw.state_icon = text(play, F.icon_m, P.on_pc, "");
+    lv_obj_center(tw.state_icon);
+    lv_obj_add_event_cb(play, timer_button_event, LV_EVENT_CLICKED, (void *)0);
+    tw.reset = box(tile);
+    lv_obj_set_size(tw.reset, 64, 64);
+    lv_obj_set_style_radius(tw.reset, 32, 0);
+    lv_obj_set_style_bg_color(tw.reset, P.schh, 0);
+    lv_obj_set_style_bg_opa(tw.reset, LV_OPA_COVER, 0);
+    lv_obj_add_flag(tw.reset, LV_OBJ_FLAG_CLICKABLE);
+    squish_on_press(tw.reset, 64);
+    lv_obj_align(tw.reset, LV_ALIGN_CENTER, 38, 54);
+    lv_obj_t *ri = text(tw.reset, F.icon_m, P.on_surface, theme_icon("restart_alt"));
+    lv_obj_center(ri);
+    lv_obj_add_event_cb(tw.reset, timer_button_event, LV_EVENT_CLICKED, (void *)1);
 
     if (!tmr.pomodoro) {
         int presets[4] = {5, 15, 25, 0}, n = 3;
@@ -1814,10 +1851,11 @@ static void build_timer(lv_obj_t *tile, cJSON *pg)
             cJSON_ArrayForEach(mm, mins) if (cJSON_IsNumber(mm) && n < 4) presets[n++] = mm->valueint;
         }
         lv_obj_t *row = box(tile);
+        tw.presets = row; // hidden while a countdown is running or paused
         lv_obj_set_size(row, LV_SIZE_CONTENT, 34);
         lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
         lv_obj_set_style_pad_column(row, 8, 0);
-        lv_obj_align(row, LV_ALIGN_CENTER, 0, 92);
+        lv_obj_align(row, LV_ALIGN_CENTER, 0, 112);
         for (int i = 0; i < n; i++) {
             lv_obj_t *chip = box(row);
             lv_obj_set_size(chip, 46, 34);
@@ -1866,7 +1904,7 @@ static void mic_ring_build(void)
 
 void ui_mic_in_use(bool on)
 {
-    mic_on = on && store_get_bool("micIndicator", true);
+    mic_on = on && store_get_bool("micIndicator", false);
     mic_ring_sync();
 }
 
@@ -2583,7 +2621,7 @@ static void build(bool animate)
     cJSON *ppal = cJSON_GetObjectItem(prof, "palette"); // profile color
     if (cJSON_IsObject(ppal)) theme_parse_palette(ppal, &P);
     for (int i = 0; i < MAX_PAGES; i++) clocks[i].used = false;
-    memset(&tw, 0, sizeof(tw));
+    memset(&tw, 0, sizeof(tw)); // also clears presets/reset
     win_w.ring = NULL;
     mix_w.col = NULL;
     mix_w.sliding = false;

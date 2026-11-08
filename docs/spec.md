@@ -65,7 +65,7 @@ the device keeps a copy in flash so it works without the daemon.
     "rotation": 0,             // screen rotation, degrees clockwise: 0 | 90 | 180 | 270 (touch follows)
     "edgeDoubleTap": "page",   // double tap near the left/right edge: "page" (prev/next, instant) |
                                // "quickSettings" | "screenOff" | "off"; missing = "page"
-    "micIndicator": true,      // red ring around the screen while any app records the microphone; missing = true
+    "micIndicator": false,     // red ring around the screen while any app records the microphone; missing = false
     "screensaver": "off",      // after screensaverAfter s idle: "off" | "clock" | "photos" (dimmed); replaces the dim step
     "screensaverAfter": 60,    // seconds, 10..3600
     "screensaverImages": [],   // asset ids for "photos" (stills only, ≤ 20), synced like image pages (cover fit)
