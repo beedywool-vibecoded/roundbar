@@ -131,7 +131,24 @@ func (d *Daemon) startMango() {
 	d.mangoStop = stop
 	d.mu.Unlock()
 	go func() {
-		s := mangohud.Start()
+		var pressedIn string // the app the shortcut was typed into
+		s := mangohud.Start(mangohud.Keys{
+			Press: func(keys string) {
+				d.mu.Lock()
+				pressedIn = d.focus.ID
+				d.mu.Unlock()
+				log.Printf("mangohud: pressing %s in %s to toggle logging", keys, pressedIn)
+				d.send(map[string]any{"t": "hid", "keys": keys})
+			},
+			// only into an app with its own profile (a game), never into a terminal,
+			// and the second press only into the app that got the first
+			Focused: func() bool {
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				pid, _ := d.profileFor(d.focus)
+				return d.focus.ID != "" && pid != "default" && (pressedIn == "" || d.focus.ID == pressedIn)
+			},
+		})
 		defer s.Stop()
 		t := time.NewTicker(500 * time.Millisecond)
 		defer t.Stop()
