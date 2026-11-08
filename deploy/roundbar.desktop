@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=roundbar
+Comment=Configure the round macro controller
+Exec=roundbar config
+Icon=input-dialpad
+Terminal=false
+Categories=Settings;HardwareSettings;

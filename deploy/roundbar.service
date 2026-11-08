@@ -1,0 +1,20 @@
+# systemd user unit shipped by the packages (/usr/lib/systemd/user/roundbar.service).
+# Enable it per user: systemctl --user enable --now roundbar
+# (`roundbar install` writes an equivalent unit to ~/.config/systemd/user when
+# roundbar isn't installed from a package.)
+[Unit]
+Description=roundbar device bridge
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/roundbar daemon
+Restart=on-failure
+RestartSec=3
+Nice=5
+# It idles almost all the time; keep it off the CPU's fast path.
+CPUSchedulingPolicy=batch
+MemoryHigh=64M
+
+[Install]
+WantedBy=graphical-session.target

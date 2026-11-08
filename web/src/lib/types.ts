@@ -274,7 +274,8 @@ export interface View {
 // GET /api/status and the SSE `status` event. Only `daemon` is set when the daemon is down.
 export interface Status {
   daemon: boolean
-  device?: { connected: boolean; port?: string; fw?: string; cfg?: string; inSync?: boolean }
+  /** error "permission": the board is plugged in but its port can't be opened (no udev rule) */
+  device?: { connected: boolean; port?: string; fw?: string; cfg?: string; inSync?: boolean; error?: string }
   focus?: App | null
   profile?: string
   recentApps?: App[]
