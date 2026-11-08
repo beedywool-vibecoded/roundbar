@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/beedywool-vibecoded/roundbar/internal/assets"
 	"github.com/beedywool-vibecoded/roundbar/internal/audio"
 	"github.com/beedywool-vibecoded/roundbar/internal/config"
 	"github.com/beedywool-vibecoded/roundbar/internal/cover"
@@ -55,6 +56,8 @@ type Daemon struct {
 	lastVol, lastMic string
 	acks             map[string]chan bool
 	ackSeq           int
+	replies          map[string]chan json.RawMessage // device messages awaited by type (e.g. "assets")
+	syncing, resync  bool                            // asset sync running / config changed meanwhile
 
 	desk  *desktop.Desktop
 	audio *audio.Audio
@@ -70,7 +73,7 @@ type Daemon struct {
 }
 
 func New() *Daemon {
-	return &Daemon{acks: map[string]chan bool{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
+	return &Daemon{acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
 }
 
 func (d *Daemon) Run() error {
@@ -191,6 +194,7 @@ func (d *Daemon) pushConfig() {
 		d.hello.Cfg = sha
 		d.mu.Unlock()
 		d.notify()
+		d.syncAssets()
 	}()
 }
 
@@ -206,7 +210,9 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		d.mu.Unlock()
 		log.Printf("device fw %s, touch %s", h.FW, h.Touch)
 		if stale {
-			d.pushConfig()
+			d.pushConfig() // syncs assets once acked
+		} else {
+			go d.syncAssets()
 		}
 		d.syncProfile(true)
 		d.notify()
@@ -254,6 +260,16 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		}
 	case "log":
 		log.Printf("device: %s", m.Raw)
+	default:
+		d.mu.Lock()
+		ch := d.replies[m.T]
+		d.mu.Unlock()
+		if ch != nil {
+			select {
+			case ch <- m.Raw:
+			default:
+			}
+		}
 	}
 }
 
@@ -413,6 +429,93 @@ func (d *Daemon) sendMedia() {
 	}
 	d.send(map[string]any{"t": "media", "title": m.Title, "artist": m.Artist, "album": m.Album,
 		"playing": m.Playing, "canNext": m.CanNext, "canPrev": m.CanPrev, "player": m.Player})
+}
+
+// ---- image page assets -----------------------------------------------------
+
+// request sends m and waits for the next device message of type `reply`.
+func (d *Daemon) request(m map[string]any, reply string, timeout time.Duration) (json.RawMessage, bool) {
+	ch := make(chan json.RawMessage, 1)
+	d.mu.Lock()
+	d.replies[reply] = ch
+	d.mu.Unlock()
+	defer func() { d.mu.Lock(); delete(d.replies, reply); d.mu.Unlock() }()
+	d.send(m)
+	select {
+	case r := <-ch:
+		return r, true
+	case <-time.After(timeout):
+		return nil, false
+	}
+}
+
+// syncAssets copies the images the config references to the device and
+// prunes the rest. One run at a time; a config change mid-run triggers another.
+func (d *Daemon) syncAssets() {
+	d.mu.Lock()
+	if d.syncing {
+		d.resync = true
+		d.mu.Unlock()
+		return
+	}
+	d.syncing = true
+	want := assets.Wanted(d.cfg)
+	connected := d.port != nil
+	d.mu.Unlock()
+	defer func() {
+		d.mu.Lock()
+		d.syncing = false
+		again := d.resync
+		d.resync = false
+		d.mu.Unlock()
+		if again {
+			d.syncAssets()
+		}
+	}()
+	if !connected {
+		return
+	}
+	raw, ok := d.request(map[string]any{"t": "assetsWant"}, "assets", 5*time.Second)
+	if !ok {
+		log.Printf("assets: device did not answer")
+		return
+	}
+	var have struct {
+		Have []string `json:"have"`
+		Free int64    `json:"free"`
+	}
+	_ = json.Unmarshal(raw, &have)
+	present := map[string]bool{}
+	for _, n := range have.Have {
+		present[n] = true
+	}
+	keep := make([]string, 0, len(want))
+	sent := 0
+	for name, src := range want {
+		keep = append(keep, name)
+		if present[name] {
+			continue
+		}
+		data, err := assets.DeviceFile(src[0], src[1])
+		if err != nil {
+			log.Printf("assets: %s: %v", src[0], err)
+			continue
+		}
+		chunks := cover.Chunks(data, 32*1024)
+		for i, c := range chunks {
+			if !d.sendWait(map[string]any{"t": "asset", "name": name, "n": len(chunks), "i": i,
+				"data": base64.StdEncoding.EncodeToString(c)}, 10*time.Second) {
+				log.Printf("assets: device rejected %s (full?)", name)
+				return
+			}
+		}
+		sent++
+	}
+	d.send(map[string]any{"t": "assetsPrune", "keep": keep})
+	d.send(map[string]any{"t": "assetsDone"})
+	if sent > 0 {
+		log.Printf("assets: sent %d image(s) to the device", sent)
+	}
 }
 
 // ---- album art ------------------------------------------------------------

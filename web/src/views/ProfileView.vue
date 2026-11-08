@@ -103,6 +103,10 @@ const pageSummary = (pg: Page) => {
       return pg.items.join(', ') || 'No gauge'
     case 'dial':
       return `${pg.label || pg.source} dial`
+    case 'touchpad':
+      return `Mouse, speed ${pg.speed ?? 5}`
+    case 'image':
+      return !pg.images.length ? 'No image yet' : pg.images.length === 1 ? (pg.images[0]!.endsWith('.gif') ? 'GIF' : '1 picture') : `Slideshow of ${pg.images.length}`
   }
 }
 
@@ -209,7 +213,7 @@ async function show(pg: Page) {
     <M3Dialog v-model="adding" title="Add a page">
       <div class="types">
         <button v-for="(t, i) in PAGE_TYPES" :key="t.value" type="button" class="type st" @click="addPage(t.value)">
-          <M3Shape :kind="(['cookie', 'clover', 'sunny', 'flower'] as const)[i]!" :size="52" fill="var(--pc)">
+          <M3Shape :kind="(['cookie', 'clover', 'sunny', 'flower', 'burst'] as const)[i % 5]!" :size="52" fill="var(--pc)">
             <text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-size="44" class="sym" fill="var(--on-pc)">{{ t.icon }}</text>
           </M3Shape>
           <span class="grow">

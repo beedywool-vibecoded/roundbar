@@ -13,6 +13,8 @@
 #include "esp_lcd_touch_cst816s.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "lcd_init.h"
 
 #define PIN_LCD_CS   10
@@ -64,6 +66,21 @@ void board_backlight(int pct)
     ledc_set_fade_time_and_start(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty, 250, LEDC_FADE_NO_WAIT);
 }
 
+static esp_lcd_panel_handle_t s_panel;
+
+void board_panel_sleep(bool sleep)
+{
+    if (!s_panel) return;
+    if (sleep) {
+        esp_lcd_panel_disp_on_off(s_panel, false);
+        esp_lcd_panel_disp_sleep(s_panel, true);
+    } else {
+        esp_lcd_panel_disp_sleep(s_panel, false); // sleep-out needs ~120 ms before display-on
+        vTaskDelay(pdMS_TO_TICKS(120));
+        esp_lcd_panel_disp_on_off(s_panel, true);
+    }
+}
+
 lv_display_t *board_init(lv_indev_t **touch)
 {
     backlight_init();
@@ -92,6 +109,7 @@ lv_display_t *board_init(lv_indev_t **touch)
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
+    s_panel = panel;
 
     // Touch
     i2c_master_bus_handle_t i2c = NULL;

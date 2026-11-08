@@ -110,6 +110,33 @@ bool store_save(const char *json, const char *new_sha)
     return true;
 }
 
+bool store_get_bool(const char *key, bool def)
+{
+    cJSON *v = cJSON_GetObjectItem(cJSON_GetObjectItem(cfg, "device"), key);
+    return cJSON_IsBool(v) ? cJSON_IsTrue(v) : def;
+}
+
+int store_local_get(const char *key, int def)
+{
+    nvs_handle_t h;
+    int32_t v = def;
+    if (nvs_open_from_partition("cfg", "local", NVS_READONLY, &h) == ESP_OK) {
+        nvs_get_i32(h, key, &v);
+        nvs_close(h);
+    }
+    return v;
+}
+
+void store_local_set(const char *key, int value)
+{
+    nvs_handle_t h;
+    if (nvs_open_from_partition("cfg", "local", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_i32(h, key, value);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
 int store_brightness(void) { return brightness >= 0 ? brightness : store_get_int("brightness", 80); }
 
 void store_set_brightness(int pct)

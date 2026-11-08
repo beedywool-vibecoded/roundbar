@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "assets.h"
+#include "esp_heap_caps.h"
 #include "board.h"
 #include "proto.h"
 #include "store.h"
@@ -56,6 +58,29 @@ static struct {
     int nstat;
 } live;
 
+// Memory owned by a screen (image files), freed when that screen is deleted.
+typedef struct {
+    void *bufs[24];
+    lv_image_dsc_t dscs[24];
+    int n;
+} screen_res_t;
+static screen_res_t *res; // of the screen being built / shown
+
+static struct {
+    lv_obj_t *gif[MAX_PAGES];         // per page, paused when not visible
+    lv_obj_t *slide[MAX_PAGES][2];    // slideshow image pair per page
+    int slide_n[MAX_PAGES], slide_i[MAX_PAGES], slide_front[MAX_PAGES];
+    lv_image_dsc_t *slide_src[MAX_PAGES][20];
+    uint32_t slide_ms[MAX_PAGES], slide_last[MAX_PAGES];
+} media_live;
+
+static bool autoswitch_paused;
+static lv_obj_t *pause_badge, *qs;
+static void qs_open(void);
+static void screen_off(void);
+static void goto_index(int idx, bool wrap_anim);
+static void update_dots(void);
+
 static int vol = 50, mic = 50;
 static bool vol_muted, mic_muted;
 static bool dragging;
@@ -66,7 +91,7 @@ static lv_image_dsc_t cover_dsc;
 static bool cover_set;
 static bool m_playing;
 
-typedef enum { AWAKE, DIM, ASLEEP } power_t;
+typedef enum { AWAKE, DIM, ASLEEP, OFF } power_t; // OFF: quick settings / PC gone, double tap wakes
 static power_t power = AWAKE;
 static lv_obj_t *shield;
 
@@ -382,10 +407,9 @@ static void arc_gate_event(lv_event_t *e)
     if (c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST) {
         if (arc_mode == ARC_SWIPE) {
             lv_arc_set_value(a, arc_v0);
-            int target = cur_page;
-            if (dx < -40 && cur_page < page_count - 1) target++;
-            else if (dx > 40 && cur_page > 0) target--;
-            lv_tileview_set_tile_by_index(tv, target, 0, LV_ANIM_ON);
+            if (dx < -40) goto_index(cur_page + 1, true);
+            else if (dx > 40) goto_index(cur_page - 1, true);
+            else lv_tileview_set_tile_by_index(tv, cur_page, 0, LV_ANIM_ON);
         }
         arc_mode = ARC_IDLE;
     }
@@ -836,6 +860,449 @@ static void build_dial(lv_obj_t *tile, cJSON *pg)
     }
 }
 
+
+// ---- page: image (picture, GIF, slideshow) ------------------------------------------------
+
+static lv_image_dsc_t *load_asset(const char *name, bool gif)
+{
+    if (!res || res->n >= 24) return NULL;
+    size_t len = 0;
+    uint8_t *buf = assets_load(name, &len);
+    if (!buf) return NULL;
+    lv_image_dsc_t *d = &res->dscs[res->n];
+    res->bufs[res->n++] = buf;
+    memset(d, 0, sizeof(*d));
+    d->header.magic = LV_IMAGE_HEADER_MAGIC;
+    d->header.cf = LV_COLOR_FORMAT_RAW; // the JPEG / GIF decoders read their own headers
+    d->data = buf;
+    d->data_size = len;
+    (void)gif;
+    return d;
+}
+
+static void device_name(char *out, size_t n, const char *id, const char *fit)
+{
+    const char *dot = strrchr(id, '.');
+    int stem = dot ? (int)(dot - id) : (int)strlen(id);
+    snprintf(out, n, "%.*s-%s%s", stem, id, fit && !strcmp(fit, "contain") ? "f" : "c", dot ? dot : "");
+}
+
+static void slide_fade_exec(void *o, int32_t v) { lv_obj_set_style_opa(o, (lv_opa_t)v, 0); }
+
+static void slideshow_tick(lv_timer_t *t)
+{
+    if (power != AWAKE && power != DIM) return;
+    int p = cur_page;
+    if (p < 0 || p >= page_count || media_live.slide_n[p] < 2) return;
+    uint32_t now = lv_tick_get();
+    if (now - media_live.slide_last[p] < media_live.slide_ms[p]) return;
+    media_live.slide_last[p] = now;
+    int next = (media_live.slide_i[p] + 1) % media_live.slide_n[p];
+    lv_obj_t *back = media_live.slide[p][media_live.slide_front[p] ^ 1];
+    lv_image_set_src(back, media_live.slide_src[p][next]);
+    lv_obj_move_foreground(back);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, back);
+    lv_anim_set_values(&a, 0, 255);
+    lv_anim_set_duration(&a, 700);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_set_exec_cb(&a, slide_fade_exec);
+    lv_anim_start(&a);
+    media_live.slide_i[p] = next;
+    media_live.slide_front[p] ^= 1;
+}
+
+static void build_image(lv_obj_t *tile, cJSON *pg, int page)
+{
+    cJSON *imgs = cJSON_GetObjectItem(pg, "images");
+    const char *fit = jstr(pg, "fit");
+    int n = 0;
+    lv_image_dsc_t *srcs[20];
+    bool is_gif = false;
+    cJSON *it;
+    cJSON_ArrayForEach(it, imgs)
+    {
+        if (!cJSON_IsString(it) || n >= 20) continue;
+        char name[48];
+        device_name(name, sizeof(name), it->valuestring, fit);
+        is_gif = strstr(name, ".gif") != NULL;
+        lv_image_dsc_t *d = load_asset(name, is_gif);
+        if (d) srcs[n++] = d;
+        if (is_gif) break;
+    }
+    if (n == 0) { // not synced yet (or the PC never sent it)
+        lv_obj_t *ic = text(tile, F.icon_xl, P.on_sv, theme_icon("image"));
+        lv_obj_align(ic, LV_ALIGN_CENTER, 0, -20);
+        lv_obj_t *l = text(tile, F.body, P.on_sv, usb_host_listening() ? "Syncing images…" : "Connect the PC to sync images");
+        lv_obj_align(l, LV_ALIGN_CENTER, 0, 34);
+        return;
+    }
+    if (is_gif) {
+        lv_obj_t *g = lv_gif_create(tile);
+        lv_gif_set_src(g, srcs[0]);
+        lv_obj_center(g);
+        lv_obj_remove_flag(g, LV_OBJ_FLAG_CLICKABLE);
+        media_live.gif[page] = g;
+        if (page != cur_page) lv_gif_pause(g);
+        return;
+    }
+    for (int k = 0; k < 2; k++) {
+        lv_obj_t *im = lv_image_create(tile);
+        lv_image_set_src(im, srcs[0]);
+        lv_obj_center(im);
+        lv_obj_remove_flag(im, LV_OBJ_FLAG_CLICKABLE);
+        media_live.slide[page][k] = im;
+    }
+    media_live.slide_n[page] = n;
+    media_live.slide_i[page] = 0;
+    media_live.slide_front[page] = 1;
+    for (int k = 0; k < n; k++) media_live.slide_src[page][k] = srcs[k];
+    cJSON *iv = cJSON_GetObjectItem(pg, "interval");
+    media_live.slide_ms[page] = (cJSON_IsNumber(iv) && iv->valueint >= 2 ? iv->valueint : 8) * 1000;
+    media_live.slide_last[page] = lv_tick_get();
+}
+
+static void sync_gifs(void)
+{
+    for (int i = 0; i < page_count; i++) {
+        lv_obj_t *g = media_live.gif[i];
+        if (!g) continue;
+        if (i == cur_page && power != ASLEEP && power != OFF) lv_gif_resume(g);
+        else lv_gif_pause(g);
+    }
+    if (cur_page >= 0 && cur_page < page_count) media_live.slide_last[cur_page] = lv_tick_get();
+}
+
+static void free_screen_res(lv_event_t *e)
+{
+    screen_res_t *r = lv_event_get_user_data(e);
+    for (int i = 0; i < r->n; i++) {
+        lv_image_cache_drop(&r->dscs[i]);
+        free(r->bufs[i]);
+    }
+    free(r);
+}
+
+// ---- page: touchpad ------------------------------------------------------------------------
+
+#define RING_R 140 // presses further out than this are on the scroll ring
+
+typedef enum { TP_IDLE, TP_MOVE, TP_RING, TP_SCROLL, TP_SWIPE, TP_DRAG } tp_mode_t;
+static struct {
+    tp_mode_t mode;
+    lv_point_t p0, last;
+    uint32_t t0, last_tap;
+    lv_point_t last_tap_pt;
+    bool moved, long_done;
+    int32_t scroll0, angle_acc, last_angle;
+    float rem_x, rem_y;
+    int speed;
+} tp;
+
+static int angle_of(lv_point_t p) { return lv_atan2(p.y - LCD_H / 2, p.x - LCD_W / 2); } // 0..359
+
+static void touchpad_event(lv_event_t *e)
+{
+    lv_event_code_t c = lv_event_get_code(e);
+    lv_point_t p;
+    lv_indev_get_point(lv_indev_active(), &p);
+    int32_t rx = p.x - LCD_W / 2, ry = p.y - LCD_H / 2;
+    if (c == LV_EVENT_PRESSED) {
+        tp.p0 = tp.last = p;
+        tp.t0 = lv_tick_get();
+        tp.moved = tp.long_done = false;
+        tp.rem_x = tp.rem_y = 0;
+        if (rx * rx + ry * ry > RING_R * RING_R) {
+            tp.mode = TP_RING;
+            tp.scroll0 = lv_obj_get_scroll_x(tv);
+            tp.last_angle = angle_of(p);
+            tp.angle_acc = 0;
+        } else if (lv_tick_get() - tp.last_tap < 300 && LV_ABS(p.x - tp.last_tap_pt.x) < 40 &&
+                   LV_ABS(p.y - tp.last_tap_pt.y) < 40) {
+            tp.mode = TP_DRAG; // tap, then press again: hold the left button and drag
+            usb_mouse_buttons(1);
+        } else {
+            tp.mode = TP_MOVE;
+        }
+        return;
+    }
+    if (c == LV_EVENT_PRESSING) {
+        int32_t dx = p.x - tp.p0.x, dy = p.y - tp.p0.y;
+        if (tp.mode == TP_RING && dx * dx + dy * dy >= 100) {
+            int32_t ox = tp.p0.x - LCD_W / 2, oy = tp.p0.y - LCD_H / 2;
+            int32_t radial = dx * ox + dy * oy, tangential = dx * oy - dy * ox;
+            bool across = LV_ABS(radial) > LV_ABS(tangential);
+            if (across && LV_ABS(dx) > LV_ABS(dy) && page_count > 1) tp.mode = TP_SWIPE;
+            else if (across && dy > 0 && tp.p0.y < 90) {
+                tp.mode = TP_IDLE;
+                qs_open();
+                return;
+            } else tp.mode = TP_SCROLL;
+        }
+        if (tp.mode == TP_SCROLL) {
+            int a = angle_of(p), d = a - tp.last_angle;
+            if (d > 180) d -= 360;
+            if (d < -180) d += 360;
+            tp.last_angle = a;
+            tp.angle_acc += d;
+            while (tp.angle_acc >= 12) { tp.angle_acc -= 12; usb_mouse_wheel(-1); } // clockwise scrolls down
+            while (tp.angle_acc <= -12) { tp.angle_acc += 12; usb_mouse_wheel(1); }
+        } else if (tp.mode == TP_SWIPE) {
+            lv_obj_scroll_to_x(tv, LV_CLAMP(0, tp.scroll0 - dx, (page_count - 1) * LCD_W), LV_ANIM_OFF);
+        } else if (tp.mode == TP_MOVE || tp.mode == TP_DRAG) {
+            int32_t mx = p.x - tp.last.x, my = p.y - tp.last.y;
+            if (dx * dx + dy * dy > 64) tp.moved = true;
+            // speed 1..10 and a little acceleration for fast flicks
+            float v = sqrtf((float)(mx * mx + my * my));
+            float gain = (0.4f + tp.speed * 0.16f) * (1.0f + v * 0.06f);
+            tp.rem_x += mx * gain;
+            tp.rem_y += my * gain;
+            int ix = (int)tp.rem_x, iy = (int)tp.rem_y;
+            tp.rem_x -= ix;
+            tp.rem_y -= iy;
+            if (ix || iy) usb_mouse_move(ix, iy);
+        }
+        tp.last = p;
+        return;
+    }
+    if (c == LV_EVENT_LONG_PRESSED) {
+        if (tp.mode == TP_MOVE && !tp.moved) {
+            usb_mouse_click(2);
+            tp.long_done = true;
+        }
+        return;
+    }
+    if (c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST) {
+        int32_t dx = p.x - tp.p0.x;
+        if (tp.mode == TP_MOVE && !tp.moved && !tp.long_done) {
+            usb_mouse_click(1);
+            tp.last_tap = lv_tick_get();
+            tp.last_tap_pt = p;
+        } else if (tp.mode == TP_DRAG) {
+            usb_mouse_buttons(0);
+        } else if (tp.mode == TP_SWIPE) {
+            if (dx < -40) goto_index(cur_page + 1, true);
+            else if (dx > 40) goto_index(cur_page - 1, true);
+            else lv_tileview_set_tile_by_index(tv, cur_page, 0, LV_ANIM_ON);
+        }
+        tp.mode = TP_IDLE;
+    }
+}
+
+static void build_touchpad(lv_obj_t *tile, cJSON *pg)
+{
+    cJSON *sp = cJSON_GetObjectItem(pg, "speed");
+    tp.speed = cJSON_IsNumber(sp) ? LV_CLAMP(1, sp->valueint, 10) : 5;
+    // scroll ring
+    lv_obj_t *ring = lv_arc_create(tile);
+    lv_obj_set_size(ring, 344, 344);
+    lv_obj_center(ring);
+    lv_arc_set_bg_angles(ring, 0, 360);
+    lv_obj_set_style_arc_width(ring, 22, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(ring, P.sch, LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(ring, LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_remove_flag(ring, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *up = text(tile, F.icon_s, P.on_sv, theme_icon("expand_less"));
+    lv_obj_align(up, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_t *dn = text(tile, F.icon_s, P.on_sv, theme_icon("expand_more"));
+    lv_obj_align(dn, LV_ALIGN_BOTTOM_MID, 0, -8);
+    lv_obj_t *ic = text(tile, F.icon_xl, P.on_sv, theme_icon("mouse"));
+    lv_obj_align(ic, LV_ALIGN_CENTER, 0, -18);
+    lv_obj_set_style_opa(ic, LV_OPA_60, 0);
+    lv_obj_t *l = text(tile, F.body, P.on_sv, jstr(pg, "title") ?: "Touchpad");
+    lv_obj_align(l, LV_ALIGN_CENTER, 0, 34);
+    lv_obj_set_style_opa(l, LV_OPA_60, 0);
+    // the input surface: catches every touch on this page, never scrolls the pages itself
+    lv_obj_t *pad = box(tile);
+    lv_obj_set_size(pad, LCD_W, LCD_H);
+    lv_obj_center(pad);
+    lv_obj_add_flag(pad, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(pad, LV_OBJ_FLAG_SCROLL_CHAIN_HOR | LV_OBJ_FLAG_SCROLL_CHAIN_VER | LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_event_cb(pad, touchpad_event, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(pad, touchpad_event, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(pad, touchpad_event, LV_EVENT_LONG_PRESSED, NULL);
+    lv_obj_add_event_cb(pad, touchpad_event, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(pad, touchpad_event, LV_EVENT_PRESS_LOST, NULL);
+}
+
+// ---- navigation: wrap-around & gestures ----------------------------------------------------
+
+static void goto_index(int idx, bool wrap_anim)
+{
+    if (page_count < 1) return;
+    bool wrapped = idx < 0 || idx >= page_count;
+    idx = (idx % page_count + page_count) % page_count;
+    // Wrapping jumps straight there; animating would sweep through every page.
+    lv_tileview_set_tile_by_index(tv, idx, 0, wrapped || !wrap_anim ? LV_ANIM_OFF : LV_ANIM_ON);
+    if (wrapped) { // no scroll animation means no VALUE_CHANGED from the tileview
+        cur_page = idx;
+        remember_page();
+        update_dots();
+        sync_gifs();
+        ui_announce();
+    }
+}
+
+static void screen_gesture(lv_event_t *e)
+{
+    if (arc_mode == ARC_DRAG || arc_mode == ARC_SWIPE || (qs && !lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN))) return;
+    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+    if (dir == LV_DIR_BOTTOM) {
+        qs_open();
+    } else if (dir == LV_DIR_RIGHT && cur_page == 0 && page_count > 1) {
+        goto_index(-1, true); // finger moved right on the first page: wrap to the last
+    } else if (dir == LV_DIR_LEFT && cur_page == page_count - 1 && page_count > 1) {
+        goto_index(page_count, true);
+    }
+}
+
+// ---- quick settings ------------------------------------------------------------------------
+
+static lv_obj_t *qs_auto_tile;
+
+static void qs_y_exec(void *o, int32_t v) { lv_obj_set_y(o, v); }
+static void qs_hide_done(lv_anim_t *a) { lv_obj_add_flag(a->var, LV_OBJ_FLAG_HIDDEN); }
+
+static void qs_close(void)
+{
+    if (!qs || lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN)) return;
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, qs);
+    lv_anim_set_values(&a, lv_obj_get_y(qs), -LCD_H);
+    lv_anim_set_duration(&a, 220);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+    lv_anim_set_exec_cb(&a, qs_y_exec);
+    lv_anim_set_completed_cb(&a, qs_hide_done);
+    lv_anim_start(&a);
+}
+
+static void qs_style_auto(void)
+{
+    if (!qs_auto_tile) return;
+    lv_color_t bg = autoswitch_paused ? P.schh : P.pc, fg = autoswitch_paused ? P.on_sv : P.on_pc;
+    lv_obj_set_style_bg_color(qs_auto_tile, bg, 0);
+    lv_obj_t *ic = lv_obj_get_child(qs_auto_tile, 0), *st = lv_obj_get_child(qs_auto_tile, 2);
+    lv_label_set_text(ic, theme_icon(autoswitch_paused ? "pause" : "sync"));
+    lv_obj_set_style_text_color(ic, fg, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(qs_auto_tile, 1), fg, 0);
+    lv_label_set_text(st, autoswitch_paused ? "Paused" : "On");
+    lv_obj_set_style_text_color(st, fg, 0);
+    if (pause_badge) {
+        if (autoswitch_paused) lv_obj_remove_flag(pause_badge, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(pause_badge, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void qs_event(lv_event_t *e)
+{
+    lv_event_code_t c = lv_event_get_code(e);
+    intptr_t what = (intptr_t)lv_event_get_user_data(e);
+    if (c == LV_EVENT_GESTURE) {
+        if (lv_indev_get_gesture_dir(lv_indev_active()) == LV_DIR_TOP) qs_close();
+        return;
+    }
+    if (c != LV_EVENT_CLICKED) return;
+    if (what == 1) { // screen off
+        qs_close();
+        screen_off();
+    } else if (what == 2) { // auto-switch
+        autoswitch_paused = !autoswitch_paused;
+        store_local_set("autosw_paused", autoswitch_paused);
+        qs_style_auto();
+    } else if (what >= 100) { // page shortcut
+        qs_close();
+        goto_index((int)(what - 100), true);
+    } else {
+        qs_close(); // background tap
+    }
+}
+
+static lv_obj_t *qs_tile(lv_obj_t *parent, const char *icon, const char *label, int x, intptr_t what)
+{
+    lv_obj_t *t = box(parent);
+    lv_obj_set_size(t, 128, 104);
+    lv_obj_align(t, LV_ALIGN_CENTER, x, -4);
+    lv_obj_set_style_radius(t, 32, 0);
+    lv_obj_set_style_bg_color(t, P.schh, 0);
+    lv_obj_set_style_bg_opa(t, LV_OPA_COVER, 0);
+    lv_obj_add_flag(t, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(t, lv_color_mix(lv_color_white(), P.schh, 30), LV_STATE_PRESSED);
+    squish_on_press(t, 104);
+    lv_obj_set_style_transform_pivot_x(t, 64, 0);
+    lv_obj_t *ic = text(t, F.icon_m, P.on_surface, theme_icon(icon));
+    lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, 14);
+    lv_obj_t *l = text(t, F.body, P.on_surface, label);
+    lv_obj_align(l, LV_ALIGN_TOP_MID, 0, 52);
+    lv_obj_t *st = text(t, F.label, P.on_sv, "");
+    lv_obj_align(st, LV_ALIGN_TOP_MID, 0, 74);
+    lv_obj_add_event_cb(t, qs_event, LV_EVENT_CLICKED, (void *)what);
+    return t;
+}
+
+static void qs_build(void)
+{
+    if (qs) lv_obj_delete(qs);
+    qs = box(lv_layer_top());
+    lv_obj_set_size(qs, LCD_W, LCD_H);
+    lv_obj_set_style_radius(qs, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(qs, P.sc, 0);
+    lv_obj_set_style_bg_opa(qs, 248, 0);
+    lv_obj_add_flag(qs, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_y(qs, -LCD_H);
+    lv_obj_add_event_cb(qs, qs_event, LV_EVENT_CLICKED, (void *)0);
+    lv_obj_add_event_cb(qs, qs_event, LV_EVENT_GESTURE, (void *)0);
+
+    lv_obj_t *title = text(qs, F.body, P.on_sv, "Quick settings");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 46);
+
+    // tiny page shortcuts
+    lv_obj_t *row = box(qs);
+    lv_obj_set_size(row, LV_SIZE_CONTENT, 30);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(row, 6, 0);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 76);
+    for (int i = 0; i < page_count; i++) {
+        lv_obj_t *b = box(row);
+        lv_obj_set_size(b, 30, 30);
+        lv_obj_set_style_radius(b, 15, 0);
+        bool cur = i == cur_page;
+        lv_obj_set_style_bg_color(b, cur ? P.primary : P.schh, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+        char num[4];
+        snprintf(num, sizeof(num), "%d", i + 1);
+        lv_obj_t *l = text(b, F.label, cur ? P.on_primary : P.on_surface, num);
+        lv_obj_center(l);
+        lv_obj_add_event_cb(b, qs_event, LV_EVENT_CLICKED, (void *)(intptr_t)(100 + i));
+    }
+
+    qs_tile(qs, "bedtime", "Screen off", -70, 1);
+    qs_auto_tile = qs_tile(qs, "sync", "Auto-switch", 70, 2);
+    qs_style_auto();
+
+    lv_obj_t *hint = text(qs, F.icon_s, P.on_sv, theme_icon("expand_less"));
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -40);
+}
+
+static void qs_open(void)
+{
+    if (power != AWAKE && power != DIM) return;
+    qs_build(); // fresh page list and colors every time
+    lv_obj_remove_flag(qs, LV_OBJ_FLAG_HIDDEN);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, qs);
+    lv_anim_set_values(&a, -LCD_H, 0);
+    lv_anim_set_duration(&a, 280);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, qs_y_exec);
+    lv_anim_start(&a);
+    lv_indev_wait_release(lv_indev_active()); // the swipe must not also press a button
+}
+
 // ---- page dots ---------------------------------------------------------------------
 
 static void dot_width_exec(void *o, int32_t v) { lv_obj_set_width(o, v); }
@@ -866,6 +1333,7 @@ static void tile_event(lv_event_t *e)
     cur_page = idx;
     remember_page();
     update_dots();
+    sync_gifs();
     ui_announce();
 }
 
@@ -891,9 +1359,13 @@ static void build(bool animate)
     prof = find_profile(cur_profile);
     strlcpy(cur_profile, jstr(prof, "id") ?: "default", sizeof(cur_profile));
     memset(&live, 0, sizeof(live));
+    memset(&media_live, 0, sizeof(media_live));
     ncustom = 0;
 
     lv_obj_t *s = lv_obj_create(NULL);
+    res = heap_caps_calloc(1, sizeof(*res), MALLOC_CAP_SPIRAM);
+    if (res) lv_obj_add_event_cb(s, free_screen_res, LV_EVENT_DELETE, res);
+    lv_obj_add_event_cb(s, screen_gesture, LV_EVENT_GESTURE, NULL);
     lv_obj_remove_flag(s, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(s, P.surface, 0);
     lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
@@ -905,6 +1377,7 @@ static void build(bool animate)
 
     cJSON *list = cJSON_GetObjectItem(prof, "pages");
     page_count = 0;
+    cur_page = recalled_page();
     cJSON *pg;
     cJSON_ArrayForEach(pg, list)
     {
@@ -919,6 +1392,8 @@ static void build(bool animate)
         if (!strcmp(k, "media")) build_media(tile, pages[i]);
         else if (!strcmp(k, "stats")) build_stats(tile, pages[i]);
         else if (!strcmp(k, "dial")) build_dial(tile, pages[i]);
+        else if (!strcmp(k, "image")) build_image(tile, pages[i], i);
+        else if (!strcmp(k, "touchpad")) build_touchpad(tile, pages[i]);
         else build_radial(tile, pages[i]);
     }
 
@@ -949,12 +1424,22 @@ static void build(bool animate)
     lv_obj_remove_flag(host_dot, LV_OBJ_FLAG_CLICKABLE);
     if (usb_host_listening()) lv_obj_add_flag(host_dot, LV_OBJ_FLAG_HIDDEN);
 
-    cur_page = recalled_page();
+    pause_badge = text(s, F.icon_s, P.tertiary, theme_icon("pause"));
+    lv_obj_align(pause_badge, LV_ALIGN_TOP_MID, 0, 18);
+    lv_obj_remove_flag(pause_badge, LV_OBJ_FLAG_CLICKABLE);
+    if (!autoswitch_paused) lv_obj_add_flag(pause_badge, LV_OBJ_FLAG_HIDDEN);
+
     if (cur_page >= page_count) cur_page = 0;
     lv_tileview_set_tile_by_index(tv, cur_page, 0, LV_ANIM_OFF);
     lv_obj_add_event_cb(tv, tile_event, LV_EVENT_VALUE_CHANGED, NULL);
     for (int i = 0; i < page_count; i++) lv_obj_set_width(dots[i], i == cur_page ? 18 : 6);
     update_dots();
+    sync_gifs();
+    if (qs) {
+        lv_obj_delete(qs); // rebuilt with the new pages when opened
+        qs = NULL;
+        qs_auto_tile = NULL;
+    }
 
     scr = s;
     lv_screen_load_anim(s, animate ? LV_SCR_LOAD_ANIM_FADE_IN : LV_SCR_LOAD_ANIM_NONE, animate ? 220 : 0, 0, true);
@@ -974,46 +1459,144 @@ void ui_reload(void)
     build(false);
 }
 
-void ui_set_profile(const char *id)
+static bool pages_equivalent(cJSON *a, cJSON *b)
+{
+    if (!a || !b) return false;
+    const char *ta = page_kind(a), *tb = page_kind(b);
+    if (strcmp(ta, tb)) return false;
+    if (!strcmp(ta, "media")) return cJSON_Compare(cJSON_GetObjectItem(a, "shapes"), cJSON_GetObjectItem(b, "shapes"), true) ||
+                                      (!cJSON_GetObjectItem(a, "shapes") && !cJSON_GetObjectItem(b, "shapes"));
+    // anything else: same content apart from the id
+    cJSON *ca = cJSON_Duplicate(a, true), *cb = cJSON_Duplicate(b, true);
+    cJSON_DeleteItemFromObject(ca, "id");
+    cJSON_DeleteItemFromObject(cb, "id");
+    bool same = cJSON_Compare(ca, cb, true);
+    cJSON_Delete(ca);
+    cJSON_Delete(cb);
+    return same;
+}
+
+static void switch_profile(const char *id)
 {
     if (!id) return;
     cJSON *p = find_profile(id);
     const char *pid = jstr(p, "id");
     if (pid && !strcmp(pid, cur_profile)) return;
     remember_page();
+    cJSON *before = page_count ? pages[cur_page] : NULL;
     strlcpy(cur_profile, pid ? pid : "default", sizeof(cur_profile));
-    build(true);
+    // Landing on an equivalent page (media -> media, or an identical page) swaps
+    // instantly: a fade would only flash the same content.
+    int idx = recalled_page();
+    cJSON *after = cJSON_GetArrayItem(cJSON_GetObjectItem(p, "pages"), idx);
+    if (!after) after = cJSON_GetArrayItem(cJSON_GetObjectItem(p, "pages"), 0);
+    build(!pages_equivalent(before, after));
+}
+
+void ui_set_profile(const char *id)
+{
+    if (autoswitch_paused) return; // paused from quick settings
+    switch_profile(id);
+}
+
+void ui_assets_changed(void)
+{
+    remember_page();
+    build(false);
 }
 
 void ui_show(const char *profile, const char *page)
 {
-    if (profile) ui_set_profile(profile);
+    if (profile) switch_profile(profile);
     if (page) goto_page(page);
     if (power != AWAKE) lv_display_trigger_activity(disp);
 }
 
 // ---- power: dim & sleep ----------------------------------------------------------------
 
-static void wake(void)
+static void drop_shield(void)
 {
-    if (power == AWAKE) return;
-    bool was_asleep = power == ASLEEP;
-    power = AWAKE;
-    board_backlight(store_brightness());
-    if (was_asleep) ui_announce();
-}
-
-static void shield_event(lv_event_t *e)
-{
-    if (lv_event_get_code(e) == LV_EVENT_PRESSED) wake();
-    else if (lv_event_get_code(e) == LV_EVENT_RELEASED || lv_event_get_code(e) == LV_EVENT_PRESS_LOST) {
+    if (shield) {
         lv_obj_delete_async(shield);
         shield = NULL;
     }
 }
 
+static void wake(void)
+{
+    if (power == AWAKE) return;
+    bool was_dark = power == ASLEEP || power == OFF;
+    if (power == OFF) {
+        board_panel_sleep(false);
+        lv_obj_invalidate(lv_screen_active());
+        drop_shield();
+    }
+    power = AWAKE;
+    lv_display_trigger_activity(disp);
+    board_backlight(store_brightness());
+    if (was_dark) {
+        sync_gifs();
+        ui_announce();
+    }
+}
+
+static uint32_t last_shield_tap;
+
+static void shield_event(lv_event_t *e)
+{
+    lv_event_code_t c = lv_event_get_code(e);
+    if (power == OFF) { // truly off: only a double tap wakes
+        if (c == LV_EVENT_RELEASED) {
+            uint32_t now = lv_tick_get();
+            if (now - last_shield_tap < 450) wake();
+            last_shield_tap = now;
+        }
+        return;
+    }
+    if (c == LV_EVENT_PRESSED) wake();
+    else if (c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST) drop_shield();
+}
+
+static void make_shield(void)
+{
+    if (shield) return;
+    // Swallows the touches that wake the screen so they don't press a button.
+    shield = box(lv_layer_top());
+    lv_obj_set_size(shield, LCD_W, LCD_H);
+    lv_obj_add_flag(shield, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(shield, shield_event, LV_EVENT_ALL, NULL);
+}
+
+static void screen_off(void)
+{
+    if (power == OFF) return;
+    power = OFF;
+    board_backlight(0);
+    board_panel_sleep(true); // display off + sleep in: no light at all
+    make_shield();
+    last_shield_tap = 0;
+    sync_gifs();
+    ui_announce();
+}
+
 static void power_tick(lv_timer_t *t)
 {
+    // Follow the PC: dark ~8 s after the host side goes away, back when it returns.
+    static uint32_t host_gone_at;
+    static bool host_was;
+    bool host = usb_host_listening() && !usb_suspended();
+    if (store_get_bool("followPc", true)) {
+        if (!host && host_was) host_gone_at = lv_tick_get();
+        if (!host && host_gone_at && lv_tick_get() - host_gone_at > 8000) {
+            host_gone_at = 0;
+            screen_off();
+        }
+        if (host && !host_was && power == OFF) wake();
+    }
+    if (host) host_gone_at = 0;
+    host_was = host;
+    if (power == OFF) return; // stays dark until a double tap or the PC comes back
+
     uint32_t idle = lv_display_get_inactive_time(disp);
     int dim_s = store_get_int("dimAfter", 30), sleep_s = store_get_int("sleepAfter", 300);
 
@@ -1029,13 +1612,8 @@ static void power_tick(lv_timer_t *t)
         if (power != ASLEEP) {
             power = ASLEEP;
             board_backlight(0);
-            if (!shield) {
-                // Swallow the touch that wakes the screen so it doesn't press a button.
-                shield = box(lv_layer_top());
-                lv_obj_set_size(shield, LCD_W, LCD_H);
-                lv_obj_add_flag(shield, LV_OBJ_FLAG_CLICKABLE);
-                lv_obj_add_event_cb(shield, shield_event, LV_EVENT_ALL, NULL);
-            }
+            make_shield();
+            sync_gifs();
             ui_announce();
         }
     } else if (dim_s > 0 && idle > (uint32_t)dim_s * 1000) {
@@ -1064,6 +1642,8 @@ void ui_init(lv_display_t *d, lv_indev_t *touch)
     lv_timer_pause(bubble_timer);
     lv_timer_create(level_flush, 50, NULL);
     lv_timer_create(power_tick, 500, NULL);
+    lv_timer_create(slideshow_tick, 250, NULL);
+    autoswitch_paused = store_local_get("autosw_paused", 0);
     ui_reload();
     // style the toast now that the palette is loaded
     lv_obj_set_style_bg_color(toast, P.schh, 0);

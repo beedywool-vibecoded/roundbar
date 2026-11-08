@@ -48,6 +48,8 @@ export interface DeviceSettings {
   sleepAfter: number
   longPressMs: number
   keyboardLayout: KeyboardLayout
+  /** Screen off when the PC goes away, on when it comes back. Missing = true */
+  followPc: boolean
 }
 
 export type MediaCmd = 'play_pause' | 'next' | 'prev' | 'vol_up' | 'vol_down' | 'mute'
@@ -111,7 +113,22 @@ export interface DialPage extends PageBase {
   onUp?: Action
   onDown?: Action
 }
-export type Page = RadialPage | MediaPage | StatsPage | DialPage
+export type ImageFit = 'cover' | 'contain'
+export interface ImagePage extends PageBase {
+  type: 'image'
+  /** Asset ids (docs/spec.md, Assets). A `.gif` must be the only one. */
+  images: string[]
+  /** Slideshow seconds per image, 2..3600; missing = IMAGE_DEFAULTS.interval */
+  interval?: number
+  /** Missing = cover */
+  fit?: ImageFit
+}
+export interface TouchpadPage extends PageBase {
+  type: 'touchpad'
+  /** Pointer speed 1..10; missing = TOUCHPAD_DEFAULTS.speed */
+  speed?: number
+}
+export type Page = RadialPage | MediaPage | StatsPage | DialPage | ImagePage | TouchpadPage
 export type PageType = Page['type']
 
 export interface Profile {
@@ -136,6 +153,15 @@ export interface Config {
   media: MediaSettings
   device: DeviceSettings
   profiles: Profile[]
+}
+
+// POST /api/assets
+export interface AssetInfo {
+  id: string
+  kind: 'image' | 'gif'
+  w: number
+  h: number
+  size: number
 }
 
 export interface App {

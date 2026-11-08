@@ -49,6 +49,7 @@ type Device struct {
 	LongPressMs    int    `json:"longPressMs"`
 	KeyboardLayout string `json:"keyboardLayout"`
 	Rotation       int    `json:"rotation"` // degrees clockwise: 0, 90, 180, 270
+	FollowPc       *bool  `json:"followPc,omitempty"`
 }
 
 type Profile struct {
@@ -73,7 +74,15 @@ type Page struct {
 	OnDown  *Action  `json:"onDown,omitempty"`
 	// media pages: shapes of the transport buttons, keys prev/next/play/playing
 	Shapes map[string]string `json:"shapes,omitempty"`
+	// image pages
+	Images   []string `json:"images,omitempty"`
+	Interval int      `json:"interval,omitempty"`
+	Fit      string   `json:"fit,omitempty"`
+	// touchpad pages
+	Speed int `json:"speed,omitempty"`
 }
+
+var assetRe = regexp.MustCompile(`^[0-9a-f]{12}\.(jpg|gif)$`)
 
 type Button struct {
 	ID    string  `json:"id"`
@@ -333,6 +342,28 @@ func (pg *Page) validate(pp string, pageIDs map[string]bool) error {
 			if !oneOf(v, Shapes...) {
 				return fail(pp+".shapes."+k, "unknown shape %q", v)
 			}
+		}
+	case "touchpad":
+		if pg.Speed != 0 && (pg.Speed < 1 || pg.Speed > 10) {
+			return fail(pp+".speed", "must be 1..10")
+		}
+	case "image":
+		if len(pg.Images) == 0 || len(pg.Images) > 20 {
+			return fail(pp+".images", "need 1..20 images")
+		}
+		for k, id := range pg.Images {
+			if !assetRe.MatchString(id) {
+				return fail(fmt.Sprintf("%s.images[%d]", pp, k), "not an asset id")
+			}
+			if strings.HasSuffix(id, ".gif") && len(pg.Images) > 1 {
+				return fail(pp+".images", "a GIF must be the only image of its page")
+			}
+		}
+		if pg.Interval != 0 && (pg.Interval < 2 || pg.Interval > 3600) {
+			return fail(pp+".interval", "must be 2..3600 seconds")
+		}
+		if !oneOf(pg.Fit, "", "cover", "contain") {
+			return fail(pp+".fit", "must be cover or contain")
 		}
 	case "stats":
 		if len(pg.Items) == 0 || len(pg.Items) > 4 {

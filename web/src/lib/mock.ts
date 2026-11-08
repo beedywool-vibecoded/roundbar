@@ -1,8 +1,9 @@
 // In-page stand-in for `roundbar config`, enabled with `?mock`. Development only: it keeps
 // the config in memory and fakes a connected device.
 import iconsJson from '../../../shared/icons.json'
+import { ApiError } from './api'
 import { starterConfig } from './model'
-import type { Config, Status } from './types'
+import type { AssetInfo, Config, Status } from './types'
 
 let cfg: Config | null = null
 const status: Status = {
@@ -23,9 +24,39 @@ const status: Status = {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// Uploaded files are kept as they are; the real server converts them to JPEG or GIF.
+const assets = new Map<string, Blob>()
+
+async function upload(body: unknown): Promise<AssetInfo> {
+  if (!(body instanceof Blob) || !body.type.startsWith('image/')) throw new ApiError('This file is not an image', 415)
+  if (body.size > 20 << 20) throw new ApiError('The file is too large (20 MB at most)', 413)
+  await wait(600)
+  const gif = body.type === 'image/gif'
+  const id = `${Array.from({ length: 12 }, () => ((Math.random() * 16) | 0).toString(16)).join('')}.${gif ? 'gif' : 'jpg'}`
+  assets.set(id, body)
+  let w = 360
+  let h = 360
+  try {
+    const bmp = await createImageBitmap(body)
+    const k = Math.min(1, 360 / Math.min(bmp.width, bmp.height))
+    w = Math.round(bmp.width * k)
+    h = Math.round(bmp.height * k)
+    bmp.close()
+  } catch {
+    // keep the square guess
+  }
+  return { id, kind: gif ? 'gif' : 'image', w, h, size: body.size }
+}
+
 export async function handle(method: string, path: string, body?: unknown): Promise<unknown> {
   await wait(200)
   const key = `${method} ${path}`
+  if (key === 'POST /api/assets') return upload(body)
+  if (method === 'GET' && path.startsWith('/api/assets/')) {
+    const blob = assets.get(decodeURIComponent(path.slice('/api/assets/'.length)))
+    if (!blob) throw new ApiError('No such asset', 404)
+    return blob
+  }
   switch (key) {
     case 'GET /api/config':
       return cfg ? JSON.parse(JSON.stringify(cfg)) : null

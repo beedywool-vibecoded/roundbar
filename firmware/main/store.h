@@ -15,3 +15,7 @@ int store_get_int(const char *key, int def); // device.<key>
 // Local brightness override from a brightness dial (-1 = use config).
 int store_brightness(void);
 void store_set_brightness(int pct);
+bool store_get_bool(const char *key, bool def); // device.<key>
+// Small device-only settings kept in flash (e.g. "autosw").
+int store_local_get(const char *key, int def);
+void store_local_set(const char *key, int value);

@@ -28,9 +28,10 @@ fi
 # CJK + emoji glyph pack: build it if missing, write it only when it changed.
 extra=()
 [[ -f fonts.bin ]] || (cd ../.. && go run ./tools/fontpack -out firmware/build/fonts.bin)
-sum=$(sha256sum fonts.bin | cut -d' ' -f1)
+fonts_off=$(awk -F, '$1 ~ /^fonts/ {gsub(/ /,"",$4); print $4}' ../partitions.csv)
+sum="$(sha256sum fonts.bin | cut -d' ' -f1)@$fonts_off"
 if [[ "$(cat .fonts-flashed 2>/dev/null)" != "$sum" || ${FORCE_FONTS:-0} == 1 ]]; then
-  extra=(0x450000 fonts.bin)
+  extra=("$fonts_off" fonts.bin)
   echo "font pack changed: writing it too (takes about a minute)"
 fi
 

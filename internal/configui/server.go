@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/beedywool-vibecoded/roundbar/internal/assets"
 	"github.com/beedywool-vibecoded/roundbar/internal/config"
 	"github.com/beedywool-vibecoded/roundbar/internal/ipc"
 	"github.com/beedywool-vibecoded/roundbar/shared"
@@ -75,6 +76,8 @@ func Run(open bool) error {
 	mux.HandleFunc("POST /api/show", s.auth(s.forward("show")))
 	mux.HandleFunc("POST /api/run", s.auth(s.forward("run")))
 	mux.HandleFunc("GET /api/events", s.auth(s.events))
+	mux.HandleFunc("POST /api/assets", s.auth(s.postAsset))
+	mux.HandleFunc("GET /api/assets/{id}", s.auth(s.getAsset))
 	mux.Handle("/", spa())
 
 	if open {
@@ -143,6 +146,35 @@ func (s *server) putConfig(w http.ResponseWriter, r *http.Request) {
 	_ = ipc.Call(ipc.Request{Op: "reload"}, nil) // the daemon also sees the file change
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(c)
+}
+
+func (s *server) postAsset(w http.ResponseWriter, r *http.Request) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 21<<20))
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error(), "")
+		return
+	}
+	info, err := assets.Store(raw)
+	if errors.Is(err, assets.ErrNotImage) {
+		jsonErr(w, http.StatusUnsupportedMediaType, "that file isn't an image (JPEG, PNG, WebP or GIF)", "")
+		return
+	}
+	if err != nil {
+		jsonErr(w, http.StatusRequestEntityTooLarge, err.Error(), "")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(info)
+}
+
+func (s *server) getAsset(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if strings.ContainsAny(id, "/\\") || strings.HasPrefix(id, ".") {
+		jsonErr(w, http.StatusBadRequest, "bad id", "")
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable") // ids are content hashes
+	http.ServeFile(w, r, assets.Path(id))
 }
 
 func (s *server) getStatus(w http.ResponseWriter, r *http.Request) {

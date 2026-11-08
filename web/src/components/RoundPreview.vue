@@ -2,9 +2,10 @@
 // The 360 x 360 round screen, laid out with the firmware's numbers (firmware/main/ui.c) and
 // drawn with the device palette. Coordinates are relative to the screen center, y down.
 // Buttons can be clicked to select them for editing.
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useAssets } from '@/lib/assets'
 import { buttonPath, type ButtonShape } from '@/lib/shapes'
-import { MEDIA_SHAPE_DEFAULTS, defaultShape } from '@/lib/model'
+import { IMAGE_DEFAULTS, MEDIA_SHAPE_DEFAULTS, defaultShape, isGif } from '@/lib/model'
 import type { Button, ColorRole, Page, Palette, StatItem } from '@/lib/types'
 
 const props = withDefaults(
@@ -17,8 +18,10 @@ const props = withDefaults(
     pageCount?: number
     /** Small, non-interactive copy (inside a link) */
     thumb?: boolean
+    /** Image pages: cross-fade through the pictures (the page editor); otherwise the first one stays */
+    slideshow?: boolean
   }>(),
-  { selected: null, editable: false, pageIndex: 0, pageCount: 1, thumb: false },
+  { selected: null, editable: false, pageIndex: 0, pageCount: 1, thumb: false, slideshow: false },
 )
 const emit = defineEmits<{ select: [id: string]; addCenter: [] }>()
 
@@ -219,6 +222,50 @@ const dial = computed(() => {
   }
 })
 
+// ---- image: full screen, cover or contain on the surface color ----
+const imagePage = computed(() => (props.page.type === 'image' ? props.page : null))
+const sliding = computed(() => {
+  const pg = imagePage.value
+  return !!pg && props.slideshow && !props.thumb && pg.images.length > 1 && !pg.images.some(isGif)
+})
+const shownImages = computed(() => {
+  const pg = imagePage.value
+  if (!pg) return []
+  return sliding.value ? pg.images : pg.images.slice(0, 1)
+})
+const assets = useAssets(() => shownImages.value)
+const slide = ref(0)
+let slideTimer: ReturnType<typeof setInterval> | undefined
+watch(
+  () => [sliding.value, imagePage.value?.interval, shownImages.value.length] as const,
+  ([on, interval, n]) => {
+    clearInterval(slideTimer)
+    slideTimer = undefined
+    if (slide.value >= n) slide.value = 0
+    if (!on) {
+      slide.value = 0
+      return
+    }
+    const ms = Math.min(3600, Math.max(2, interval ?? IMAGE_DEFAULTS.interval)) * 1000
+    slideTimer = setInterval(() => (slide.value = (slide.value + 1) % shownImages.value.length), ms)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => clearInterval(slideTimer))
+const image = computed(() => {
+  const pg = imagePage.value
+  if (!pg) return null
+  const ids = shownImages.value
+  return {
+    aspect: (pg.fit ?? IMAGE_DEFAULTS.fit) === 'contain' ? 'xMidYMid meet' : 'xMidYMid slice',
+    layers: ids.map((id, i) => ({ id, url: assets.src(id), on: i === slide.value })),
+    state: !ids.length ? 'empty' : assets.failed(ids[slide.value] ?? ids[0]!) ? 'missing' : assets.src(ids[slide.value] ?? ids[0]!) ? 'ok' : 'loading',
+  }
+})
+
+// ---- touchpad: the scroll ring between r 150 and 172 ----
+const touchpad = computed(() => props.page.type === 'touchpad')
+
 // ---- page dots: bottom center, 8 px above the edge, gap 6 ----
 const dots = computed(() => {
   const n = props.pageCount
@@ -334,6 +381,36 @@ const dots = computed(() => {
         <text class="txt" y="62" font-size="16" :fill="p.onSurfaceVariant">{{ dial.label }}</text>
       </template>
 
+      <!-- Touchpad -->
+      <template v-else-if="touchpad">
+        <circle r="161" fill="none" :stroke="p.surfaceContainerHigh" stroke-width="22" />
+        <text class="sym" y="-160" font-size="18" :fill="p.onSurfaceVariant">expand_less</text>
+        <text class="sym" y="155" font-size="18" :fill="p.onSurfaceVariant">expand_more</text>
+        <text class="sym" y="-14" font-size="56" :fill="p.onSurfaceVariant">mouse</text>
+        <text class="txt" y="34" font-size="16" :fill="p.onSurfaceVariant">Touchpad</text>
+      </template>
+
+      <!-- Image -->
+      <template v-else-if="image">
+        <image
+          v-for="l in image.layers"
+          :key="l.id"
+          v-show="l.url"
+          class="img-layer"
+          :class="{ on: l.on }"
+          :href="l.url || undefined"
+          x="-180"
+          y="-180"
+          width="360"
+          height="360"
+          :preserveAspectRatio="image.aspect"
+        />
+        <template v-if="image.state === 'empty' || image.state === 'missing'">
+          <text class="sym" y="-14" font-size="64" :fill="p.onSurfaceVariant">image</text>
+          <text v-if="!thumb" class="txt" y="44" font-size="16" :fill="p.onSurfaceVariant">{{ image.state === 'empty' ? 'No image yet' : 'Image not found' }}</text>
+        </template>
+      </template>
+
       <rect v-for="(d, i) in dots" :key="i" :x="d.x" :y="180 - 8 - 6" :width="d.w" height="6" rx="3" :fill="d.on ? p.primary : p.outlineVariant" />
     </g>
   </svg>
@@ -396,6 +473,18 @@ const dots = computed(() => {
 .play-g:focus-visible path {
   stroke: var(--primary);
   stroke-width: 3;
+}
+.img-layer {
+  opacity: 0;
+  transition: opacity 0.8s ease-in-out;
+}
+.img-layer.on {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .img-layer {
+    transition: none;
+  }
 }
 .ghost {
   cursor: pointer;

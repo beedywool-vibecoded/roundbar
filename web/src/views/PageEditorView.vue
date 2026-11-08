@@ -12,8 +12,10 @@ import M3Switch from '@/components/M3Switch.vue'
 import M3Shape from '@/components/M3Shape.vue'
 import ShapeLoader from '@/components/ShapeLoader.vue'
 import ShapePicker from '@/components/ShapePicker.vue'
+import M3Slider from '@/components/M3Slider.vue'
+import ImagePageEditor from '@/components/ImagePageEditor.vue'
 import { api } from '@/lib/api'
-import { DIAL_SOURCES, LIMITS, MEDIA_BUTTONS, MEDIA_SHAPE_DEFAULTS, STAT_ITEMS, newButton, nextButtonId, pageTypeInfo } from '@/lib/model'
+import { DIAL_SOURCES, LIMITS, TOUCHPAD_DEFAULTS, MEDIA_BUTTONS, MEDIA_SHAPE_DEFAULTS, STAT_ITEMS, newButton, nextButtonId, pageTypeInfo } from '@/lib/model'
 import { config, daemonUp, dirty, findProfile, issuesUnder, profileIndex } from '@/lib/store'
 import { devicePalette } from '@/lib/theme'
 import { lockScroll, unlockScroll } from '@/lib/scrollLock'
@@ -161,6 +163,21 @@ function toggleDialAction(k: 'onUp' | 'onDown', on: boolean) {
   else delete d[k]
 }
 
+// ---- touchpad ----
+const touchSpeed = computed({
+  get: () => (page.value?.type === 'touchpad' ? (page.value.speed ?? TOUCHPAD_DEFAULTS.speed) : TOUCHPAD_DEFAULTS.speed),
+  set: (v: number) => page.value?.type === 'touchpad' && (page.value.speed = v),
+})
+const GESTURES: [string, string][] = [
+  ['Drag', 'move pointer'],
+  ['Tap', 'left click'],
+  ['Hold', 'right click'],
+  ['Double-tap + drag', 'drag & drop'],
+  ['Slide along the ring', 'scroll'],
+  ['Swipe sideways from the ring', 'change page'],
+  ['Swipe down from the top of the ring', 'quick settings'],
+]
+
 // ---- media transport shapes: the default is stored as a missing key ----
 function mediaShape(k: MediaButton): ButtonShape {
   const p = page.value
@@ -227,6 +244,7 @@ function show() {
               :editable="page.type === 'radial'"
               :page-index="pageIdx"
               :page-count="profile.pages.length"
+              slideshow
               @select="selected = $event"
               @add-center="addCenter"
             />
@@ -287,7 +305,30 @@ function show() {
           <div class="form">
             <TextField v-model="title" label="Title (optional)" :placeholder="page.type === 'radial' ? 'Shown in the middle when there is no center button' : 'Shown in this configurator'" :max="24" />
 
-            <p v-if="page.type === 'media'" class="muted small" style="margin: 0">
+            <template v-if="page.type === 'touchpad'">
+              <div class="setting col" style="border-top: none; padding-bottom: 0">
+                <div class="row-head">
+                  <span>Pointer speed</span>
+                  <span class="muted">{{ touchSpeed }}</span>
+                </div>
+                <M3Slider v-model="touchSpeed" label="Pointer speed" :min="1" :max="10" :step="1" />
+              </div>
+              <div>
+                <p class="section-label" style="margin-top: 0">Gestures</p>
+                <dl class="gestures">
+                  <template v-for="[g, a] in GESTURES" :key="g">
+                    <dt>{{ g }}</dt>
+                    <dd class="muted">{{ a }}</dd>
+                  </template>
+                </dl>
+              </div>
+            </template>
+
+            <p v-else-if="page.type === 'image'" class="muted small" style="margin: 0">
+              Fills the screen with a picture. Several pictures cross-fade as a slideshow; a GIF plays on its own.
+            </p>
+
+            <p v-else-if="page.type === 'media'" class="muted small" style="margin: 0">
               Shows the current player (MPRIS) with previous, play / pause and next, and the volume on the edge arc.
             </p>
 
@@ -336,6 +377,8 @@ function show() {
             </template>
           </div>
         </div>
+
+        <ImagePageEditor v-if="page.type === 'image'" :key="`${pid}/${page.id}`" :page="page" />
 
         <div v-if="page.type === 'media'" class="card">
           <div class="card-head"><h2>Button shapes</h2></div>
@@ -493,6 +536,20 @@ function show() {
 .problems .muted {
   color: inherit;
   opacity: 0.75;
+}
+.row-head {
+  display: flex;
+  justify-content: space-between;
+}
+.gestures {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+.gestures dd {
+  margin: 0;
 }
 .hold-row {
   display: flex;

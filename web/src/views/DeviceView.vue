@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import Icon from '@/components/Icon.vue'
 import M3Shape from '@/components/M3Shape.vue'
 import M3Slider from '@/components/M3Slider.vue'
+import M3Switch from '@/components/M3Switch.vue'
 import NumField from '@/components/NumField.vue'
 import { PAGE_TYPES, ROTATIONS } from '@/lib/model'
 import { config, daemonUp, findProfile, live } from '@/lib/store'
@@ -147,6 +148,13 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
             <NumField v-model="dev.sleepAfter" label="Screen off after" suffix="s" :min="0" :help="`Idle time before the screen turns off: ${seconds(dev.sleepAfter)}`" />
           </div>
           <p class="muted small" style="margin: 0">0 means never.</p>
+        </div>
+        <div class="setting">
+          <div class="grow">
+            <div>Follow the PC</div>
+            <div class="muted small">Turn the screen off when the PC shuts down or sleeps, and back on when it starts</div>
+          </div>
+          <M3Switch v-model="dev.followPc" label="Follow the PC" />
         </div>
 
         <div class="card-head" style="margin-top: 12px"><h2>Input</h2></div>

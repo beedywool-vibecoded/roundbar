@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "assets.h"
 #include "board.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -182,6 +183,26 @@ static void handle(cJSON *m)
     } else if (!strcmp(t, "stats")) {
         lvgl_port_lock(0);
         ui_stats(m);
+        lvgl_port_unlock();
+    } else if (!strcmp(t, "assetsWant")) {
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddStringToObject(o, "t", "assets");
+        cJSON_AddItemToObject(o, "have", assets_list());
+        cJSON_AddNumberToObject(o, "free", (double)assets_free());
+        send_json(o);
+    } else if (!strcmp(t, "asset")) {
+        static uint8_t *chunk;
+        if (!chunk) chunk = heap_caps_malloc(33 * 1024, MALLOC_CAP_SPIRAM);
+        const char *data = str(m, "data");
+        size_t n = chunk && data ? b64decode(data, chunk, 33 * 1024) : 0;
+        bool ok = n > 0 && assets_write(str(m, "name"), num(m, "i", 0), num(m, "n", 1), chunk, n);
+        ack(id, ok, ok ? NULL : "write failed");
+    } else if (!strcmp(t, "assetsPrune")) {
+        cJSON *keep = cJSON_GetObjectItem(m, "keep");
+        if (cJSON_IsArray(keep)) assets_prune(keep);
+    } else if (!strcmp(t, "assetsDone")) {
+        lvgl_port_lock(0);
+        ui_assets_changed();
         lvgl_port_unlock();
     } else if (!strcmp(t, "cover")) {
         handle_cover(m);

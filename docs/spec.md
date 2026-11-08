@@ -59,7 +59,9 @@ the device keeps a copy in flash so it works without the daemon.
     "sleepAfter": 300,         // seconds idle before screen off, 0 = never
     "longPressMs": 450,
     "keyboardLayout": "fr",    // host layout used to turn characters into HID keycodes: "fr" | "us"
-    "rotation": 0              // screen rotation, degrees clockwise: 0 | 90 | 180 | 270 (touch follows)
+    "rotation": 0,             // screen rotation, degrees clockwise: 0 | 90 | 180 | 270 (touch follows)
+    "followPc": true           // screen goes black ~8 s after the PC side disappears (shutdown, daemon stopped,
+                               // USB suspend) and wakes when it comes back; missing = true
   },
   "profiles": [
     {
@@ -82,6 +84,8 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `media` | `shapes?: {prev?, next?, play?, playing?}` (shape names as for buttons) | now playing (title, artist, album art), prev / play-pause / next, volume on the edge arc. Defaults: prev/next/play `circle`, playing `square` (the play button switches shape with the playback state). |
 | `stats` | `items: ("cpu"\|"cpuTemp"\|"ram"\|"gpu"\|"gpuTemp"\|"vram")[]` (1..4) | M3 expressive gauges |
 | `dial` | `icon`, `label`, `source: "volume"\|"mic"\|"brightness"\|"custom"`, `step?: number` (custom only, 1..20), `onUp?: Action`, `onDown?: Action` (custom only) | one big value arc, drag along the edge |
+| `touchpad` | `speed?: number` (1..10, default 5) | the device acts as a USB mouse: drag moves the cursor, tap = left click, long-press = right click, double-tap then drag = drag & drop, sliding along the outer ring scrolls. A sideways swipe starting on the ring changes page; a downward swipe from the top of the ring opens quick settings. |
+| `image` | `images: string[]` (asset ids, 1..20; a `.gif` must be alone), `interval?: number` (seconds, 2..3600, default 8), `fit?: "cover"\|"contain"` (default cover) | full-screen picture; several stills cross-fade as a slideshow; a GIF plays |
 
 ### Button
 
@@ -119,6 +123,26 @@ with `keyboardLayout: "fr"`, `ctrl+a` sends the physical key that types `a` on A
 are sent with the top row as the US positions (GNOME shortcuts like `super+1` expect that), punctuation keys
 name the US physical key.
 
+### Device-only controls (not in the config)
+
+Pages wrap around: swiping past the last page goes to the first and vice versa.
+
+Swiping down opens a quick settings panel on the device with a row of small numbered buttons (jump to a page of the
+current profile) and two tiles:
+- **Screen off**: backlight off plus panel display-off/sleep: no light at all. A double tap wakes it (single taps
+  are ignored). Separate from the idle `sleepAfter`, which still wakes on a single tap.
+- **Auto-switch**: when off, `profile` messages from the PC are ignored and a pause badge shows at the top. Stored
+  on the device, so it stays off until turned back on.
+
+### Assets (images for `image` pages)
+
+Uploaded through the configurator and stored in `~/.config/roundbar/assets/<id>`, where `<id>` is 12 hex chars of
+the SHA-256 of the stored file plus `.jpg` or `.gif`. Stills are re-encoded as JPEG with the longest side ≤ 1080 px;
+GIFs are kept as uploaded (≤ 20 MB). When syncing, the daemon renders the device version of each image for the page's
+`fit` (exactly 360×360 for cover, inside 360×360 for contain; baseline JPEG, or a re-encoded full-frame GIF ≤ 3 MB),
+named `<stem>-c.jpg` / `<stem>-f.jpg` (`.gif` likewise), and copies the ones the device lacks to its `assets`
+partition (see §2).
+
 ## 2. Serial protocol (USB CDC, both directions)
 
 - One JSON object per line, `\n` terminated, UTF-8, ≤ 64 KiB per line (the `config` message is the big one).
@@ -133,6 +157,7 @@ name the US physical key.
 | `action` | `profile`, `page`, `btn`, `hold: bool`, `action: Action` | a daemon-executed action was triggered (`command open mic macro`) |
 | `dial` | `source: "volume"\|"mic"`, `value: 0..100` | edge drag, throttled to ≤ 20 Hz. Brightness dials act on the device only; custom dials run their `onUp`/`onDown` actions on the device (daemon-side ones arrive as `action`). |
 | `ack` | `id`, `ok: bool`, `err?` | reply to a PC message that carried an `id` |
+| `assets` | `have: [ids]`, `free` | reply to `assetsWant` |
 | `log` | `msg` | debug |
 
 ### PC → Device
@@ -152,6 +177,10 @@ name the US physical key.
 | `hid` | `keys?: string`, `text?: string`, `media?: string` | macro steps and configurator tests, typed by the device. With an `id`, acked once typed. |
 | `show` | `profile`, `page` | configurator preview: jump to a page |
 | `bootloader` | – | reboot into the ROM USB download mode (for flashing) |
+| `assetsWant` | `id` | device replies `{"t":"assets","have":[ids],"free":bytes}` |
+| `asset` | `name`, `n`, `i`, `data` (base64, ≤ 32 KiB raw per chunk), `id` (ack) | one file in `n` chunks; every chunk is acked, the file is renamed into place after the last |
+| `assetsPrune` | `keep: [ids]` | delete every stored asset not listed |
+| `assetsDone` | – | assets are in sync: rebuild pages that show images |
 
 The daemon stops all periodic work when `view.awake` is false or when no device is attached.
 
@@ -178,4 +207,6 @@ sent as `Authorization: Bearer <token>` on every API call.
 | GET | `/api/icons` | `shared/icons.json` contents: `{"name": codepoint, …}` |
 | POST | `/api/show` | `{"profile","page"}` → preview on the device |
 | POST | `/api/run` | `{"action":Action}` → test it |
+| POST | `/api/assets` | raw image body (`Content-Type: image/*`, ≤ 20 MB) → converted → `{"id","kind":"image"\|"gif","w","h","size"}`; `415 {"error"}` if it isn't an image |
+| GET | `/api/assets/<id>` | the converted file (for thumbnails and previews) |
 | GET | `/api/events?t=<token>` | SSE: `status` events (same JSON as `/api/status`) whenever it changes. Token in the query because EventSource can't set headers. Also the liveness signal: the server exits 10 s after the last client is gone. |

@@ -1,4 +1,5 @@
 // roundbar firmware entry point.
+#include "assets.h"
 #include "board.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
@@ -17,6 +18,7 @@ void app_main(void)
         nvs_flash_init();
     }
     store_init();
+    assets_init();
 
     lv_indev_t *touch = NULL;
     lv_display_t *disp = board_init(&touch);

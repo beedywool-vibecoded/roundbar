@@ -23,7 +23,7 @@ static const char *TAG = "usb";
 #define RX_LINE_MAX (64 * 1024 + 256)
 
 enum { ITF_CDC = 0, ITF_CDC_DATA, ITF_HID, ITF_TOTAL };
-enum { RID_KBD = 1, RID_CONSUMER = 2 };
+enum { RID_KBD = 1, RID_CONSUMER = 2, RID_MOUSE = 3 };
 #define EP_CDC_NOTIF 0x81
 #define EP_CDC_OUT   0x02
 #define EP_CDC_IN    0x82
@@ -33,6 +33,7 @@ enum { RID_KBD = 1, RID_CONSUMER = 2 };
 static const uint8_t hid_report[] = {
     TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(RID_KBD)),
     TUD_HID_REPORT_DESC_CONSUMER(HID_REPORT_ID(RID_CONSUMER)),
+    TUD_HID_REPORT_DESC_MOUSE(HID_REPORT_ID(RID_MOUSE)),
 };
 
 static const uint8_t cfg_desc[] = {
@@ -76,6 +77,71 @@ typedef struct {
     char ack[16];
 } hid_job_t;
 static QueueHandle_t hid_q;
+
+static bool wait_ready(void);
+
+static portMUX_TYPE mouse_mux = portMUX_INITIALIZER_UNLOCKED;
+static int32_t mouse_dx, mouse_dy, mouse_wheel;
+static uint8_t mouse_btn;
+
+static void mouse_kick(void)
+{
+    hid_job_t job = {.kind = HID_MOUSE};
+    xQueueSend(hid_q, &job, 0); // if the queue is full, the accumulator keeps the motion
+}
+
+void usb_mouse_move(int dx, int dy)
+{
+    portENTER_CRITICAL(&mouse_mux);
+    mouse_dx += dx;
+    mouse_dy += dy;
+    portEXIT_CRITICAL(&mouse_mux);
+    mouse_kick();
+}
+
+void usb_mouse_wheel(int ticks)
+{
+    portENTER_CRITICAL(&mouse_mux);
+    mouse_wheel += ticks;
+    portEXIT_CRITICAL(&mouse_mux);
+    mouse_kick();
+}
+
+void usb_mouse_buttons(uint8_t buttons)
+{
+    mouse_btn = buttons;
+    mouse_kick();
+}
+
+static int8_t take(int32_t *acc)
+{
+    int32_t v = *acc;
+    if (v > 127) v = 127;
+    if (v < -127) v = -127;
+    *acc -= v;
+    return (int8_t)v;
+}
+
+// Sends everything accumulated, in ±127 steps.
+static void mouse_flush(void)
+{
+    for (int guard = 0; guard < 16; guard++) {
+        portENTER_CRITICAL(&mouse_mux);
+        int8_t x = take(&mouse_dx), y = take(&mouse_dy), w = take(&mouse_wheel);
+        portEXIT_CRITICAL(&mouse_mux);
+        static uint8_t sent_btn;
+        if (!x && !y && !w && sent_btn == mouse_btn) return;
+        if (!wait_ready()) return;
+        sent_btn = mouse_btn;
+        tud_hid_mouse_report(RID_MOUSE, sent_btn, x, y, w, 0);
+    }
+}
+
+void usb_mouse_click(uint8_t button)
+{
+    hid_job_t job = {.kind = HID_MOUSE, .arg = {(char)button}};
+    xQueueSend(hid_q, &job, pdMS_TO_TICKS(20));
+}
 
 // ---- HID callbacks required by TinyUSB ------------------------------------
 
@@ -140,6 +206,11 @@ static void cdc_line_coding(int itf, cdcacm_event_t *event)
 }
 
 bool usb_host_listening(void) { return dtr; }
+
+static volatile bool suspended;
+void tud_suspend_cb(bool remote_wakeup_en) { suspended = true; }
+void tud_resume_cb(void) { suspended = false; }
+bool usb_suspended(void) { return suspended || !tud_mounted(); }
 
 void usb_send_line(const char *json)
 {
@@ -224,6 +295,16 @@ static void hid_task(void *arg)
             }
             break;
         }
+        case HID_MOUSE:
+            if (job.arg[0]) { // click
+                uint8_t held = mouse_btn;
+                mouse_btn = held | (uint8_t)job.arg[0];
+                mouse_flush();
+                vTaskDelay(pdMS_TO_TICKS(25));
+                mouse_btn = held;
+            }
+            mouse_flush();
+            break;
         case HID_MEDIA: {
             uint16_t u = keymap_media(job.arg);
             if (u) consumer(u);

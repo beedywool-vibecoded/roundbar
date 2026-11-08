@@ -27,13 +27,26 @@ export const LIMITS = {
   steps: 32,
   delay: 5000,
   stats: 4,
+  images: 20,
 } as const
+
+export const TOUCHPAD_DEFAULTS = { speed: 5 } as const
+export const IMAGE_DEFAULTS = { interval: 8, fit: 'cover' } as const
+export const ASSET_ID_RE = /^[0-9a-f]{12}\.(jpg|gif)$/
+export const isGif = (id: string) => id.endsWith('.gif')
 
 export const PAGE_TYPES: { value: PageType; label: string; icon: string; hint: string }[] = [
   { value: 'radial', label: 'Buttons', icon: 'apps', hint: 'Up to 8 buttons on a ring, plus an optional center button' },
   { value: 'media', label: 'Media', icon: 'music_note', hint: 'Now playing, transport controls and volume on the edge' },
   { value: 'stats', label: 'Stats', icon: 'speed', hint: 'Up to 4 gauges: CPU, GPU, memory and temperatures' },
   { value: 'dial', label: 'Dial', icon: 'tune', hint: 'One big arc you drag along the edge: volume, mic, brightness or custom' },
+  { value: 'image', label: 'Image', icon: 'image', hint: 'A picture, a GIF, or a slideshow of pictures' },
+  {
+    value: 'touchpad',
+    label: 'Touchpad',
+    icon: 'mouse',
+    hint: 'Use the screen as a mouse: drag to move, tap to click, hold to right-click, slide the ring to scroll',
+  },
 ]
 export const pageTypeInfo = (t: PageType) => PAGE_TYPES.find((p) => p.value === t)!
 
@@ -190,6 +203,10 @@ export function newPage(type: PageType, taken: string[]): Page {
       return { id, type, title: 'System', items: ['cpu', 'ram', 'gpu', 'cpuTemp'] }
     case 'dial':
       return { id, type, title: 'Volume', icon: 'volume_up', label: 'Volume', source: 'volume' }
+    case 'image':
+      return { id, type, title: 'Image', images: [] }
+    case 'touchpad':
+      return { id, type, title: 'Touchpad', speed: TOUCHPAD_DEFAULTS.speed }
   }
 }
 
@@ -208,7 +225,7 @@ export function starterConfig(): Config {
     version: 1,
     theme: { seed: DEFAULT_SEED, mode: 'dark', palette: devicePalette(DEFAULT_SEED, 'dark') },
     media: { coverBackground: true, coverColors: true, ...MEDIA_DEFAULTS },
-    device: { brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr' },
+    device: { brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr', followPc: true },
     profiles: [
       {
         id: 'default',
@@ -265,6 +282,7 @@ export function normalize(raw: unknown): Config {
     profiles: Array.isArray(c.profiles) && c.profiles.length ? c.profiles : base.profiles,
   }
   if (!(ROTATIONS as readonly unknown[]).includes(cfg.device.rotation)) cfg.device.rotation = 0
+  if (typeof cfg.device.followPc !== 'boolean') cfg.device.followPc = true
   for (const p of cfg.profiles) {
     p.match ??= []
     p.pages ??= []
@@ -272,6 +290,7 @@ export function normalize(raw: unknown): Config {
     for (const pg of p.pages) {
       if (pg.type === 'radial') pg.buttons ??= []
       if (pg.type === 'stats') pg.items ??= []
+      if (pg.type === 'image') pg.images = Array.isArray(pg.images) ? pg.images.filter((x) => typeof x === 'string') : []
     }
   }
   const d = cfg.profiles.findIndex((p) => p.id === 'default')
@@ -389,6 +408,21 @@ function checkPage(pg: Page, pages: Page[], icons: Set<string>, path: string, ou
         if (!pg.onUp && !pg.onDown) out.push({ path, message: 'A custom dial needs an action for up or down' })
       }
       break
+    case 'image':
+      if (pg.images.length < 1) out.push({ path: `${path}.images`, message: 'Add an image' })
+      if (pg.images.length > LIMITS.images) out.push({ path: `${path}.images`, message: `At most ${LIMITS.images} images` })
+      if (pg.images.length > 1 && pg.images.some(isGif)) out.push({ path: `${path}.images`, message: 'A GIF must be the only image of its page' })
+      pg.images.forEach((id, i) => {
+        if (!ASSET_ID_RE.test(id)) out.push({ path: `${path}.images[${i}]`, message: `Unknown image "${id}"` })
+      })
+      if (pg.interval != null && !(typeof pg.interval === 'number' && pg.interval >= 2 && pg.interval <= 3600))
+        out.push({ path: `${path}.interval`, message: 'Slideshow interval must be 2 to 3600 s' })
+      if (pg.fit != null && pg.fit !== 'cover' && pg.fit !== 'contain') out.push({ path: `${path}.fit`, message: 'Fit must be cover or contain' })
+      break
+    case 'touchpad':
+      if (pg.speed != null && !(Number.isInteger(pg.speed) && pg.speed >= 1 && pg.speed <= 10))
+        out.push({ path: `${path}.speed`, message: 'Pointer speed must be 1 to 10' })
+      break
   }
 }
 
@@ -461,6 +495,9 @@ export function pastePage(page: Page, target: Profile): Page {
   } else if (copy.type === 'dial') {
     fix(copy.onUp)
     fix(copy.onDown)
+  } else if (copy.type === 'image') {
+    // Asset ids are global: the copy shows the same files
+    copy.images = Array.isArray(copy.images) ? copy.images : []
   }
   return copy
 }

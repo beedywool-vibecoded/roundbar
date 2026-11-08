@@ -19,3 +19,5 @@ void ui_stats(cJSON *msg);
 void ui_cover(const uint8_t *rgb565, int w, int h);
 // Palette for media pages only ({role: "#RRGGBB"}), NULL restores the theme.
 void ui_media_theme(cJSON *palette);
+// Asset files changed on flash: rebuild so image pages reload them.
+void ui_assets_changed(void);

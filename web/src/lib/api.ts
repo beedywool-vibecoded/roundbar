@@ -1,7 +1,7 @@
 // Client for the configurator API (docs/spec.md section 4). Every call carries the
 // bearer token from the URL the configurator was opened with.
 import { mockMode, token } from './token'
-import type { Action, Config, Status } from './types'
+import type { Action, AssetInfo, Config, Status } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -29,34 +29,50 @@ export async function request<T>(method: string, path: string, body?: unknown): 
   return (await requestFull<T>(method, path, body)).data
 }
 
-// Same, with the response headers.
-export async function requestFull<T>(method: string, path: string, body?: unknown): Promise<{ data: T; headers: Headers }> {
-  if (mockMode) return { data: (await (await mockHandler())(method, path, body)) as T, headers: new Headers() }
+// A Blob body (file upload) is sent raw with its own Content-Type, anything else as JSON.
+async function send(method: string, path: string, body?: unknown): Promise<Response> {
+  const raw = body instanceof Blob
   let res: Response
   try {
     res = await fetch(path, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(raw ? { 'Content-Type': body.type || 'application/octet-stream' } : body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: raw ? body : body !== undefined ? JSON.stringify(body) : undefined,
       cache: 'no-store',
     })
   } catch {
     throw new ApiError('The configurator server is not reachable. Run `roundbar config` again.', 0)
   }
+  if (!res.ok) await fail(res)
+  return res
+}
+
+async function fail(res: Response): Promise<never> {
+  if (res.status === 401) onUnauthorized()
+  const text = await res.text().catch(() => '')
+  let d: { error?: string; path?: string } = {}
+  try {
+    d = (text ? JSON.parse(text) : {}) ?? {}
+  } catch {
+    // not JSON
+  }
+  const fallback = res.status === 413 ? 'The file is too large (20 MB at most)' : `${res.status} ${res.statusText}`
+  throw new ApiError(d.error || (text.trim().startsWith('<') ? '' : text.trim()) || fallback, res.status, d.path)
+}
+
+// Same, with the response headers.
+export async function requestFull<T>(method: string, path: string, body?: unknown): Promise<{ data: T; headers: Headers }> {
+  if (mockMode) return { data: (await (await mockHandler())(method, path, body)) as T, headers: new Headers() }
+  const res = await send(method, path, body)
   const text = await res.text()
   let data: unknown = null
   try {
     data = text ? JSON.parse(text) : null
   } catch {
     data = null
-  }
-  if (!res.ok) {
-    if (res.status === 401) onUnauthorized()
-    const d = (data ?? {}) as { error?: string; path?: string }
-    throw new ApiError(d.error || text.trim() || `${res.status} ${res.statusText}`, res.status, d.path)
   }
   return { data: data as T, headers: res.headers }
 }
@@ -73,6 +89,14 @@ export const api = {
   icons: () => request<Record<string, number>>('GET', '/api/icons'),
   show: (profile: string, page: string) => request<unknown>('POST', '/api/show', { profile, page }),
   run: (action: Action) => request<unknown>('POST', '/api/run', { action }),
+  // The raw file, converted by the server for the device
+  uploadAsset: (file: Blob) => request<AssetInfo>('POST', '/api/assets', file),
+  // The converted file, for thumbnails and previews
+  asset: async (id: string): Promise<Blob> => {
+    const path = `/api/assets/${encodeURIComponent(id)}`
+    if (mockMode) return (await (await mockHandler())('GET', path)) as Blob
+    return (await send('GET', path)).blob()
+  },
 }
 
 // Status over server-sent events. The open stream is also what keeps `roundbar config`
