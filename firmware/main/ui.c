@@ -2721,6 +2721,7 @@ void ui_mangohud(cJSON *m)
 {
     if (!mh.fps) return;
     bool on = cJSON_IsTrue(cJSON_GetObjectItem(m, "active"));
+    bool fallback = !on && cJSON_IsTrue(cJSON_GetObjectItem(m, "fallback"));
     lv_obj_t *data[] = {mh.chart, mh.ft, mh.avg, mh.top};
     for (size_t i = 0; i < sizeof(data) / sizeof(data[0]); i++) {
         if (on) lv_obj_remove_flag(data[i], LV_OBJ_FLAG_HIDDEN);
@@ -2728,6 +2729,24 @@ void ui_mangohud(cJSON *m)
     }
     if (on) lv_obj_add_flag(mh.hint, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(mh.hint, LV_OBJ_FLAG_HIDDEN);
+    if (fallback) { // MangoHud can't log in this game: Roundbar's own stats, no FPS
+        lv_obj_add_flag(mh.chart, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(mh.ft, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(mh.avg, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(mh.top, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(mh.hint, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(mh.hint, "FPS isn't available in this game");
+        lv_label_set_text(mh.fps, "–");
+        lv_label_set_text_fmt(mh.top, "VRAM %d%%  ·  RAM %d%%", (int)jnum(m, "vram"), (int)jnum(m, "ram"));
+        const char *load[] = {"cpu", "gpu"}, *temp[] = {"cpuTemp", "gpuTemp"};
+        for (int i = 0; i < 2; i++) {
+            int v = (int)jnum(m, load[i]);
+            lv_arc_set_value(mh.arc[i], v);
+            lv_label_set_text_fmt(mh.val[i], "%d%%", v);
+            lv_label_set_text_fmt(mh.temp[i], "%d°", (int)jnum(m, temp[i]));
+        }
+        return;
+    }
     if (!on) {
         const char *h = jstr(m, "hint");
         lv_label_set_text(mh.hint, h && !strcmp(h, "waiting") ? "Waiting for MangoHud…"
