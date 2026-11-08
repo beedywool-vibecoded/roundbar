@@ -68,12 +68,10 @@ type Daemon struct {
 	artCancel context.CancelFunc // in-flight artwork job
 	coverSeq  int
 
-	clockKick    chan struct{}
-	discord      *discord.Client
-	discordExt   discord.State // from the Vencord plugin (Vesktop)
-	discordExtAt time.Time
-	discordKick  chan struct{}
-	iconsSent    map[string]bool
+	clockKick   chan struct{}
+	discord     *discord.Client
+	discordKick chan struct{}
+	iconsSent   map[string]bool
 
 	statsStop chan struct{}
 	watchers  map[chan struct{}]bool
@@ -776,7 +774,7 @@ func (d *Daemon) status() Status {
 	}
 	pid, _ := d.profileFor(d.focus)
 	rec := append([]desktop.Focus{}, d.recent...)
-	disc := d.discordStateLocked()
+	disc := d.discord.State()
 	return Status{Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
 }
 

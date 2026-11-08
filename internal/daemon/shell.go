@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/beedywool-vibecoded/roundbar/internal/discord"
 	"github.com/beedywool-vibecoded/roundbar/internal/icons"
 )
 
@@ -217,43 +216,8 @@ func (d *Daemon) onShellMsg(m json.RawMessage, t string) bool {
 	return true
 }
 
-// discordStateLocked prefers the Vencord plugin's state while it's fresh (it
-// sends a heartbeat every 30 s), else the official client's RPC. Caller holds d.mu.
-func (d *Daemon) discordStateLocked() discord.State {
-	if d.discordExt.Connected && time.Since(d.discordExtAt) < 75*time.Second {
-		return d.discordExt
-	}
-	return d.discord.State()
-}
-
-func (d *Daemon) discordState() discord.State {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.discordStateLocked()
-}
-
-// setDiscordExt stores a state pushed by the Vencord plugin.
-func (d *Daemon) setDiscordExt(raw json.RawMessage) error {
-	var st discord.State
-	if err := json.Unmarshal(raw, &st); err != nil {
-		return err
-	}
-	st.Source, st.Controls = "vencord", false
-	if len(st.Members) > 12 {
-		st.Members = st.Members[:12]
-	}
-	d.mu.Lock()
-	d.discordExt, d.discordExtAt = st, time.Now()
-	d.mu.Unlock()
-	if d.viewKind() == "discord" {
-		go d.sendDiscord()
-	}
-	d.notify()
-	return nil
-}
-
 func (d *Daemon) sendDiscord() {
-	st := d.discordState()
+	st := d.discord.State()
 	for _, m := range st.Members {
 		d.sendIcons(m.Avatar)
 	}

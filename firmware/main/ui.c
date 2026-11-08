@@ -2367,7 +2367,7 @@ void ui_discord(cJSON *st)
         lv_obj_t *ic = text(dc_root, F.icon_xl, P.on_sv, theme_icon("headset_mic"));
         lv_obj_align(ic, LV_ALIGN_CENTER, 0, -30);
         const char *err = jstr(st, "error");
-        lv_obj_t *l = text(dc_root, F.body, P.on_sv, err && err[0] ? err : "Open Discord (Vesktop needs the Roundbar plugin)");
+        lv_obj_t *l = text(dc_root, F.body, P.on_sv, err && err[0] ? err : "Needs the official Discord app (set up in the configurator)");
         lv_obj_set_width(l, 220);
         lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
         lv_obj_align(l, LV_ALIGN_CENTER, 0, 34);
