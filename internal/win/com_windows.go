@@ -62,7 +62,11 @@ func IID(s string) *windows.GUID {
 type Obj uintptr
 
 // Call invokes vtable slot i (0..2 are IUnknown's, 3..5 IInspectable's) and
-// returns the raw HRESULT (or whatever the method returns).
+// returns the raw HRESULT (or whatever the method returns). Like
+// LazyProc.Call, pointers converted to uintptr in its arguments stay alive
+// and in place for the call (go:uintptrescapes).
+//
+//go:uintptrescapes
 func (o Obj) Call(i int, args ...uintptr) uintptr {
 	vt := *(*uintptr)(Ptr(uintptr(o)))
 	fn := *(*uintptr)(Ptr(vt + uintptr(i)*unsafe.Sizeof(uintptr(0))))
@@ -71,6 +75,8 @@ func (o Obj) Call(i int, args ...uintptr) uintptr {
 }
 
 // CallErr is Call with the result as an error.
+//
+//go:uintptrescapes
 func (o Obj) CallErr(i int, args ...uintptr) error { return HR(o.Call(i, args...)) }
 
 // Get calls a method whose only argument is an out pointer and returns what it wrote.

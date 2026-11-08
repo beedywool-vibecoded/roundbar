@@ -84,9 +84,7 @@ func exeIcon(path string, size int) image.Image {
 			if mask != nil && mask[4*i] != 0 {
 				a = 0
 			}
-		} else if a > 0 && a < 255 { // premultiplied
-			r, g, b = uint8(int(r)*255/int(a)), uint8(int(g)*255/int(a)), uint8(int(b)*255/int(a))
-		}
+		} // icon bits carry straight (not premultiplied) alpha, as NRGBA does
 		img.Pix[4*i], img.Pix[4*i+1], img.Pix[4*i+2], img.Pix[4*i+3] = r, g, b, a
 	}
 	return img

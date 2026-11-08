@@ -51,6 +51,9 @@ func (d *Desktop) KLID() (string, bool) {
 		return "", false
 	}
 	hkl := ws.foregroundHKL()
+	if hkl == 0 { // no foreground window: the default layout for new threads
+		hkl = hklOfThread(0)
+	}
 	if hkl == 0 {
 		return "", false
 	}

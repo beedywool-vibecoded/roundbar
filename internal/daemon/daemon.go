@@ -863,6 +863,19 @@ func (d *Daemon) status() Status {
 	return Status{OS: runtime.GOOS, Keyboard: kbd, Desktop: info, OBS: d.obs.State(), Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
 }
 
+// Status is the daemon's state as `roundbar status` shows it (for the tray app).
+func (d *Daemon) Status() Status { return d.status() }
+
+// Watch returns a channel that wakes (coalesced) whenever the status changes,
+// and a function that stops it.
+func (d *Daemon) Watch() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	d.mu.Lock()
+	d.watchers[ch] = true
+	d.mu.Unlock()
+	return ch, func() { d.mu.Lock(); delete(d.watchers, ch); d.mu.Unlock() }
+}
+
 // notify wakes every socket watcher (coalesced per watcher).
 func (d *Daemon) notify() {
 	d.mu.Lock()

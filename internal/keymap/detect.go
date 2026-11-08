@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -59,6 +60,9 @@ func Detect(env Env) Detected {
 				return Detected{id, "windows"}
 			}
 		}
+	}
+	if runtime.GOOS == "windows" {
+		return Detected{} // the rest is Linux desktops and files
 	}
 	desktop := strings.ToUpper(env.Getenv("XDG_CURRENT_DESKTOP"))
 	try := func(source, layout, variant string) (Detected, bool) {

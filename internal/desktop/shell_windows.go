@@ -316,6 +316,10 @@ func hklOf(hwnd uintptr) uint32 {
 		return 0
 	}
 	_, tid := windowPID(hwnd)
+	return hklOfThread(tid)
+}
+
+func hklOfThread(tid uint32) uint32 {
 	r, _, _ := procGetKeyboardLayout.Call(uintptr(tid))
 	return uint32(r)
 }
