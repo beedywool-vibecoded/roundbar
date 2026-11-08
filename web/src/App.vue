@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppShell from './components/AppShell.vue'
 import AppSnackbar from './components/AppSnackbar.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
@@ -8,10 +8,20 @@ import ShapeLoader from './components/ShapeLoader.vue'
 import M3Shape from './components/M3Shape.vue'
 import Icon from './components/Icon.vue'
 import { authProblem } from './lib/session'
-import { config, loadAll, loadError } from './lib/store'
+import { config, loadAll, loadError, uiState } from './lib/store'
 
 const route = useRoute()
+const router = useRouter()
 const ready = computed(() => route.matched.length > 0)
+// First start: open the setup once the config is in, unless a link asked for a given page.
+const stopFirstRun = watch(
+  () => [config.value, uiState.value, ready.value] as const,
+  ([c, ui, r]) => {
+    if (!c || !ui || !r) return
+    stopFirstRun()
+    if (!ui.setupDone && route.path === '/') void router.replace('/setup')
+  },
+)
 // The page editor keeps its state while switching buttons; it changes key per page.
 const pageKey = computed(() => route.path)
 </script>

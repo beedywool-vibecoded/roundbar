@@ -4,7 +4,7 @@ import iconsJson from '../../../shared/icons.json'
 import { ApiError, emitFlash } from './api'
 import { starterConfig } from './model'
 import { devicePalette } from './theme'
-import type { AssetInfo, Config, Status } from './types'
+import type { AssetInfo, Config, InstalledApp, Status, VesktopInstall } from './types'
 
 // `?mock&new` starts without a config file; plain `?mock` with a sample that shows every page type.
 let cfg: Config | null = new URLSearchParams(location.search).has('new') ? null : sample()
@@ -77,6 +77,63 @@ const status: Status = {
   obs: { connected: false },
 }
 
+// Setup previews (`#/setup`), set in the query: `firstrun` opens the setup like a first start;
+// `board=none|perm|synced|nodaemon`, `fw=current`, `desktop=noext|kde|wayland|x11|none`, `noapps`.
+const q = new URLSearchParams(location.search)
+const ui = { setupDone: !q.has('firstrun') }
+switch (q.get('board')) {
+  case 'none':
+    status.device = { connected: false }
+    break
+  case 'perm':
+    status.device = { connected: false, error: 'permission' }
+    break
+  case 'synced':
+    status.device!.syncNote = 'Loaded the setup stored on your Roundbar'
+    break
+  case 'nodaemon':
+    status.daemon = false
+    break
+}
+if (q.get('fw') === 'current') status.device!.fw = '0.2.0'
+switch (q.get('desktop')) {
+  case 'noext':
+    status.extension = false
+    status.focus = null
+    break
+  case 'kde':
+    status.desktop = { backend: 'kde', focus: true, windows: true, notifications: true, clipboard: true }
+    break
+  case 'wayland':
+    status.desktop = { backend: 'wayland', focus: true, windows: true, notifications: true, clipboard: false }
+    break
+  case 'x11':
+    status.desktop = { backend: 'x11', focus: true, windows: true, notifications: true, clipboard: true }
+    break
+  case 'none':
+    status.desktop = { backend: 'none', focus: false, windows: false, notifications: true, clipboard: false }
+    status.extension = false
+    status.focus = null
+    break
+}
+const app = (id: string, name: string, categories: string[] = [], keys: string[] = []): InstalledApp => ({ id, name, categories, keys })
+const installedApps: InstalledApp[] = q.has('noapps')
+  ? [app('org.gnome.settings', 'Settings', ['Settings'])]
+  : [
+      app('org.gnome.console', 'Console', ['System', 'TerminalEmulator'], ['kgx']),
+      app('dev.vencord.vesktop', 'Vesktop', ['Network', 'InstantMessaging'], ['vesktop']),
+      app('org.gnome.nautilus', 'Files', ['System', 'FileManager'], ['nautilus']),
+      app('firefox', 'Firefox', ['Network', 'WebBrowser']),
+      app('org.chromium.chromium', 'Chromium', ['Network', 'WebBrowser'], ['chromium']),
+      app('com.obsproject.studio', 'OBS Studio', ['AudioVideo', 'Recorder'], ['obs']),
+      app('spotify', 'Spotify', ['Audio', 'Music', 'Player']),
+      app('steam', 'Steam', ['Game']),
+      app('code', 'Visual Studio Code', ['Development', 'IDE', 'TextEditor']),
+      app('org.gnome.settings', 'Settings', ['Settings']),
+    ]
+const vesktop: VesktopInstall[] = q.has('noapps') ? [] : [{ kind: 'flatpak', path: '~/.var/app/dev.vencord.Vesktop/config/vesktop-flags.conf', enabled: false }]
+
+const notify = () => listeners.forEach((l) => l({ ...status }))
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 // Uploaded files are kept as they are; the real server converts them to JPEG or GIF.
@@ -171,6 +228,28 @@ export async function handle(method: string, path: string, body?: unknown): Prom
       if (sig[0] !== 0x50 || sig[1] !== 0x4b) throw new ApiError('not a zip file', 400)
       await wait(600)
       return { ok: true }
+    }
+    case 'GET /api/ui':
+      return { ...ui }
+    case 'PUT /api/ui':
+      Object.assign(ui, body)
+      return { ...ui }
+    case 'POST /api/udev':
+      await wait(1200)
+      setTimeout(() => {
+        status.device = { connected: true, port: '/dev/ttyACM0', fw: '0.1.0', cfg: '3f2a9c0d41b7', inSync: true }
+        notify()
+      }, 800)
+      return { ok: true }
+    case 'GET /api/apps':
+      return { apps: installedApps, tools: { mangohud: !q.has('noapps') } }
+    case 'GET /api/vesktop':
+      return { installs: vesktop.map((v) => ({ ...v })), port: 9337 }
+    case 'POST /api/vesktop': {
+      const on = !!(body as { enable?: boolean }).enable
+      const changed = vesktop.some((v) => v.enabled !== on)
+      vesktop.forEach((v) => (v.enabled = on))
+      return { ok: true, changed, installs: vesktop.map((v) => ({ ...v })), port: 9337 }
     }
     case 'POST /api/run':
       console.info('run', body)

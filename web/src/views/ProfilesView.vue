@@ -86,7 +86,7 @@ function create() {
   const p = preset.value
   if (p) {
     const built = p.build()
-    profiles.value.push({ id, name: newName.value.trim(), ...built })
+    profiles.value.push({ id, name: newName.value.trim(), ...built, match: built.match.length ? built.match : match })
     if (p.setup)
       toast(p.setup, false, p.id === 'obs' && !live.status?.obs?.connected ? { label: 'Set up OBS', run: () => router.push('/device#obs') } : null)
   } else {
@@ -157,16 +157,16 @@ function create() {
 
     <M3Dialog v-model="creating" title="New profile">
       <form class="form" @submit.prevent="create">
-        <div class="seg" role="radiogroup" aria-label="Start from">
-          <button type="button" role="radio" class="st" :class="{ on: !presetId }" :aria-checked="!presetId" @click="pickPreset('')">
-            <Icon v-if="!presetId" name="check" :size="18" /> Blank
+        <div class="chips" role="radiogroup" aria-label="Start from">
+          <button type="button" role="radio" class="fchip st" :class="{ on: !presetId }" :aria-checked="!presetId" @click="pickPreset('')">
+            <Icon :name="!presetId ? 'check' : 'add'" :size="18" /> Blank
           </button>
           <button
             v-for="p in PRESETS"
             :key="p.id"
             type="button"
             role="radio"
-            class="st"
+            class="fchip st"
             :class="{ on: presetId === p.id }"
             :aria-checked="presetId === p.id"
             v-tip="p.hint"
@@ -184,7 +184,7 @@ function create() {
           help="Used in the config file. Made from the name unless you change it."
           @update:model-value="((newId = $event), (idEdited = true))"
         />
-        <p v-if="preset" class="muted small" style="margin: 0">{{ preset.hint }}. {{ preset.setup }}</p>
+        <p v-if="preset" class="muted small" style="margin: 0">{{ preset.hint }}. {{ preset.setup ?? '' }}</p>
         <p v-else class="muted small" style="margin: 0">It starts with one page of buttons. Add the window classes it should match on the next screen.</p>
         <button type="submit" class="sr-only" tabindex="-1">Create</button>
       </form>

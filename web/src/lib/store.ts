@@ -4,7 +4,7 @@ import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { ApiError, api, streamStatus } from './api'
 import { matchesAny, normalize, starterConfig, syncProfilePalette, validate, type Issue } from './model'
 import { devicePalette, seed, validHex } from './theme'
-import type { Config, Palette, Profile, Status } from './types'
+import type { Config, Palette, Profile, Status, UIState } from './types'
 import { toast } from './ui'
 
 export const config = ref<Config | null>(null)
@@ -134,9 +134,28 @@ export async function loadAll() {
     isNew.value = !cfg.config
     config.value = c
     resetHistory()
+    if (!uiState.value) void loadUI()
     if (cfg.fileError) toast(`The config file is invalid, showing defaults: ${cfg.fileError}`, true)
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+// This PC's configurator state (ui.json): has the setup been done or skipped
+export const uiState = ref<UIState | null>(null)
+export async function loadUI() {
+  try {
+    uiState.value = await api.ui()
+  } catch {
+    uiState.value = { setupDone: true } // an older server: never force the setup
+  }
+}
+export async function setSetupDone(done = true) {
+  uiState.value = { ...(uiState.value ?? { setupDone: done }), setupDone: done }
+  try {
+    uiState.value = await api.saveUI({ setupDone: done })
+  } catch {
+    // kept for this tab
   }
 }
 

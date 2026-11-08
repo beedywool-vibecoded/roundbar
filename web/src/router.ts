@@ -16,6 +16,7 @@ export const router = createRouter({
     },
     { path: '/appearance', name: 'appearance', component: () => import('./views/AppearanceView.vue') },
     { path: '/device', name: 'device', component: () => import('./views/DeviceView.vue') },
+    { path: '/setup', name: 'setup', component: () => import('./views/SetupView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
   scrollBehavior: () => ({ top: 0 }),
