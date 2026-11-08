@@ -7,3 +7,4 @@
 /firmware/sdkconfig.old
 /firmware/dependencies.lock
 /bin/
+/.claude/

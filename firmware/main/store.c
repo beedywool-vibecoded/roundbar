@@ -78,6 +78,26 @@ void store_init(void)
 }
 
 cJSON *store_config(void) { return cfg; }
+
+char *store_json_copy(size_t *len)
+{
+    nvs_handle_t h;
+    char *buf = NULL;
+    *len = 0;
+    if (!sha[0] || nvs_open_from_partition("cfg", "rb", NVS_READONLY, &h) != ESP_OK) return NULL;
+    size_t n = 0;
+    if (nvs_get_blob(h, "json", NULL, &n) == ESP_OK && n > 0 && (buf = spiram_malloc(n + 1))) {
+        if (nvs_get_blob(h, "json", buf, &n) == ESP_OK) {
+            buf[n] = 0;
+            *len = n;
+        } else {
+            free(buf);
+            buf = NULL;
+        }
+    }
+    nvs_close(h);
+    return buf;
+}
 const char *store_sha(void) { return sha; }
 const char *store_layout(void) { return layout; }
 

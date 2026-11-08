@@ -274,7 +274,7 @@ export interface View {
 // GET /api/status and the SSE `status` event. Only `daemon` is set when the daemon is down.
 export interface Status {
   daemon: boolean
-  device?: { connected: boolean; port?: string; fw?: string; cfg?: string; inSync?: boolean }
+  device?: { connected: boolean; port?: string; fw?: string; cfg?: string; inSync?: boolean; syncNote?: string }
   focus?: App | null
   profile?: string
   recentApps?: App[]

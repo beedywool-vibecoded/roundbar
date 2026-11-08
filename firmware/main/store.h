@@ -8,6 +8,7 @@ void store_init(void);
 // Parsed config. Never NULL after store_init (falls back to a built-in default).
 cJSON *store_config(void);
 const char *store_sha(void);
+char *store_json_copy(size_t *len); // the stored config bytes (free() it), NULL if none
 // Takes ownership of nothing; copies json. Returns false if it doesn't parse.
 bool store_save(const char *json, const char *sha);
 const char *store_layout(void); // "fr" | "us"

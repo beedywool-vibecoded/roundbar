@@ -185,6 +185,23 @@ static void send_screenshot(void)
     if (top) lv_draw_buf_destroy(top);
 }
 
+// Sends bytes to the PC as {"t":t,"name":name,"sha":sha?,"n","i","data"} chunks; n = 0 when empty.
+static void send_blob(const char *t, const char *name, const char *sha, const uint8_t *data, size_t total)
+{
+    const size_t raw_chunk = 24 * 1024;
+    int n = (int)((total + raw_chunk - 1) / raw_chunk);
+    char *line = heap_caps_malloc(raw_chunk * 4 / 3 + 256, MALLOC_CAP_SPIRAM);
+    if (!line) return;
+    for (int i = 0; i < (n ? n : 1); i++) {
+        size_t len = n ? LV_MIN(raw_chunk, total - i * raw_chunk) : 0;
+        int o = snprintf(line, 200, "{\"t\":\"%s\",\"name\":\"%s\",\"sha\":\"%s\",\"n\":%d,\"i\":%d,\"data\":\"", t, name, sha ? sha : "", n, i);
+        if (len) o += b64encode(data + i * raw_chunk, len, line + o);
+        strcpy(line + o, "\"}");
+        usb_send_line(line);
+    }
+    free(line);
+}
+
 static const char *str(cJSON *o, const char *k) { return cJSON_GetStringValue(cJSON_GetObjectItem(o, k)); }
 static int num(cJSON *o, const char *k, int def)
 {
@@ -272,6 +289,17 @@ static void handle(cJSON *m)
         if (!strcmp(t, "mixer")) ui_mixer(m);
         else ui_notif_toast(m);
         lvgl_port_unlock();
+    } else if (!strcmp(t, "configGet")) { // a PC adopting the setup stored on the board
+        size_t len;
+        char *json = store_json_copy(&len);
+        send_blob("configDump", "config.json", store_sha(), (const uint8_t *)json, json ? len : 0);
+        free(json);
+    } else if (!strcmp(t, "assetGet")) {
+        const char *name = str(m, "name");
+        size_t len = 0;
+        uint8_t *data = name && !strchr(name, '/') && !strchr(name, '"') ? assets_load(name, &len) : NULL;
+        send_blob("assetDump", name && !strchr(name, '"') ? name : "", NULL, data, data ? len : 0);
+        free(data);
     } else if (!strcmp(t, "assetsWant")) {
         cJSON *o = cJSON_CreateObject();
         cJSON_AddStringToObject(o, "t", "assets");

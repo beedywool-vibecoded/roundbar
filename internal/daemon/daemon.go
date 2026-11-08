@@ -82,6 +82,7 @@ type Daemon struct {
 	iconsSent     map[string]bool
 
 	statsStop chan struct{}
+	syncNote  string // last config sync with the board, for the configurator
 	mangoStop chan struct{}
 	watchers  map[chan struct{}]bool
 	done      chan struct{}
@@ -218,6 +219,7 @@ func (d *Daemon) pushConfig() {
 		d.mu.Lock()
 		d.hello.Cfg = sha
 		d.mu.Unlock()
+		saveSync(sha)
 		d.notify()
 		d.syncAssets()
 	}()
@@ -230,15 +232,10 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		_ = json.Unmarshal(m.Raw, &h)
 		d.mu.Lock()
 		d.hello = h
-		stale := h.Cfg != d.sha
 		d.sentPro = ""
 		d.mu.Unlock()
 		log.Printf("device fw %s, touch %s", h.FW, h.Touch)
-		if stale {
-			d.pushConfig() // syncs assets once acked
-		} else {
-			go d.syncAssets()
-		}
+		d.syncOnHello(h.Cfg) // push, pull or nothing; copies assets after
 		d.syncProfile(true)
 		d.notify()
 		d.kickClock()
@@ -839,6 +836,7 @@ type DeviceStatus struct {
 	FW        string `json:"fw,omitempty"`
 	Cfg       string `json:"cfg,omitempty"`
 	InSync    bool   `json:"inSync"`
+	SyncNote  string `json:"syncNote,omitempty"` // e.g. "Loaded the setup stored on your Roundbar"
 }
 
 func (d *Daemon) status() Status {
@@ -847,6 +845,7 @@ func (d *Daemon) status() Status {
 	ds := &DeviceStatus{Connected: d.port != nil}
 	if d.port != nil {
 		ds.Port, ds.FW, ds.Cfg, ds.InSync = d.port.Path, d.hello.FW, d.hello.Cfg, d.hello.Cfg == d.sha
+		ds.SyncNote = d.syncNote
 	}
 	pid, _ := d.profileFor(d.focus)
 	rec := append([]desktop.Focus{}, d.recent...)

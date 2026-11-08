@@ -188,14 +188,37 @@ partition (see §2).
 | `paste` | `i` | paste clipboard entry i (the daemon puts it on the clipboard, then the device types ctrl+v) |
 | `notifOpen` / `notifDismiss` | `id` / `notifClear` | act on notifications |
 | `timerDone` | `label`, `phase?: "work"\|"break"` | a timer page finished: the daemon shows a desktop notification with a sound |
+| `configDump` | `name: "config.json"`, `sha`, `n`, `i`, `data` (base64, ≤ 24 KiB raw per chunk) | reply to `configGet`: the stored config bytes; `n: 0` when the board has none |
+| `assetDump` | `name`, `n`, `i`, `data` | reply to `assetGet`: one stored asset file; `n: 0` when missing |
+| `gameClose` | – | the close button on a `game` page was confirmed: the daemon ends that game's processes |
 | `log` | `msg` | debug |
+
+### Config sync: the setup travels with the board
+
+The board keeps the last config it was given. Each PC remembers in `~/.config/roundbar/sync.json` the sha both
+sides had after their last push or pull (`synced`). On `hello`, with `pc` = this PC's config sha and `board` = `hello.cfg`:
+
+| situation | action |
+|---|---|
+| `board` empty (never set up) | push |
+| `board == pc` | nothing (record `synced`) |
+| this PC still has the untouched default config (fresh install) | pull |
+| `pc == synced` (the board was edited on another PC) | pull |
+| `board == synced` (this PC was edited while unplugged) | push |
+| both changed, or this PC has its own setup and never met a board | pull; the PC's config is first copied to `config.json.before-sync-<time>` |
+
+Pull = `configGet`, validate, fetch missing images with `assetGet` (the board's screen-sized copies become the PC's
+originals), save `config.json`, then push it back once so both sides share the new file's sha. If the board can't answer
+(older firmware) the PC pushes instead. The daemon reports the outcome as `device.syncNote` in `status`.
 
 ### PC → Device
 
 | t | fields | notes |
 |---|---|---|
 | `hello` | – | ask the device to resend `hello` |
-| `config` | `id`, `cfg: Config`, `sha: "<sha1>"` | sent when `hello.cfg` differs from the daemon's sha, or when the file changes. Device stores it and acks. sha1 is over the exact bytes of the config file. |
+| `config` | `id`, `cfg: Config`, `sha: "<sha1>"` | sent when the sync rules below say the PC's config goes to the board, or when the file changes. Device stores it and acks. sha1 is over the exact bytes of the config file. |
+| `configGet` | – | device answers with `configDump` chunks |
+| `assetGet` | `name` (device file name) | device answers with `assetDump` chunks |
 | `profile` | `id` | switch profile (focus changed). Device keeps one page index per profile. Unknown id → `default`. |
 | `app` | `id`, `name` | the focused app, shown briefly as a toast |
 | `media` | `title`, `artist`, `album`, `playing: bool`, `canNext`, `canPrev`, `player` | only while a `media` page is visible |

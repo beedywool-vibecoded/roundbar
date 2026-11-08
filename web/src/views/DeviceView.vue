@@ -111,9 +111,10 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
                 <dd>{{ st.device.fw ?? '—' }}</dd>
                 <dt>Config</dt>
                 <dd>
-                  <span v-if="st.device.inSync === false" class="warn-text">Sending the latest config…</span>
+                  <span v-if="st.device.inSync === false" class="warn-text">Syncing with the board…</span>
                   <span v-else>Up to date</span>
                   <code v-if="st.device.cfg" class="plain muted small" style="margin-left: 8px">{{ st.device.cfg.slice(0, 8) }}</code>
+                  <div v-if="st.device.syncNote" class="muted small" style="margin-top: 4px">{{ st.device.syncNote }}</div>
                 </dd>
                 <dt>On screen</dt>
                 <dd>
