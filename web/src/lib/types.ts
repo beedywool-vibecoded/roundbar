@@ -282,6 +282,8 @@ export interface Status {
   profile?: string
   recentApps?: App[]
   view?: View | null
+  /** the daemon's OS: 'linux' | 'windows' */
+  os?: string
   /** the focus source answers (GNOME: the extension runs) */
   extension?: boolean
   /** The PC's active keyboard layout, used by the device when keyboardLayout is 'auto' */
@@ -295,7 +297,7 @@ export interface Status {
 }
 
 export interface DesktopInfo {
-  backend: string // gnome | kde | wayland | x11 | none
+  backend: string // gnome | kde | wayland | x11 | windows | none
   focus: boolean
   windows: boolean
   notifications: boolean

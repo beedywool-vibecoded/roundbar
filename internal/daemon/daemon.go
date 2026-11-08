@@ -12,11 +12,11 @@ import (
 	"fmt"
 	"image"
 	"log"
-	"os/exec"
+	"os"
 	"path"
+	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/beedywool-vibecoded/roundbar/internal/assets"
@@ -162,7 +162,7 @@ func (d *Daemon) deviceLoop() {
 		p, err := device.Open(path)
 		if err != nil {
 			why := ""
-			if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
+			if errors.Is(err, os.ErrPermission) { // EACCES/EPERM, or access denied on Windows
 				why = "permission"
 				log.Printf("open %s: %v (install the udev rule: roundbar udev)", path, err)
 			} else {
@@ -538,6 +538,9 @@ func matches(pattern string, f desktop.Focus) bool {
 }
 
 func (d *Daemon) profileFor(f desktop.Focus) (string, string) {
+	if d.cfg == nil { // asked (by the tray app) before Run loaded the config
+		return "default", "Default"
+	}
 	for _, p := range d.cfg.Profiles {
 		for _, m := range p.Match {
 			if matches(m, f) {
@@ -789,27 +792,12 @@ func (d *Daemon) sendAudio() {
 
 // ---- actions ------------------------------------------------------------
 
-func spawn(name string, args ...string) {
-	c := exec.Command(name, args...)
-	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	c.Stdin, c.Stdout, c.Stderr = nil, nil, nil
-	if err := c.Start(); err != nil {
-		log.Printf("run %s: %v", name, err)
-		return
-	}
-	go c.Wait() // reap
-}
-
 func (d *Daemon) run(a config.Action) {
 	switch a.Type {
 	case "command":
-		spawn("sh", "-c", a.Cmd)
+		runCommand(a.Cmd)
 	case "open":
-		if strings.HasSuffix(a.Target, ".desktop") {
-			spawn("gtk-launch", strings.TrimSuffix(a.Target, ".desktop"))
-		} else {
-			spawn("xdg-open", a.Target)
-		}
+		openTarget(a.Target)
 	case "mic":
 		d.mu.Lock()
 		au := d.audio
@@ -833,7 +821,7 @@ func (d *Daemon) run(a config.Action) {
 			case s.Delay > 0:
 				time.Sleep(time.Duration(s.Delay) * time.Millisecond)
 			case s.Command != "":
-				spawn("sh", "-c", s.Command)
+				runCommand(s.Command)
 			}
 		}
 	// Device-side actions, only reached through "test" in the configurator.
@@ -854,6 +842,7 @@ func (d *Daemon) run(a config.Action) {
 // ---- status for the socket ----------------------------------------------
 
 type Status struct {
+	OS         string           `json:"os"` // runtime.GOOS: "linux" | "windows"
 	Device     *DeviceStatus    `json:"device"`
 	Keyboard   *keymap.Detected `json:"keyboard,omitempty"`
 	Focus      desktop.Focus    `json:"focus"`
@@ -897,7 +886,20 @@ func (d *Daemon) status() Status {
 	if d.desk != nil {
 		info = d.desk.Info()
 	}
-	return Status{Keyboard: kbd, Desktop: info, OBS: d.obs.State(), Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
+	return Status{OS: runtime.GOOS, Keyboard: kbd, Desktop: info, OBS: d.obs.State(), Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
+}
+
+// Status is the daemon's state as `roundbar status` shows it (for the tray app).
+func (d *Daemon) Status() Status { return d.status() }
+
+// Watch returns a channel that wakes (coalesced) whenever the status changes,
+// and a function that stops it.
+func (d *Daemon) Watch() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	d.mu.Lock()
+	d.watchers[ch] = true
+	d.mu.Unlock()
+	return ch, func() { d.mu.Lock(); delete(d.watchers, ch); d.mu.Unlock() }
 }
 
 // notify wakes every socket watcher (coalesced per watcher).

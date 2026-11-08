@@ -1,3 +1,5 @@
+//go:build linux
+
 package stats
 
 import (
@@ -112,6 +114,14 @@ func newGPUSource(root string, g GPU) gpuSource {
 		return &tempOnly{temp: open(hwmonInput(g.Dev, []string{"nouveau"}, nil)), buf: make([]byte, 64)}
 	}
 	return nil
+}
+
+func newNvidiaSMI(g GPU) *nvidiaSMI {
+	id := g.PCI
+	if len(id) == 12 { // 0000:01:00.0 -> nvidia-smi's 00000000:01:00.0
+		id = "0000" + id
+	}
+	return newNvidiaQuery(id)
 }
 
 // ---- AMD ----------------------------------------------------------------

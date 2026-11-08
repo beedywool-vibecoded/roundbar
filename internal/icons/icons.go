@@ -87,8 +87,17 @@ func themeChain() []string {
 	return themes
 }
 
+var aliases sync.Map // icon name -> file
+
+// Alias makes an icon name stand for a file (Windows: "exe:firefox" for the
+// executable whose embedded icon is shown). Names stay short for the device.
+func Alias(name, path string) { aliases.Store(name, path) }
+
 // find returns the best file for an icon name in the user's icon theme first.
 func find(name string) string {
+	if p, ok := aliases.Load(name); ok {
+		return p.(string)
+	}
 	if filepath.IsAbs(name) {
 		if _, err := os.Stat(name); err == nil {
 			return name
@@ -132,6 +141,9 @@ func find(name string) string {
 }
 
 func load(path string) image.Image {
+	if strings.HasSuffix(strings.ToLower(path), ".exe") {
+		return exeIcon(path, Size)
+	}
 	if strings.HasSuffix(path, ".svg") {
 		// librsvg renders icon themes exactly (opacity, CSS classes); oksvg is the fallback.
 		if bin, err := exec.LookPath("rsvg-convert"); err == nil {

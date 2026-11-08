@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 	_ "time/tzdata" // world clocks validate the same on every machine
@@ -144,8 +145,12 @@ type Step struct {
 	Command string `json:"command,omitempty"`
 }
 
-// Dir is ~/.config/roundbar (or $XDG_CONFIG_HOME/roundbar).
+// Dir is ~/.config/roundbar (or $XDG_CONFIG_HOME/roundbar); %APPDATA%\roundbar on Windows.
 func Dir() string {
+	if runtime.GOOS == "windows" {
+		base, _ := os.UserConfigDir()
+		return filepath.Join(base, "roundbar")
+	}
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
 		home, _ := os.UserHomeDir()

@@ -121,8 +121,10 @@ the right layout, or pick yours.
 
 **Discord voice doesn't show up.**
 - Official Discord app: set up the Discord connection in the configurator (**Device → Discord**).
-- Vesktop: turn on live voice in the configurator, then restart Vesktop. Note that while it's on, programs
-  running as you on this PC could read your Discord session through a local-only port.
+- Vesktop on Linux: turn on live voice in the configurator, then restart Vesktop. Note that while it's on,
+  programs running as you on this PC could read your Discord session through a local-only port.
+- Vesktop on Windows: right-click the Vesktop shortcut → *Properties*, and add ` --remote-debugging-port=9337`
+  at the end of *Target* (after the closing quote), then start Vesktop from that shortcut. Same note as above.
 
 **OBS page says it isn't connected.** In OBS, open **Tools → WebSocket Server Settings**, enable the server,
 copy the password, and paste it in the configurator (**Device → OBS**). OBS must be running.

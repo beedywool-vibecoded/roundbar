@@ -121,6 +121,10 @@ func (d *Daemon) sendGame() {
 // startMango turns MangoHud logging on while the page is visible and streams
 // a snapshot twice a second; stopMango turns it off and cleans up its files.
 func (d *Daemon) startMango() {
+	if !mangohud.Supported {
+		d.send(map[string]any{"t": "mangohud", "active": false, "hint": "unsupported"})
+		return
+	}
 	if changed, err := mangohud.EnsureConf(); err != nil {
 		log.Printf("mangohud: %v", err)
 	} else if changed {

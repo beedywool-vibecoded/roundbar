@@ -1,3 +1,5 @@
+//go:build linux
+
 // Package stats reads CPU, RAM and GPU figures straight from procfs/sysfs (and, for
 // NVIDIA, from an nvidia-smi child that only runs while GPU figures are wanted).
 // Files are opened once and re-read with pread, so a sample costs a few syscalls.
@@ -12,14 +14,6 @@ import (
 	"strings"
 	"sync"
 )
-
-type Sample map[string]int // keys: cpu ram gpu vram cpuTemp gpuTemp
-
-// gpuSource fills the gpu, vram and gpuTemp keys it can provide.
-type gpuSource interface {
-	sample(want map[string]bool, s Sample)
-	stop() // release anything running in the background; sample restarts it
-}
 
 type Reader struct {
 	mu                  sync.Mutex

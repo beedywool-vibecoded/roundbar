@@ -18,7 +18,7 @@ import ClockPageEditor from '@/components/ClockPageEditor.vue'
 import TimerPageEditor from '@/components/TimerPageEditor.vue'
 import { api } from '@/lib/api'
 import { DIAL_SOURCES, LIMITS, TOUCHPAD_DEFAULTS, MEDIA_BUTTONS, MEDIA_SHAPE_DEFAULTS, STAT_ITEMS, newButton, nextButtonId, pageTypeInfo } from '@/lib/model'
-import { config, daemonUp, dirty, findProfile, issuesUnder, live, profileIndex, profilePalette } from '@/lib/store'
+import { config, daemonUp, dirty, findProfile, issuesUnder, live, onWindows, profileIndex, profilePalette } from '@/lib/store'
 import { lockScroll, unlockScroll } from '@/lib/scrollLock'
 import type { Action, Button, ButtonShape, DialPage, DialSource, MediaButton, Page, StatItem } from '@/lib/types'
 import { run } from '@/lib/ui'
@@ -345,7 +345,7 @@ function show() {
             </p>
 
             <p v-else-if="page.type === 'windows'" class="muted small" style="margin: 0">
-              The open windows as icons on a ring, most recent first (up to 8). Tap one to bring it to the front. Needs a desktop that lists its windows (GNOME with the extension, KDE, X11, wlroots compositors). Nothing to set up.
+              The open windows as icons on a ring, most recent first (up to 8). Tap one to bring it to the front. Needs a desktop that lists its windows (Windows; on Linux GNOME with the extension, KDE, X11, wlroots compositors). Nothing to set up.
             </p>
 
             <p v-else-if="page.type === 'clipboard'" class="muted small" style="margin: 0">
@@ -379,7 +379,12 @@ function show() {
               The game in focus (Steam games, <code>steam_app_*</code> windows): its library art blurred behind, the game name and how long you've been playing,
               with buttons for Steam's own shortcuts (<b>Shift+Tab</b> overlay, <b>F12</b> screenshot) and a close button: the first tap turns it into
               <i>Sure?</i>, the second closes the game (its processes get a polite stop, then a forced one after 6 s).
-              Put it in a profile that matches <code>steam_app_*</code> so it shows up on its own. Nothing to set up.
+              Put it in a profile that matches <code>steam_app_*</code> so it shows up on its own (on Windows too: games started from a Steam library get that name). Nothing to set up.
+            </p>
+
+            <p v-else-if="page.type === 'mangohud' && onWindows" class="warn-line small" style="margin: 0">
+              <Icon name="warning" :size="16" />
+              <span>Not available on Windows: MangoHud only exists on Linux. The page stays empty here.</span>
             </p>
 
             <p v-else-if="page.type === 'mangohud'" class="muted small" style="margin: 0">
@@ -390,7 +395,7 @@ function show() {
             </p>
 
             <p v-else-if="page.type === 'media'" class="muted small" style="margin: 0">
-              Shows the current player (MPRIS) with previous, play / pause and next, and the volume on the edge arc.
+              Shows the current player (MPRIS on Linux, the media session Windows shows in its volume flyout) with previous, play / pause and next, and the volume on the edge arc.
             </p>
 
             <template v-else-if="page.type === 'stats'">

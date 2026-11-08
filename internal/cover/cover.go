@@ -16,6 +16,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
+	"strings"
+	"sync"
 	"time"
 
 	_ "golang.org/x/image/webp"
@@ -23,21 +26,51 @@ import (
 
 const Size = 360
 
-// Load fetches and decodes the artwork (file:// or http(s)://).
+var (
+	schemesMu sync.Mutex
+	schemes   = map[string]func(ctx context.Context, artURL string) (io.ReadCloser, error){}
+)
+
+// RegisterScheme lets a media source serve its own artwork URLs (Windows
+// media sessions hand out thumbnails as streams, not URLs).
+func RegisterScheme(scheme string, open func(ctx context.Context, artURL string) (io.ReadCloser, error)) {
+	schemesMu.Lock()
+	schemes[scheme] = open
+	schemesMu.Unlock()
+}
+
+// Load fetches and decodes the artwork (file:// or http(s)://, or a registered scheme).
 func Load(ctx context.Context, artURL string) (image.Image, error) {
+	if runtime.GOOS == "windows" && strings.HasPrefix(artURL, "file://") {
+		// "file://" + a Windows path (C:\...) is no valid URL; open the path as is.
+		f, err := os.Open(strings.TrimPrefix(strings.TrimPrefix(artURL, "file://"), "/"))
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		img, _, err := image.Decode(io.LimitReader(f, 16<<20))
+		return img, err
+	}
 	u, err := url.Parse(artURL)
 	if err != nil {
 		return nil, err
 	}
+	schemesMu.Lock()
+	open := schemes[u.Scheme]
+	schemesMu.Unlock()
 	var r io.ReadCloser
-	switch u.Scheme {
-	case "file":
+	switch {
+	case open != nil:
+		if r, err = open(ctx, artURL); err != nil {
+			return nil, err
+		}
+	case u.Scheme == "file":
 		f, err := os.Open(u.Path)
 		if err != nil {
 			return nil, err
 		}
 		r = f
-	case "http", "https":
+	case u.Scheme == "http" || u.Scheme == "https":
 		ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 		defer cancel()
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, artURL, nil)

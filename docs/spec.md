@@ -19,15 +19,17 @@ The contract between the four parts. Change it here first, then in code.
                                            └──────────────┘
 ```
 
-- `roundbar daemon` runs as a systemd user service. It must stay cheap: event-driven,
-  no busy loops, stats only collected while the device shows a page that needs them.
+- `roundbar daemon` runs as a systemd user service (on Windows: inside the tray app, §6). It must stay
+  cheap: event-driven, no busy loops, stats only collected while the device shows a page that needs them.
 - `roundbar config` starts the configurator: an HTTP server on 127.0.0.1 that serves the
   embedded Vue app and exits ~10 s after the last browser tab disconnects.
 - Files: config `~/.config/roundbar/config.json`, daemon socket `$XDG_RUNTIME_DIR/roundbar.sock`.
+  Windows: config `%APPDATA%\roundbar\config.json`, socket `%LOCALAPPDATA%\roundbar\roundbar.sock` (AF_UNIX,
+  Windows 10 1803+), log `%LOCALAPPDATA%\roundbar\roundbar.log`.
 
 ## 1. Config file (`config.json`)
 
-The configurator writes it, the daemon watches it (inotify) and pushes it to the device,
+The configurator writes it, the daemon watches it (inotify; ReadDirectoryChangesW on Windows) and pushes it to the device,
 the device keeps a copy in flash so it works without the daemon.
 
 ```jsonc
@@ -105,7 +107,7 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `clipboard` | – | the last 10 copied texts as a scrolling list; tap one to paste it into the focused app |
 | `discord` | – | your Discord voice channel: members around the ring (avatar, speaking = green ring, muted badge), big mute / deafen buttons, leave; "Not in a voice channel" otherwise. Needs a Discord application set up in the configurator (Device view). |
 | `obs` | – | live OBS (via obs-websocket): the center toggles recording (red rounded square + elapsed time while recording), the ring holds your OBS scenes (current one highlighted; tap to switch, up to 8), a "● LIVE" label inside the record button while streaming. The daemon connects to OBS only when this page is shown or an `obs` action runs, and holds the connection only while OBS is open. Needs OBS set up in the configurator (Device view). |
-| `game` | – | the game in focus (Steam `steam_app_<id>` windows): blurred library art behind, large game name (two lines max) and session time, and two buttons the device types itself: Steam overlay (`shift+tab`) and Steam screenshot (`f12`) |
+| `game` | – | the game in focus (Steam `steam_app_<id>` windows; on Windows a process started from a library's `steamapps\common\<installdir>`, reported with class `steam_app_<id>` too): blurred library art behind, large game name (two lines max) and session time, and two buttons the device types itself: Steam overlay (`shift+tab`) and Steam screenshot (`f12`) |
 | `mangohud` | – | live MangoHud metrics: big FPS, average and 1% low over 30 s, frame-time graph (slowest frame per 250 ms, last 15 s), CPU (left edge arc) and GPU (right edge arc) load + temperature, GPU power and VRAM. The daemon adds `control=mangohud-%p` to MangoHud.conf once, turns CSV logging on over each game's control socket only while the page is visible (per-frame rows, MangoHud's default), reads the file of the process that is rendering, and deletes the log files it caused when the page goes away |
 | `touchpad` | `speed?: number` (1..10, default 5) | the device acts as a USB mouse: drag moves the cursor, tap = left click, long-press = right click, double-tap then drag = drag & drop, sliding along the outer ring scrolls. A sideways swipe starting on the ring changes page; a downward swipe from the top of the ring opens quick settings. |
 | `image` | `images: string[]` (asset ids, 1..20; a `.gif` must be alone), `interval?: number` (seconds, 2..3600, default 8), `fit?: "cover"\|"contain"` (default cover) | full-screen picture; several stills cross-fade as a slideshow; a GIF plays |
@@ -132,8 +134,8 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `text` | `text: "hello"` (≤ 64 chars: newline, tab and any character at least one layout of `shared/keymaps.json` can type, e.g. printable ASCII, accented letters through dead keys, AltGr characters like `€`) | device (USB HID, uses `keyboardLayout`; characters the active layout can't type are skipped and the ack is `ok: false`) |
 | `media` | `cmd: "play_pause"\|"next"\|"prev"\|"vol_up"\|"vol_down"\|"mute"` | device (USB HID consumer) |
 | `page` | `page: "<page id>"` | device |
-| `command` | `cmd: "notify-send hi"` (run with `sh -c`, detached) | daemon |
-| `open` | `target: "https://…" \| "firefox.desktop"` (xdg-open / gtk-launch) | daemon |
+| `command` | `cmd: "notify-send hi"` (run with `sh -c`, detached; Windows: `cmd.exe /c`, no console window) | daemon |
+| `open` | `target: "https://…" \| "firefox.desktop"` (xdg-open / gtk-launch; Windows: ShellExecute, so a URL, file, folder or program) | daemon |
 | `mic` | `cmd: "toggle"\|"mute"\|"unmute"` | daemon |
 | `macro` | `steps: Step[]` (≤ 32) | daemon (asks the device to type the key steps) |
 | `obs` | `request: "ToggleRecord"\|"ToggleRecordPause"\|"ToggleStream"\|"SaveReplayBuffer"\|"ToggleVirtualCam"\|"StudioTransition"\|"SetScene"\|"ToggleMute"`, `scene?` (SetScene), `input?` (ToggleMute, e.g. "Mic/Aux") | daemon, through obs-websocket: works without OBS focused |
@@ -174,7 +176,7 @@ current profile) and two tiles:
 
 ### Assets (images for `image` pages)
 
-Uploaded through the configurator and stored in `~/.config/roundbar/assets/<id>`, where `<id>` is 12 hex chars of
+Uploaded through the configurator and stored in `~/.config/roundbar/assets/<id>` (`%APPDATA%\roundbar\assets` on Windows), where `<id>` is 12 hex chars of
 the SHA-256 of the stored file plus `.jpg` or `.gif`. Stills are re-encoded as JPEG with the longest side ≤ 1080 px;
 GIFs are kept as uploaded (≤ 20 MB). When syncing, the daemon renders the device version of each image for the page's
 `fit` (exactly 360×360 for cover, inside 360×360 for contain; baseline JPEG, or a re-encoded full-frame GIF ≤ 3 MB),
@@ -243,7 +245,7 @@ originals), save `config.json`, then push it back once so both sides share the n
 | `mediaTheme` | `palette: {role: "#RRGGBB"}` (same roles as theme.palette) or `null` | cover palette for media pages when `media.coverColors` is on; `null` restores the theme |
 | `volume` | `value: 0..100`, `muted: bool` | on change, and once when a page that shows volume becomes visible |
 | `mic` | `muted: bool`, `value: 0..100` | same |
-| `stats` | any of `cpu ram gpu vram` (0..100 %), `cpuTemp gpuTemp` (°C) | every 1.5 s while a `stats` page is visible and the screen is awake. GPU: a discrete one if any (most VRAM first), else the one driving a display. AMD: sysfs. NVIDIA: a long-lived `nvidia-smi -lms` child, running only while a page with a GPU gauge is shown. Intel (i915/xe): load from the DRM fdinfo of the user's own processes (no root needed), else current/max frequency; temperature from hwmon where exposed (discrete cards); no VRAM. Keys the GPU can't provide are left out. |
+| `stats` | any of `cpu ram gpu vram` (0..100 %), `cpuTemp gpuTemp` (°C) | every 1.5 s while a `stats` page is visible and the screen is awake. GPU: a discrete one if any (most VRAM first), else the one driving a display. AMD: sysfs. NVIDIA: a long-lived `nvidia-smi -lms` child, running only while a page with a GPU gauge is shown. Intel (i915/xe): load from the DRM fdinfo of the user's own processes (no root needed), else current/max frequency; temperature from hwmon where exposed (discrete cards); no VRAM. Keys the GPU can't provide are left out. Windows: CPU from GetSystemTimes, RAM from GlobalMemoryStatusEx, no `cpuTemp`; the adapter with the most dedicated memory (DXGI); NVIDIA through the same `nvidia-smi` child, others through the performance counters `GPU Engine(*)\Utilization Percentage` (busiest engine) and `GPU Adapter Memory(*)\Dedicated Usage`, no `gpuTemp`. |
 | `hid` | `keys?: string`, `text?: string`, `media?: string`, `hold?: ms` | macro steps and configurator tests, typed by the device. With an `id`, acked once typed. `hold` keeps a `keys` combo down that long (1..2000 ms; for programs that poll the keyboard, like MangoHud every 100 ms); older firmware ignores it and taps. |
 | `show` | `profile`, `page` | configurator preview: jump to a page |
 | `bootloader` | – | reboot into the ROM USB download mode (for flashing) |
@@ -253,7 +255,7 @@ originals), save `config.json`, then push it back once so both sides share the n
 | `obs` | `connected`, `recording`, `paused`, `recTime` (s), `streaming`, `scenes: [string]`, `current` | while an `obs` page is visible, on change and every second while recording |
 | `game` | `name`, `appid`, `since` (unix s) | while a `game` page is visible; `{"t":"game","name":""}` when no game is focused |
 | `gameArt` | same fields as `cover` | blurred library art for `game` pages |
-| `mangohud` | `active`, `hint?` (`noGame`\|`waiting`), `fps`, `ft` (ms), `avg`, `low` (1% low fps), `cpu`, `gpu` (%), `cpuTemp`, `gpuTemp` (°C), `power` (W), `vram` (GB), `graph: [ms]` (≤ 60, oldest first) | every 500 ms while a `mangohud` page is visible |
+| `mangohud` | `active`, `hint?` (`noGame`\|`waiting`\|`unsupported`: no MangoHud on this OS, i.e. Windows, sent once), `fps`, `ft` (ms), `avg`, `low` (1% low fps), `cpu`, `gpu` (%), `cpuTemp`, `gpuTemp` (°C), `power` (W), `vram` (GB), `graph: [ms]` (≤ 60, oldest first) | every 500 ms while a `mangohud` page is visible |
 | `windows` | `list: [{id, app, title, icon}]` | while a `windows` page is visible, on change |
 | `mixer` | `apps: [{id, name, icon, vol, muted}]` | while a `mixer` page is visible, on change |
 | `clips` | `list: [string]` (newest first, ≤ 10, each ≤ 200 chars) | while a `clipboard` page is visible, on change |
@@ -267,12 +269,13 @@ originals), save `config.json`, then push it back once so both sides share the n
 
 The daemon stops all periodic work when `view.awake` is false or when no device is attached.
 
-## 3. Daemon socket (`$XDG_RUNTIME_DIR/roundbar.sock`)
+## 3. Daemon socket (`$XDG_RUNTIME_DIR/roundbar.sock`, Windows `%LOCALAPPDATA%\roundbar\roundbar.sock`)
 
 JSON lines, request/response, used by `roundbar config` (and `roundbar status`, `roundbar bootloader`, `roundbar firmware`).
 `status.device.error` is `"permission"` when the board's port exists but can't be opened (no udev rule).
 
-- `{"op":"status"}` → `{"device":{"connected":true,"port":"/dev/ttyACM1","fw":"0.1.0","cfg":"…","inSync":true},"keyboard":{"detected":"de","source":"gnome"},"focus":{"id":"firefox","name":"Firefox","class":"firefox"},"profile":"browser","recentApps":[{"id":"firefox","name":"Firefox","class":"firefox"},…],"view":{"profile":"…","page":"…","kind":"radial","awake":true},"extension":true,"desktop":{"backend":"gnome","focus":true,"windows":true,"notifications":true,"clipboard":true}}`
+- `{"op":"status"}` → `{"os":"linux","device":{"connected":true,"port":"/dev/ttyACM1","fw":"0.1.0","cfg":"…","inSync":true},"keyboard":{"detected":"de","source":"gnome"},"focus":{"id":"firefox","name":"Firefox","class":"firefox"},"profile":"browser","recentApps":[{"id":"firefox","name":"Firefox","class":"firefox"},…],"view":{"profile":"…","page":"…","kind":"radial","awake":true},"extension":true,"desktop":{"backend":"gnome","focus":true,"windows":true,"notifications":true,"clipboard":true}}`
+  - `os`: `linux` or `windows`; the configurator hides what the OS can't do (MangoHud on Windows).
   - `extension`: the focus source has reported a focused app (on GNOME: the extension runs).
   - `desktop`: the shell backend in use (§5) and what it provides. A feature that is `false` is unsupported on
     this desktop: its lists are always empty (`windows`, `clips`, `notifs` are sent as `[]`), so the configurator
@@ -339,10 +342,19 @@ The daemon follows the desktop through one shell backend, picked at startup from
 | `wayland` | `zwlr_foreign_toplevel_manager_v1` (activated state) | wlr toplevel manager (with activation), else `ext_foreign_toplevel_list_v1` (list only) | monitor | `ext_data_control_v1`, else `zwlr_data_control_v1` |
 | `x11` | `_NET_ACTIVE_WINDOW` (PropertyNotify on the root) | `_NET_CLIENT_LIST_STACKING`; activation by the `_NET_ACTIVE_WINDOW` client message | monitor | `CLIPBOARD` selection via XFixes |
 | `none` | – | – | monitor | – |
+| `windows` | `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` | `EnumWindows` (Alt+Tab rules: visible, not cloaked, unowned, no tool windows), changes from a shell hook (`RegisterShellHookWindow`); activation by `SetForegroundWindow` | – (other apps' toasts are only readable by packaged apps) | `AddClipboardFormatListener` |
 
 - "monitor": the daemon watches `Notify` calls to `org.freedesktop.Notifications` (whichever program serves it)
   with a D-Bus monitor connection and keeps the last 20. Open brings the sender's window forward (matched by the
   `desktop-entry` hint or app name) and closes the notification; dismiss calls `CloseNotification`.
+- `windows` is the only backend on Windows. Focus values there: `id` and `class` are the lowercase executable name
+  without `.exe` (`firefox`, `code`, `discord`; UWP apps: the app's process, not ApplicationFrameHost), `class` is
+  `steam_app_<id>` for Steam games (see `game`), `name` the executable's FileDescription, else the window title.
+  The desktop, taskbar, Start menu and task switcher don't change the focus. Clipboard entries marked by password
+  managers (`ExcludeClipboardContentFromMonitorProcessing`, `Clipboard Viewer Ignore`,
+  `CanIncludeInClipboardHistory` = 0) are never read. Media: the Global System Media Transport Controls current
+  session (WinRT, change events), cover art from its thumbnail; volume and mixer: Core Audio with change callbacks.
+  Keyboard layout: the focused window's (`GetKeyboardLayout`, KLID mapped to a keymap id), re-read on focus changes.
 - Focus values follow the GNOME extension: `id` is the lowercase desktop file id without `.desktop` when one
   matches (by id, `StartupWMClass`, or the last part of a reverse-DNS id), else the lowercase class; `class` is
   the lowercase WM_CLASS class / Wayland app_id (Steam games: `steam_app_<id>`); `name` the desktop entry's
@@ -360,6 +372,8 @@ A tag `v*` makes the CI release job publish these release assets:
 |---|---|
 | `roundbar-linux-amd64`, `roundbar-linux-arm64` | the static binary (daemon, configurator, GNOME extension embedded) |
 | `roundbar_<ver>_<arch>.deb`, `roundbar-<ver>-1.<arch>.rpm` | packages: binary, udev rule, systemd user unit, launcher, extension |
+| `roundbar-setup-windows-amd64.exe` | the Windows installer (NSIS, per user, §7) |
+| `roundbar-windows-amd64.exe`, `roundbar-windows-arm64.exe` | the bare Windows app (tray + daemon + configurator) |
 | `bootloader.bin` (0x0), `partition-table.bin` (0x8000), `roundbar.bin` (0x10000), `fonts.bin` (`fonts` partition, 0x250000) | the flash parts, written unchanged |
 | `roundbar-full.bin` | every part merged at offset 0, gaps 0xFF (same bytes as `esptool merge-bin`), for first installs |
 | `firmware.json` | the manifest below |
@@ -410,3 +424,22 @@ any that a package installed under `/usr`) and enables the service. `roundbar un
 reverses it, offers to remove `/etc/udev/rules.d/70-roundbar.rules`, deletes `~/.local/bin/roundbar` (unless
 `--keep-binary`) and keeps `~/.config/roundbar`. `packaging/aur/PKGBUILD` (`roundbar-bin`) and `packaging/nfpm.yaml`
 install the same files system-wide.
+
+## 7. Windows app
+
+One `roundbar.exe` (GUI subsystem, no console window), Windows 10 1803+ / 11, amd64 and arm64.
+
+- `roundbar` or `roundbar tray`: the daemon plus a notification-area icon. One instance per user (named mutex
+  `Local\roundbar`); starting it again opens the configurator instead. Menu: the device state (`Connected (COM5)` /
+  `Not connected`, disabled), Open configurator (also a double click), Start at login (toggles the Run key), Quit.
+  Timer notifications are the icon's balloon notifications.
+- `roundbar daemon`: the daemon without the icon. `config`, `status`, `screenshot`, `bootloader` as on Linux; from a
+  terminal they print there (the exe attaches to the parent console).
+- `roundbar install`: Start at login (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `Roundbar` =
+  `"<exe>" tray`) and a Start menu shortcut; `roundbar uninstall` removes both.
+- Serial: the COM port whose `Enum\USB\VID_303A&PID_4011*\…\Device Parameters\PortName` is listed in
+  `HARDWARE\DEVICEMAP\SERIALCOMM` (present), opened for overlapped I/O, DTR and RTS raised. Hotplug wakes the daemon
+  through `CM_Register_Notification` (COM port and USB device interfaces); nothing polls.
+- Installer `roundbar-setup-windows-amd64.exe` (NSIS, per user, no admin): `%LOCALAPPDATA%\Programs\Roundbar`,
+  Start menu shortcut, Run key, starts the tray app; an uninstaller in Apps & features removes all of it (the
+  configuration in `%APPDATA%\roundbar` is kept).

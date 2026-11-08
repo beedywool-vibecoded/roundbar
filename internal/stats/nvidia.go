@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -28,7 +27,7 @@ import (
 //
 // The child wins: zero idle cost and no new dependency. It is started by the first
 // Sample that wants a GPU key and killed by Stop (the daemon stops stats when the
-// page goes away or the screen sleeps). It also dies with the daemon (Pdeathsig).
+// page goes away or the screen sleeps). It also dies with the daemon (Pdeathsig on Linux, a kill-on-close job on Windows).
 
 const nvidiaQuery = "utilization.gpu,memory.used,memory.total,temperature.gpu"
 
@@ -47,12 +46,14 @@ type nvidiaValues struct {
 	util, memUsed, memTotal, temp int64 // -1 when not supported
 }
 
-func newNvidiaSMI(g GPU) *nvidiaSMI {
-	id := g.PCI
-	if len(id) == 12 { // 0000:01:00.0 -> nvidia-smi's 00000000:01:00.0
-		id = "0000" + id
+// newNvidiaQuery queries one GPU (nvidia-smi's --id: index, PCI bus id or
+// UUID; "" for the first one).
+func newNvidiaQuery(id string) *nvidiaSMI {
+	args := []string{"--query-gpu=" + nvidiaQuery, "--format=csv,noheader,nounits", "-lms", "1000"}
+	if id != "" {
+		args = append(args, "--id="+id)
 	}
-	return &nvidiaSMI{bin: "nvidia-smi", args: []string{"--query-gpu=" + nvidiaQuery, "--format=csv,noheader,nounits", "-lms", "1000", "--id=" + id}}
+	return &nvidiaSMI{bin: "nvidia-smi", args: args}
 }
 
 func (n *nvidiaSMI) sample(want map[string]bool, s Sample) {
@@ -79,10 +80,13 @@ func (n *nvidiaSMI) sample(want map[string]bool, s Sample) {
 // start runs the child; n.mu is held.
 func (n *nvidiaSMI) start() {
 	cmd := exec.Command(n.bin, n.args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	childAttr(cmd) // dies with the daemon
 	out, err := cmd.StdoutPipe()
 	if err == nil {
 		err = cmd.Start()
+	}
+	if err == nil {
+		childStarted(cmd)
 	}
 	if err != nil {
 		log.Printf("stats: %s: %v", n.bin, err)

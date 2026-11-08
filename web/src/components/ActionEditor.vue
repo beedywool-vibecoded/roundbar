@@ -7,6 +7,7 @@ import TextField from './TextField.vue'
 import KeyRecorder from './KeyRecorder.vue'
 import ShapeLoader from './ShapeLoader.vue'
 import { api } from '@/lib/api'
+import { onWindows } from '@/lib/store'
 import { ACTION_TYPES, LIMITS, MEDIA_CMDS, MIC_CMDS, OBS_DEFAULT_INPUT, OBS_REQUESTS, checkAction, defaultAction, type Issue } from '@/lib/model'
 import { effectiveLayout, layoutName, untypeable, validText } from '@/lib/layouts'
 import { comboFromEvent, formatCombo, heldMods, modifierOf, type Modifier } from '@/lib/keys'
@@ -248,7 +249,7 @@ function test() {
       label="Shell command"
       placeholder="notify-send hello"
       mono
-      help="Run with sh -c, detached, as your user"
+      :help="onWindows ? 'Run with cmd.exe /c, without a console window, as your user' : 'Run with sh -c, detached, as your user'"
       @update:model-value="set('cmd', $event)"
     />
 
@@ -256,9 +257,9 @@ function test() {
       v-else-if="type === 'open'"
       :model-value="a.target ?? ''"
       label="URL, file or app"
-      placeholder="https://… or firefox.desktop"
+      :placeholder="onWindows ? 'https://… or C:\\path\\to\\app.exe' : 'https://… or firefox.desktop'"
       mono
-      help="Opened with xdg-open, or gtk-launch for a .desktop id"
+      :help="onWindows ? 'Opened by Windows: a URL, file, folder or program' : 'Opened with xdg-open, or gtk-launch for a .desktop id'"
       @update:model-value="set('target', $event)"
     />
 
