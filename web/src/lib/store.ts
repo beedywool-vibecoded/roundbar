@@ -18,6 +18,10 @@ export const iconSet = computed(() => new Set(icons.value))
 
 export const live = reactive<{ status: Status | null; connected: boolean }>({ status: null, connected: false })
 export const daemonUp = computed(() => live.status?.daemon === true)
+// The PC runs Windows: the daemon says so, else the browser (it runs on the same PC).
+export const onWindows = computed(() =>
+  live.status?.os ? live.status.os === 'windows' : /Windows/i.test(navigator.userAgent),
+)
 
 // A window matches a profile entry by app id or by window class.
 export function focusKeys(): string[] {

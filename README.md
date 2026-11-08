@@ -280,6 +280,30 @@ Les jeux Steam apparaissent partout comme `steam_app_<id>`. `ROUNDBAR_DESKTOP=gn
 | `roundbar daemon` | Le pont entre la carte et le bureau (lancé par le service systemd) |
 | `roundbar install` | Installe le service, le lanceur et, sous GNOME, l'extension |
 
+<a name="windows"></a>
+### Windows 10 et 11
+
+Télécharge `roundbar-setup-windows-amd64.exe` dans la [dernière release](https://github.com/beedywool-vibecoded/roundbar/releases/latest)
+et lance-le : il installe Roundbar pour ton compte seulement (pas besoin d'être administrateur) dans
+`%LOCALAPPDATA%\Programs\Roundbar`, ajoute un raccourci au menu Démarrer et le lance à chaque ouverture de session.
+Roundbar vit alors dans la zone de notification : clic sur l'icône pour ouvrir le configurateur, clic droit pour
+l'état de la carte, « Start at login » et « Quit ». Il se désinstalle depuis Applications installées ; la
+configuration (`%APPDATA%\roundbar`) reste. `roundbar-windows-amd64.exe` (et `-arm64`) est le même programme seul :
+`roundbar install` le lance à l'ouverture de session et crée le raccourci, `roundbar uninstall` les retire.
+
+| Fonction | Sous Windows |
+| --- | --- |
+| App au premier plan, profils | oui : l'id est le nom de l'exécutable sans `.exe` (`firefox`, `code`, `discord`), les jeux Steam restent `steam_app_<id>` |
+| Fenêtres | oui |
+| Presse-papiers | oui (ce que les gestionnaires de mots de passe marquent comme privé est ignoré) |
+| Lecture en cours, pochette | oui (la session média que Windows affiche dans son volet volume) |
+| Volume, micro, mixeur par app | oui |
+| Jauges | CPU, RAM, charge GPU et VRAM ; température GPU pour NVIDIA ; pas de température CPU |
+| Disposition clavier auto | oui, celle de la fenêtre active |
+| Notifications du PC | non : Windows ne montre les notifications des autres apps qu'aux apps empaquetées |
+| Jeu Steam, OBS, Discord | oui ; pour Vesktop, ajoute `--remote-debugging-port=9337` à la cible de son raccourci |
+| MangoHud | non (Linux seulement) |
+
 <br>
 
 <a name="firmware"></a>
@@ -343,12 +367,13 @@ du configurateur fait la même chose.
 </tr>
 <tr><td><code>docs/spec.md</code></td><td>Le contrat entre toutes les parties : config, protocole série, socket du daemon, API du configurateur.</td></tr>
 <tr><td><code>firmware/</code></td><td>ESP-IDF 6 + LVGL 9.3 en C : pages Material 3 Expressive sur l'écran rond, clavier et souris USB, lien série CDC.</td></tr>
-<tr><td><code>cmd/roundbar</code></td><td>Point d'entrée : <code>daemon</code>, <code>config</code>, <code>status</code>, <code>screenshot</code>, <code>bootloader</code>, <code>install</code>.</td></tr>
+<tr><td><code>cmd/roundbar</code></td><td>Point d'entrée : <code>daemon</code>, <code>config</code>, <code>status</code>, <code>screenshot</code>, <code>bootloader</code>, <code>install</code> ; sous Windows aussi l'icône de la zone de notification (<code>tray</code>).</td></tr>
 <tr><td><code>internal/config</code></td><td>Lecture, validation et surveillance (inotify) de <code>~/.config/roundbar/config.json</code>.</td></tr>
 <tr><td><code>internal/daemon</code></td><td>Le pont événementiel entre la carte et le bureau.</td></tr>
 <tr><td><code>internal/device</code></td><td>Connexion USB CDC et messages JSON avec la carte.</td></tr>
-<tr><td><code>internal/desktop</code></td><td>Focus, fenêtres, notifications et presse-papiers selon le bureau (extension GNOME, script KWin, protocoles Wayland, X11), MPRIS.</td></tr>
-<tr><td><code>internal/audio</code></td><td>Volume, micro et mixeur par app (PipeWire).</td></tr>
+<tr><td><code>internal/desktop</code></td><td>Focus, fenêtres, notifications et presse-papiers selon le bureau (extension GNOME, script KWin, protocoles Wayland, X11, Win32), MPRIS ou les sessions média de Windows.</td></tr>
+<tr><td><code>internal/audio</code></td><td>Volume, micro et mixeur par app (PipeWire, Core Audio sous Windows).</td></tr>
+<tr><td><code>internal/win</code></td><td>La petite couche Windows sans cgo : appels COM et WinRT, objets COM en Go, fenêtres cachées avec leur boucle de messages.</td></tr>
 <tr><td><code>internal/stats</code></td><td>CPU, RAM, GPU et températures lus dans <code>/proc</code>, hwmon, amdgpu, le fdinfo DRM (Intel i915/xe) et un <code>nvidia-smi</code> lancé seulement pendant l'affichage d'une jauge GPU.</td></tr>
 <tr><td><code>internal/cover</code></td><td>Pochettes : fond flouté et palette tirée de l'image.</td></tr>
 <tr><td><code>internal/assets</code></td><td>Images des pages image, rendues au format de la carte.</td></tr>
@@ -362,7 +387,7 @@ du configurateur fait la même chose.
 <tr><td><code>shared/icons.json</code></td><td>Le sous-ensemble de Material Symbols Rounded intégré au firmware.</td></tr>
 <tr><td><code>shared/keymaps.json</code></td><td>Les dispositions clavier, source unique de la table du firmware, de la validation et du configurateur. Ajouter une disposition : <code>tools/keymap-from-xkb.py</code>, coller l'entrée, puis <code>go run ./tools/gen-keymaps</code>.</td></tr>
 <tr><td><code>tools/</code></td><td><code>flash.sh</code>, <code>fontpack</code> (pack de glyphes CJK et emoji), <code>gen-icons.py</code>, <code>gen-keymaps</code>, <code>keymap-from-xkb.py</code>, <code>readme-assets.py</code>.</td></tr>
-<tr><td><code>deploy/</code></td><td>Règle udev <code>70-roundbar.rules</code>.</td></tr>
+<tr><td><code>deploy/</code></td><td>Règle udev <code>70-roundbar.rules</code>, installateur Windows (<code>windows/roundbar.nsi</code>, NSIS).</td></tr>
 </table>
 
 <br>
@@ -374,6 +399,7 @@ du configurateur fait la même chose.
 ```sh
 make                                              # configurateur + binaire Go dans bin/roundbar
 make test                                         # go test ./...
+make windows                                      # bin/roundbar.exe (compilé depuis Linux, sans cgo), et l'installateur si makensis est là
 make firmware                                     # idf.py build, ESP-IDF chargé
 make flash                                        # compile et flashe la carte
 go run ./tools/fontpack -out firmware/build/fonts.bin   # reconstruit le pack de glyphes
@@ -393,9 +419,10 @@ go run ./tools/fontpack -out firmware/build/fonts.bin   # reconstruit le pack de
 
 Les visuels de ce README se régénèrent avec `python3 tools/readme-assets.py`.
 
-La CI GitHub Actions vérifie le Go (`gofmt`, `vet`, tests avec `-race`), le configurateur et le firmware
-(conteneur `espressif/idf:v6.0.3`). Un tag `v*` publie une release avec le binaire (amd64, arm64) et le
-firmware avec son pack de glyphes.
+La CI GitHub Actions vérifie le Go (`gofmt`, `vet`, tests avec `-race`, `vet` et compilation pour Windows),
+le configurateur et le firmware (conteneur `espressif/idf:v6.0.3`). Un tag `v*` publie une release avec le
+binaire Linux (amd64, arm64), l'exe Windows (amd64, arm64) et son installateur NSIS, et le firmware avec son
+pack de glyphes.
 
 </details>
 

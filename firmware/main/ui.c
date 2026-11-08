@@ -2730,8 +2730,9 @@ void ui_mangohud(cJSON *m)
     else lv_obj_remove_flag(mh.hint, LV_OBJ_FLAG_HIDDEN);
     if (!on) {
         const char *h = jstr(m, "hint");
-        lv_label_set_text(mh.hint, h && !strcmp(h, "waiting") ? "Waiting for MangoHud…"
-                                                               : "Start a game with MangoHud (restart games that were already running)");
+        lv_label_set_text(mh.hint, h && !strcmp(h, "waiting")       ? "Waiting for MangoHud…"
+                                   : h && !strcmp(h, "unsupported") ? "MangoHud isn't available on this PC"
+                                                                    : "Start a game with MangoHud (restart games that were already running)");
         lv_label_set_text(mh.fps, "–");
         for (int i = 0; i < 2; i++) {
             lv_arc_set_value(mh.arc[i], 0);

@@ -14,7 +14,7 @@ import ObsCard from '@/components/ObsCard.vue'
 import BackupCard from '@/components/BackupCard.vue'
 import type { ImageBinding } from '@/lib/assets'
 import { LIMITS, PAGE_TYPES, ROTATIONS } from '@/lib/model'
-import { config, daemonUp, findProfile, issuesUnder, live } from '@/lib/store'
+import { config, daemonUp, findProfile, issuesUnder, live, onWindows } from '@/lib/store'
 import type { EdgeDoubleTap, KeyboardLayout } from '@/lib/types'
 import { LAYOUTS, layoutName } from '@/lib/layouts'
 
@@ -37,6 +37,7 @@ const backendNames: Record<string, string> = {
   kde: 'KDE Plasma (KWin script)',
   wayland: 'Wayland (foreign toplevel)',
   x11: 'X11 (EWMH)',
+  windows: 'Windows',
   none: 'unsupported',
 }
 const missing = computed(() => {
@@ -115,10 +116,16 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
             <M3Shape kind="clover" :size="72" fill="var(--tc)" />
             <div>
               <div class="big">The daemon isn't running</div>
-              <p class="muted small">
-                You can still edit and save: the daemon picks the config up when it starts. To start it now and at every login:
+              <p v-if="onWindows" class="muted small">
+                You can still edit and save: the daemon picks the config up when it starts. Start <b>Roundbar</b> from the Start menu:
+                it lives in the notification area and starts at every login.
               </p>
-              <pre class="cmd"><code>systemctl --user enable --now roundbar</code></pre>
+              <template v-else>
+                <p class="muted small">
+                  You can still edit and save: the daemon picks the config up when it starts. To start it now and at every login:
+                </p>
+                <pre class="cmd"><code>systemctl --user enable --now roundbar</code></pre>
+              </template>
             </div>
           </div>
 
