@@ -43,8 +43,9 @@ CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_USE_PERF_MONITOR=n
 CONFIG_LV_USE_SYSMON=n
 
-# Image pages: JPEG + GIF decoders, decoded images cached in PSRAM
-CONFIG_LV_USE_TJPGD=y
+# Image pages: GIF decoder; JPEGs are decoded by esp_jpeg into RGB565
+# LVGL's own TJpgDec copy clashes with esp_jpeg (same symbols); images use esp_jpeg
+CONFIG_LV_USE_TJPGD=n
 CONFIG_LV_USE_GIF=y
 CONFIG_LV_CACHE_DEF_SIZE=3145728
 CONFIG_FATFS_LFN_HEAP=y
