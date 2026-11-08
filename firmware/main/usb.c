@@ -75,6 +75,7 @@ typedef struct {
     hid_kind_t kind;
     char arg[72];
     char ack[16];
+    uint16_t hold; // ms a key combo stays down (0 = a normal tap)
 } hid_job_t;
 static QueueHandle_t hid_q;
 
@@ -244,6 +245,15 @@ static bool wait_ready(void)
     return false;
 }
 
+static void tap_hold(uint8_t mods, uint8_t key, int hold_ms)
+{
+    uint8_t keys[6] = {key, 0, 0, 0, 0, 0};
+    if (wait_ready()) tud_hid_keyboard_report(RID_KBD, mods, key ? keys : NULL);
+    vTaskDelay(pdMS_TO_TICKS(hold_ms));
+    if (wait_ready()) tud_hid_keyboard_report(RID_KBD, 0, NULL);
+    vTaskDelay(pdMS_TO_TICKS(12));
+}
+
 static void tap(uint8_t mods, uint8_t key)
 {
     uint8_t keys[6] = {key, 0, 0, 0, 0, 0};
@@ -279,6 +289,8 @@ static void hid_task(void *arg)
                     if (wait_ready()) tud_hid_keyboard_report(RID_KBD, mods, NULL);
                     vTaskDelay(pdMS_TO_TICKS(30));
                     if (wait_ready()) tud_hid_keyboard_report(RID_KBD, 0, NULL);
+                } else if (job.hold) {
+                    tap_hold(mods, key, job.hold);
                 } else {
                     tap(mods, key);
                 }
@@ -318,6 +330,14 @@ static void hid_task(void *arg)
             usb_send_line(buf);
         }
     }
+}
+
+void usb_hid_hold(const char *keys, int hold_ms, const char *ack_id)
+{
+    hid_job_t job = {.kind = HID_KEYS, .hold = (uint16_t)(hold_ms < 1 ? 1 : hold_ms > 2000 ? 2000 : hold_ms)};
+    strlcpy(job.arg, keys ? keys : "", sizeof(job.arg));
+    strlcpy(job.ack, ack_id ? ack_id : "", sizeof(job.ack));
+    xQueueSend(hid_q, &job, pdMS_TO_TICKS(50));
 }
 
 void usb_hid(hid_kind_t kind, const char *arg, const char *ack_id)

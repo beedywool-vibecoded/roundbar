@@ -15,6 +15,8 @@ void usb_send_line(const char *json); // appends '\n'
 typedef enum { HID_KEYS, HID_TEXT, HID_MEDIA, HID_MOUSE } hid_kind_t;
 // Queue a keyboard job. `ack_id` (may be NULL) gets an {"t":"ack"} once typed.
 void usb_hid(hid_kind_t kind, const char *arg, const char *ack_id);
+// A key combo held for hold_ms (for programs that poll the keyboard, e.g. MangoHud every 100 ms).
+void usb_hid_hold(const char *keys, int hold_ms, const char *ack_id);
 
 // Mouse (touchpad pages). Movement and wheel accumulate and are sent in batches;
 // buttons: bit0 left, bit1 right.

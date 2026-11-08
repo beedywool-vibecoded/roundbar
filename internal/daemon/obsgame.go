@@ -131,29 +131,34 @@ func (d *Daemon) startMango() {
 	d.mangoStop = stop
 	d.mu.Unlock()
 	go func() {
-		var pressedIn string // the app the shortcut was typed into
-		s := mangohud.Start(mangohud.Keys{
-			Press: func(keys string) {
-				d.mu.Lock()
-				pressedIn = d.focus.ID
-				d.mu.Unlock()
-				log.Printf("mangohud: pressing %s in %s to toggle logging", keys, pressedIn)
-				d.send(map[string]any{"t": "hid", "keys": keys})
-			},
-			// only into an app with its own profile (a game), never into a terminal,
-			// and the second press only into the app that got the first
-			Focused: func() bool {
-				d.mu.Lock()
-				defer d.mu.Unlock()
-				pid, _ := d.profileFor(d.focus)
-				return d.focus.ID != "" && pid != "default" && (pressedIn == "" || d.focus.ID == pressedIn)
-			},
-		})
+		s := mangohud.Start()
 		defer s.Stop()
 		t := time.NewTicker(500 * time.Millisecond)
 		defer t.Stop()
+		began := time.Now()
+		primed := false
+		want := map[string]bool{"cpu": true, "gpu": true, "cpuTemp": true, "gpuTemp": true, "vram": true, "ram": true}
 		for {
 			sn := s.Poll()
+			// Some games never let MangoHud log (DirectX 12 under Proton): after a
+			// few seconds, show what Roundbar measures itself, without FPS.
+			if !sn.Active && sn.Hint == "waiting" && time.Since(began) > 4*time.Second { // a game runs, but no data
+				if !primed {
+					d.stats.Sample(want) // CPU load is relative to the previous call
+					primed = true
+				}
+				msg := map[string]any{"t": "mangohud", "active": false, "fallback": true}
+				for k, v := range d.stats.Sample(want) {
+					msg[k] = v
+				}
+				d.send(msg)
+				select {
+				case <-stop:
+					return
+				case <-t.C:
+				}
+				continue
+			}
 			d.send(map[string]any{"t": "mangohud", "active": sn.Active, "hint": sn.Hint, "fps": sn.FPS, "ft": sn.Frametime,
 				"avg": sn.Avg, "low": sn.Low1, "cpu": sn.CPU, "gpu": sn.GPU, "cpuTemp": sn.CPUTemp, "gpuTemp": sn.GPUTemp,
 				"power": sn.Power, "vram": sn.VRAM, "graph": sn.Graph})

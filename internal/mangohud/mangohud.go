@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -45,7 +46,7 @@ func ConfPath() string {
 }
 
 type conf struct {
-	output, control, toggle string
+	output, control string
 }
 
 func readConf(raw []byte) conf {
@@ -57,8 +58,6 @@ func readConf(raw []byte) conf {
 			c.output = strings.TrimSpace(v)
 		case "control":
 			c.control = strings.TrimSpace(v)
-		case "toggle_logging":
-			c.toggle = strings.TrimSpace(v)
 		}
 	}
 	return c
@@ -175,10 +174,6 @@ type Session struct {
 	prefix, dir string
 	before      map[string]bool // files in the log folder before we started
 	conns       map[string]*ctl
-	keys        Keys
-	combo       string // MangoHud's toggle_logging in board syntax
-	started     time.Time
-	keyOn       bool // we pressed the shortcut to start logging
 	tails       map[string]*tail
 	lastScan    time.Time
 }
@@ -195,48 +190,11 @@ func logDir(c conf) string {
 	return home
 }
 
-// Keys lets the session press MangoHud's logging shortcut through the board
-// (a USB keyboard) when the control socket doesn't reach the game: some games
-// (several graphics instances, e.g. DX12 + anti-cheat) never service it, while
-// MangoHud's keybinds always reach the instance that draws.
-type Keys struct {
-	Press   func(keys string) // types a key combo, e.g. "shift+f2"
-	Focused func() bool       // the game still has the focus
-}
-
-// toggleKeys converts MangoHud's toggle_logging (XKB names joined by +, default
-// Shift_L+F2) to the board's key syntax; "" when it can't be typed.
-func toggleKeys(v string) string {
-	if v == "" {
-		v = "Shift_L+F2"
-	}
-	var out []string
-	for _, k := range strings.Split(v, "+") {
-		k = strings.TrimSpace(k)
-		switch strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(k, "_L"), "_R")) {
-		case "shift":
-			out = append(out, "shift")
-		case "control", "ctrl":
-			out = append(out, "ctrl")
-		case "alt", "meta":
-			out = append(out, "alt")
-		case "super":
-			out = append(out, "super")
-		default:
-			if len(k) == 0 {
-				return ""
-			}
-			out = append(out, strings.ToLower(k))
-		}
-	}
-	return strings.Join(out, "+")
-}
-
-func Start(keys Keys) *Session {
+func Start() *Session {
 	raw, _ := os.ReadFile(ConfPath())
 	c := readConf(raw)
 	s := &Session{prefix: socketPrefix(c.control), dir: logDir(c), before: map[string]bool{}, conns: map[string]*ctl{},
-		tails: map[string]*tail{}, keys: keys, combo: toggleKeys(c.toggle), started: time.Now()}
+		tails: map[string]*tail{}}
 	for _, f := range s.csvs() {
 		// a log still being written (left running by an earlier visit) is adopted, not ignored
 		if st, err := os.Stat(f); err == nil && time.Since(st.ModTime()) > 3*time.Second {
@@ -260,6 +218,7 @@ type ctl struct {
 	c        net.Conn
 	finished chan struct{} // one value per "LoggingFinished"
 	dead     chan struct{} // closed when the game (or its socket) goes away
+	answered atomic.Bool   // MangoHud accepted us (it greets each client)
 }
 
 var pool = struct {
@@ -298,6 +257,9 @@ func control(name string) *ctl {
 		var seen []byte
 		for {
 			n, err := c.Read(buf)
+			if n > 0 {
+				k.answered.Store(true)
+			}
 			seen = append(seen, buf[:n]...)
 			for bytes.Contains(seen, []byte("LoggingFinished")) {
 				_, after, _ := bytes.Cut(seen, []byte("LoggingFinished"))
@@ -369,13 +331,7 @@ func (s *Session) Poll() Snapshot {
 		}
 	}
 	if best == nil {
-		// Nothing logged yet: if the socket didn't do it, press the shortcut once.
-		if !s.keyOn && len(s.tails) == 0 && s.combo != "" && s.keys.Press != nil && time.Since(s.started) > 1500*time.Millisecond &&
-			(s.keys.Focused == nil || s.keys.Focused()) {
-			s.keys.Press(s.combo)
-			s.keyOn = true
-		}
-		if len(s.conns) == 0 && !s.keyOn {
+		if len(s.conns) == 0 {
 			return Snapshot{Hint: "noGame"}
 		}
 		return Snapshot{Hint: "waiting"}
@@ -513,17 +469,26 @@ wait:
 			break wait
 		}
 	}
-	// Logging we started with the shortcut: press it again if it's still running,
-	// but only while the game has the focus (never type it into another app).
-	if s.keyOn && s.growing() && (s.keys.Focused == nil || s.keys.Focused()) {
-		s.keys.Press(s.combo)
-		time.Sleep(time.Second) // MangoHud writes the summary
+	// Delete only logs we caused: our socket request was accepted by a game.
+	// Logs started with MangoHud's own shortcut are the user's and stay.
+	if !s.accepted() {
+		return
 	}
 	for _, f := range s.csvs() {
-		if !s.before[f] && !growingFile(f) { // a log left running is reused next visit
+		if !s.before[f] && !growingFile(f) {
 			_ = os.Remove(f)
 		}
 	}
+}
+
+// accepted reports whether a game answered one of this session's connections.
+func (s *Session) accepted() bool {
+	for _, k := range s.conns {
+		if k.answered.Load() {
+			return true
+		}
+	}
+	return false
 }
 
 func growingFile(f string) bool {
@@ -534,14 +499,4 @@ func growingFile(f string) bool {
 	time.Sleep(400 * time.Millisecond)
 	b, err := os.Stat(f)
 	return err == nil && b.Size() > a.Size()
-}
-
-// growing reports whether a log of this session is still being written.
-func (s *Session) growing() bool {
-	for f := range s.tails {
-		if growingFile(f) {
-			return true
-		}
-	}
-	return false
 }

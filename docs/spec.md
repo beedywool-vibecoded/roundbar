@@ -244,7 +244,7 @@ originals), save `config.json`, then push it back once so both sides share the n
 | `volume` | `value: 0..100`, `muted: bool` | on change, and once when a page that shows volume becomes visible |
 | `mic` | `muted: bool`, `value: 0..100` | same |
 | `stats` | any of `cpu ram gpu vram` (0..100 %), `cpuTemp gpuTemp` (°C) | every 1.5 s while a `stats` page is visible and the screen is awake. GPU: a discrete one if any (most VRAM first), else the one driving a display. AMD: sysfs. NVIDIA: a long-lived `nvidia-smi -lms` child, running only while a page with a GPU gauge is shown. Intel (i915/xe): load from the DRM fdinfo of the user's own processes (no root needed), else current/max frequency; temperature from hwmon where exposed (discrete cards); no VRAM. Keys the GPU can't provide are left out. |
-| `hid` | `keys?: string`, `text?: string`, `media?: string` | macro steps and configurator tests, typed by the device. With an `id`, acked once typed. |
+| `hid` | `keys?: string`, `text?: string`, `media?: string`, `hold?: ms` | macro steps and configurator tests, typed by the device. With an `id`, acked once typed. `hold` keeps a `keys` combo down that long (1..2000 ms; for programs that poll the keyboard, like MangoHud every 100 ms); older firmware ignores it and taps. |
 | `show` | `profile`, `page` | configurator preview: jump to a page |
 | `bootloader` | – | reboot into the ROM USB download mode (for flashing) |
 | `time` | `epoch` (unix s), `offset` (local UTC offset, s), `zones: {tz: offset}` | on connect and every hour (DST); the device keeps time from it |
