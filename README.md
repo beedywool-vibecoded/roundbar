@@ -18,6 +18,8 @@
 <img src="https://img.shields.io/badge/USB-clavier_%2B_souris-4F378B?style=flat-square" alt="Clavier et souris USB">
 <img src="https://img.shields.io/badge/daemon-~0%25_CPU_%C2%B7_15_Mo-4A4458?style=flat-square" alt="Daemon ~0 % CPU, 15 Mo">
 <img src="https://img.shields.io/badge/binaire-1_fichier-633B48?style=flat-square" alt="Un seul binaire">
+<img src="https://github.com/beedywool-vibecoded/roundbar/actions/workflows/ci.yml/badge.svg" alt="CI">
+<img src="https://img.shields.io/badge/licence-MIT-4F378B?style=flat-square" alt="Licence MIT">
 
 <br>
 <br>
@@ -140,7 +142,7 @@
 <td width="33%" valign="top">
 
 ### Profils par app
-Chaque app a son **profil** et ses pages. La carte bascule **dès que le focus change**, et
+Chaque app a son **profil** et ses pages, avec des **jokers** (`steam_app_*` pour tous les jeux Steam). La carte bascule **dès que le focus change**, et
 retient la **dernière page vue** de chaque profil. La bascule automatique se met en pause depuis
 les réglages rapides, avec un badge en haut de l'écran. Chaque profil peut avoir **sa propre couleur**.
 
@@ -188,6 +190,9 @@ passe sont ignorées).
 appui long pour cliquer, glisser-déposer, anneau de défilement). **Discord** : ton salon vocal en direct
 (membres, qui parle, qui est coupé) depuis Vesktop, via son port de débogage local, sans modifier
 Vesktop ni Vencord ; ou via le RPC du client officiel, avec couper le micro, le son, quitter.
+**OBS** : bouton d'enregistrement avec sa durée, badge **LIVE** et scènes en anneau, via le WebSocket
+d'OBS (marche même quand OBS n'est pas au premier plan). **Jeu** : le jeu Steam en cours avec son
+illustration floutée, le temps de session et les jauges GPU.
 
 </td>
 </tr>
@@ -221,8 +226,9 @@ raccourcis marchent même sans le logiciel côté PC.
 
 **Le configurateur.** Un aperçu rond en direct, dessiné avec **la même mise en page que la carte**, une
 couleur de base **Material You**, le copier-coller de pages d'un profil à l'autre, un bouton de
-**mise à jour du firmware** avec son log en direct, et des captures de l'écran de la carte avec
-`roundbar screenshot out.png`.
+**mise à jour du firmware** avec son log en direct, **annuler / rétablir** (Ctrl+Z, Ctrl+Maj+Z), une
+**sauvegarde** en zip (config et images) qu'on restaure en un clic, un préréglage **OBS** prêt à
+l'emploi, et des captures de l'écran de la carte avec `roundbar screenshot out.png`.
 
 <br>
 
@@ -366,7 +372,17 @@ go run ./tools/fontpack -out firmware/build/fonts.bin   # reconstruit le pack de
 
 Les visuels de ce README se régénèrent avec `python3 tools/readme-assets.py`.
 
+La CI GitHub Actions vérifie le Go (`gofmt`, `vet`, tests avec `-race`), le configurateur et le firmware
+(conteneur `espressif/idf:v6.0.3`). Un tag `v*` publie une release avec le binaire (amd64, arm64) et le
+firmware avec son pack de glyphes.
+
 </details>
+
+<br>
+
+**Licence.** Code sous [licence MIT](LICENSE). Polices embarquées : Google Sans Flex (SIL OFL 1.1) et
+Material Symbols (Apache 2.0). La séquence d'initialisation de l'écran ST77916 vient de la config ESPHome
+communautaire [clowrey/esphome-guition-360x360-jc3636w518](https://github.com/clowrey/esphome-guition-360x360-jc3636w518).
 
 <br>
 
