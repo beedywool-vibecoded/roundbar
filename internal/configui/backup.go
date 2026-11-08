@@ -31,7 +31,7 @@ func (s *server) getBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="roundbar-backup-%s.zip"`, time.Now().Format("2006-01-02")))
 	zw := zip.NewWriter(w)
-	if f, err := zw.Create("config.json"); err == nil {
+	if f, err := zw.CreateHeader(&zip.FileHeader{Name: "config.json", Method: zip.Deflate, Modified: time.Now()}); err == nil {
 		_, _ = f.Write(raw)
 	}
 	files, _ := filepath.Glob(filepath.Join(assets.Dir(), "*"))
@@ -44,7 +44,7 @@ func (s *server) getBackup(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		if f, err := zw.CreateHeader(&zip.FileHeader{Name: "assets/" + name, Method: zip.Store}); err == nil {
+		if f, err := zw.CreateHeader(&zip.FileHeader{Name: "assets/" + name, Method: zip.Store, Modified: time.Now()}); err == nil {
 			_, _ = f.Write(b)
 		}
 	}

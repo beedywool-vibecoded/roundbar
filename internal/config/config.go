@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -320,6 +321,9 @@ func (c *Config) Validate() error {
 		for j, m := range p.Match {
 			if m == "" || m != strings.ToLower(m) || len(m) > 128 {
 				return fail(fmt.Sprintf("%s.match[%d]", pp, j), "must be a non-empty lowercase window class")
+			}
+			if _, err := path.Match(m, ""); err != nil {
+				return fail(fmt.Sprintf("%s.match[%d]", pp, j), "bad wildcard pattern")
 			}
 		}
 		if p.Seed != "" && !hexRe.MatchString(p.Seed) {
