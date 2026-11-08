@@ -2004,7 +2004,7 @@ static lv_obj_t *window_button(int k, cJSON *w, int size, bool center)
     lv_color_t bg = center ? P.pc : P.schh;
     lv_obj_t *b = mask_button(win_w.ring, center ? shortcut_center_shape() : SH_CIRCLE, size, bg);
     // icon sizes follow the shortcut glyphs (ring 32 px, center 44 px) a bit larger for colour icons
-    lv_obj_t *ic = app_icon(b, jstr(w, "icon"), "select_window", center ? P.on_pc : P.on_surface, center ? 256 : 192);
+    lv_obj_t *ic = app_icon(b, jstr(w, "icon"), "select_window", center ? P.on_pc : P.on_surface, center ? 300 : 192);
     lv_obj_center(ic);
     lv_obj_add_event_cb(b, window_event, LV_EVENT_CLICKED, win_ids[k]);
     return b;

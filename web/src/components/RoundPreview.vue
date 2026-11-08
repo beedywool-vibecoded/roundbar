@@ -347,7 +347,6 @@ const windows = computed(() => {
       const [x, y] = at(128, 270 + i * 45)
       return { icon, x, y }
     }),
-  },
   }
 })
 const CLIPS = [
@@ -610,7 +609,7 @@ const dots = computed(() => {
           <text class="sym" :x="w.x" :y="w.y" font-size="32" :fill="p.onSurface">{{ w.icon }}</text>
         </g>
         <path :d="buttonPath('square', 0, 0, 112)" :fill="p.primaryContainer" />
-        <text class="sym" x="0" y="0" font-size="44" :fill="p.onPrimaryContainer">{{ windows.center }}</text>
+        <text class="sym" x="0" y="0" font-size="52" :fill="p.onPrimaryContainer">{{ windows.center }}</text>
       </template>
 
       <!-- Clipboard -->
