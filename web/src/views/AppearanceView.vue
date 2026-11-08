@@ -1,0 +1,224 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import Icon from '@/components/Icon.vue'
+import RoundPreview from '@/components/RoundPreview.vue'
+import { SEEDS, devicePalette, validHex } from '@/lib/theme'
+import { config } from '@/lib/store'
+import { PALETTE_ROLES, type Page, type ThemeMode } from '@/lib/types'
+
+const theme = computed(() => config.value!.theme)
+const palette = computed(() => devicePalette(theme.value.seed, theme.value.mode))
+const isPreset = computed(() => SEEDS.some((s) => s.hex.toLowerCase() === theme.value.seed.toLowerCase()))
+
+// Custom color: typed hex, applied once valid
+const hex = ref(theme.value.seed)
+watch(
+  () => theme.value.seed,
+  (s) => (hex.value = s),
+)
+watch(hex, (h) => {
+  const v = h.startsWith('#') ? h : `#${h}`
+  if (validHex(v) && v.toLowerCase() !== theme.value.seed.toLowerCase()) theme.value.seed = v.toUpperCase()
+})
+function onPicker(e: Event) {
+  theme.value.seed = (e.target as HTMLInputElement).value.toUpperCase()
+}
+
+const MODES: { id: ThemeMode; label: string; icon: string }[] = [
+  { id: 'dark', label: 'Dark', icon: 'dark_mode' },
+  { id: 'light', label: 'Light', icon: 'light_mode' },
+]
+
+// One page of each kind from the config, so the preview shows the user's own buttons
+const samples = computed<Page[]>(() => {
+  const all = config.value!.profiles.flatMap((p) => p.pages)
+  const out: Page[] = []
+  for (const t of ['radial', 'media', 'stats', 'dial'] as const) {
+    const p = all.find((x) => x.type === t)
+    if (p) out.push(p)
+  }
+  return out.length ? out : all.slice(0, 1)
+})
+const sample = ref(0)
+const shown = computed(() => samples.value[Math.min(sample.value, samples.value.length - 1)])
+const selected = computed(() => (shown.value?.type === 'radial' ? (shown.value.buttons[0]?.id ?? null) : null))
+</script>
+
+<template>
+  <div class="page">
+    <div class="page-title"><h1>Appearance</h1></div>
+
+    <div class="cols">
+      <section class="card">
+        <div class="card-head"><h2>Device theme</h2></div>
+        <div class="setting col">
+          <div>
+            <div>Seed color</div>
+            <div class="muted small">The device palette is generated from it with Material You's tonal spot scheme. This configurator follows it too.</div>
+          </div>
+          <div class="seeds" role="radiogroup" aria-label="Seed color">
+            <button
+              v-for="s in SEEDS"
+              :key="s.hex"
+              type="button"
+              role="radio"
+              class="seed"
+              :class="{ on: theme.seed.toLowerCase() === s.hex.toLowerCase() }"
+              :aria-checked="theme.seed.toLowerCase() === s.hex.toLowerCase()"
+              :aria-label="s.name"
+              v-tip="s.name"
+              :style="{ background: s.hex }"
+              @click="theme.seed = s.hex"
+            />
+            <label class="seed custom" :class="{ on: !isPreset }" v-tip="'Custom color'" :style="!isPreset ? { background: theme.seed } : undefined">
+              <Icon v-if="isPreset" name="palette" :size="20" />
+              <input type="color" class="sr-only" :value="theme.seed" aria-label="Custom color" @input="onPicker" />
+            </label>
+          </div>
+          <label class="tf hex" :class="{ invalid: !validHex(hex.startsWith('#') ? hex : `#${hex}`) }">
+            <span class="lbl">Hex</span>
+            <span class="in">
+              <span class="sw" :style="{ background: theme.seed }" />
+              <input v-model="hex" maxlength="7" spellcheck="false" style="font-family: var(--mono)" />
+            </span>
+          </label>
+        </div>
+        <div class="setting">
+          <div class="grow">
+            <div>Mode</div>
+            <div class="muted small">For the device only. This page follows your system's dark or light setting.</div>
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Device mode">
+            <button
+              v-for="m in MODES"
+              :key="m.id"
+              type="button"
+              role="radio"
+              class="st"
+              :class="{ on: theme.mode === m.id }"
+              :aria-checked="theme.mode === m.id"
+              @click="theme.mode = m.id"
+            >
+              <Icon :name="m.icon" :size="18" /> {{ m.label }}
+            </button>
+          </div>
+        </div>
+        <div class="setting col">
+          <div>
+            <div>Palette sent to the device</div>
+            <div class="muted small">Computed again on every save.</div>
+          </div>
+          <div class="roles">
+            <div v-for="r in PALETTE_ROLES" :key="r" class="role">
+              <span class="sw" :style="{ background: palette[r] }" />
+              <span class="small ellipsis">{{ r }}</span>
+              <code class="plain small muted">{{ palette[r] }}</code>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card preview-card">
+        <div class="card-head"><h2>Preview</h2></div>
+        <div class="preview-wrap">
+          <RoundPreview v-if="shown" :page="shown" :palette="palette" :selected="selected" />
+        </div>
+        <div v-if="samples.length > 1" class="seg" role="tablist" aria-label="Sample page">
+          <button v-for="(p, i) in samples" :key="i" type="button" role="tab" class="st" :class="{ on: sample === i }" :aria-selected="sample === i" @click="sample = i">
+            {{ p.type === 'radial' ? 'Buttons' : p.type[0]!.toUpperCase() + p.type.slice(1) }}
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.seeds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.seed {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  border: none;
+  padding: 0;
+  transition: box-shadow 0.2s var(--ease);
+}
+.seed.on {
+  box-shadow:
+    0 0 0 3px var(--sc),
+    0 0 0 5px var(--on-surface);
+}
+.seed.custom {
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: var(--schh);
+  color: var(--on-sv);
+  border: 1px dashed var(--outline);
+}
+.seed.custom.on {
+  border: none;
+}
+.hex {
+  max-width: 220px;
+}
+.sw {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--on-surface) 20%, transparent);
+}
+.roles {
+  display: grid;
+  grid-auto-rows: min-content;
+  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 20px;
+}
+.role {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.preview-card {
+  position: sticky;
+  top: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.preview-card .card-head {
+  align-self: stretch;
+}
+.preview-wrap {
+  width: min(100%, 340px);
+  padding: 11px;
+}
+@media (max-width: 560px) {
+  .roles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 1000px) {
+  .cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .preview-card {
+    position: static;
+    order: -1;
+  }
+}
+</style>

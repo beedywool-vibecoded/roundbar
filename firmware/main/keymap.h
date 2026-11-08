@@ -1,0 +1,22 @@
+#pragma once
+#include <stdbool.h>
+#include <stdint.h>
+
+#define MOD_CTRL  0x01
+#define MOD_SHIFT 0x02
+#define MOD_ALT   0x04
+#define MOD_SUPER 0x08
+#define MOD_ALTGR 0x40
+
+typedef struct {
+    uint8_t mods, key;
+} keystroke_t;
+
+// "ctrl+shift+t" -> modifiers + HID usage. Letters name the character typed on
+// the host layout ("fr" or "us"). A lone modifier gives key = 0.
+bool keymap_combo(const char *combo, const char *layout, uint8_t *mods, uint8_t *key);
+// Consumes one UTF-8 character from *p and returns 0..2 keystrokes for it
+// (2 for dead-key characters such as ^ on AZERTY).
+int keymap_char(const char **p, const char *layout, keystroke_t out[2]);
+// "play_pause" etc -> consumer usage, 0 if unknown.
+uint16_t keymap_media(const char *name);

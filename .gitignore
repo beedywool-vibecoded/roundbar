@@ -1,0 +1,9 @@
+/web/node_modules/
+/internal/configui/dist/*
+!/internal/configui/dist/.gitkeep
+/firmware/build/
+/firmware/managed_components/
+/firmware/sdkconfig
+/firmware/sdkconfig.old
+/firmware/dependencies.lock
+/bin/

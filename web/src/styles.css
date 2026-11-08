@@ -1,0 +1,646 @@
+/* Google Sans Flex (OFL), same self-hosted subset as the portfolio */
+@font-face {
+  font-family: 'Google Sans Flex';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/google-sans-flex-latin-ext.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Google Sans Flex';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/google-sans-flex-latin.woff2') format('woff2');
+  unicode-range:
+    U+0020-007E, U+00A0-00FF, U+0152-0153, U+2013-2014, U+2018-201E, U+2022, U+2026, U+20AC, U+2122;
+}
+
+/* Material Symbols Rounded (Apache 2.0), subset to the device icons (shared/icons.json)
+   plus the few the configurator itself uses. FILL and opsz axes kept. */
+@font-face {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('/fonts/material-symbols-rounded.woff2') format('woff2');
+}
+
+/* M3 color roles. theme.ts overwrites them from the seed color; these are the baseline
+   purple values so the first paint is already right. */
+:root {
+  color-scheme: dark;
+  --surface: #141218;
+  --scl: #1d1b20;
+  --sc: #211f26;
+  --sch: #2b2930;
+  --schh: #36343b;
+  --scc: #0f0d13;
+  --primary: #d0bcff;
+  --on-primary: #381e72;
+  --pc: #4f378b;
+  --on-pc: #eaddff;
+  --secc: #4a4458;
+  --on-secc: #e8def8;
+  --tertiary: #efb8c8;
+  --tc: #633b48;
+  --on-tc: #ffd8e4;
+  --error: #f2b8b5;
+  --on-error: #601410;
+  --ec: #8c1d18;
+  --on-ec: #f9dedc;
+  --on-surface: #e6e0e9;
+  --on-sv: #cac4d0;
+  --outline: #938f99;
+  --outline-v: #49454f;
+
+  /* Status, fixed across seeds so states always read the same */
+  --ok: #8fd694;
+  --on-ok: #0b3a12;
+  --warn: #f6c177;
+  --on-warn: #3a2600;
+  --bad: #f2b8b5;
+  --on-bad: #601410;
+
+  /* Chart series, validated for color vision deficiency on the dark surface */
+  --series-1: #9478e8;
+  --series-2: #1e9e81;
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --font: 'Google Sans Flex', 'Google Sans', 'Roboto Flex', system-ui, sans-serif;
+  --mono: 'Google Sans Code', ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --ok: #2e7d32;
+  --on-ok: #ffffff;
+  --warn: #8a5a00;
+  --on-warn: #ffffff;
+  --bad: #b3261e;
+  --on-bad: #ffffff;
+  --series-1: #6750a4;
+  --series-2: #008a73;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--surface);
+  color: var(--on-surface);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.45;
+}
+a {
+  color: var(--primary);
+}
+::selection {
+  background: var(--pc);
+  color: var(--on-pc);
+}
+
+/* Thin rounded scrollbars in the theme colors instead of the browser's */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--outline-v) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background: var(--outline-v) padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* M3 plain tooltip (lib/tooltip.ts) */
+.m3-tooltip {
+  position: fixed;
+  z-index: 100;
+  max-width: 280px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--on-surface);
+  color: var(--surface);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  opacity: 0;
+  translate: 0 4px;
+  transition:
+    opacity 0.15s,
+    translate 0.15s var(--ease);
+}
+.m3-tooltip.show {
+  opacity: 1;
+  translate: 0 0;
+}
+
+/* Number fields are plain text fields: no browser spinners */
+input[inputmode='numeric'] {
+  font-variant-numeric: tabular-nums;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+code,
+pre {
+  font-family: var(--mono);
+}
+/* Commands and technical values: monospace on a dark chip, apart from the prose */
+code {
+  padding: 0.1em 0.45em;
+  border: 1px solid var(--code-border, #49454f);
+  border-radius: 6px;
+  background: var(--code-bg, #0f0d13);
+  color: var(--code-fg, #e6e0e9);
+  font-size: 0.88em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+pre code {
+  padding: 0;
+  border: none;
+  background: none;
+}
+/* Paths shown as labels stay plain */
+code.plain {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+}
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 500;
+}
+
+/* State layer: hover and press tint in the content color, like M3 */
+.st {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.st::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.2s var(--ease);
+  pointer-events: none;
+}
+.st:hover:not(:disabled)::after {
+  opacity: 0.08;
+}
+.st:active:not(:disabled)::after {
+  opacity: 0.12;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 20px;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.btn-filled {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.btn-tonal {
+  background: var(--secc);
+  color: var(--on-secc);
+}
+.btn-outlined {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--outline);
+}
+.btn-text {
+  background: transparent;
+  color: var(--primary);
+  padding: 0 12px;
+}
+.btn-danger {
+  background: var(--error);
+  color: var(--on-error);
+}
+.btn-lg {
+  height: 48px;
+  padding: 0 28px;
+  border-radius: 24px;
+  font-size: 15px;
+}
+/* Outlined so icon-only buttons stay visible on a card */
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  border: 1px solid var(--outline-v);
+  background: transparent;
+  color: var(--on-sv);
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s var(--ease);
+}
+.icon-btn:hover:not(:disabled) {
+  border-color: var(--outline);
+}
+
+/* Surfaces */
+.card {
+  border-radius: 28px;
+  background: var(--sc);
+  padding: 20px 22px;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.card-head h2 {
+  font-size: 20px;
+  flex: 1;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--secc);
+  color: var(--on-secc);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chip-outline {
+  background: transparent;
+  color: var(--on-sv);
+  border: 1px solid var(--outline-v);
+  font-weight: 500;
+}
+.muted {
+  color: var(--on-sv);
+}
+.small {
+  font-size: 13px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 6px;
+  border-top: 1px solid var(--sch);
+  flex-wrap: wrap;
+}
+.row:first-of-type {
+  border-top: none;
+}
+.grow {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.page-title h1 {
+  font-size: 30px;
+  flex: 1;
+}
+
+/* M3 outlined text field */
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 16px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--on-sv);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field:hover {
+  border-color: var(--on-surface);
+}
+.field:focus-within {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+/* M3 search bar: filled pill */
+.field.search {
+  /* Don't shrink in a short flex column; the list scrolls instead. */
+  flex: none;
+  height: 56px;
+  min-height: 56px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 28px;
+  background: var(--schh);
+}
+.field.search:focus-within {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+.field input {
+  border: none;
+  background: none;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+  color: var(--on-surface);
+  font-size: 15px;
+}
+
+/* Loading placeholders (ShapeLoader) */
+.loading-block {
+  display: grid;
+  place-items: center;
+  padding: 36px 0;
+}
+
+/* Page transitions (App.vue) */
+.page-enter-active {
+  transition:
+    opacity 0.2s var(--ease-decel),
+    translate 0.26s var(--ease-decel);
+}
+.page-leave-active {
+  transition:
+    opacity 0.12s var(--ease),
+    translate 0.12s var(--ease);
+}
+.page-enter-from {
+  opacity: 0;
+  translate: 0 10px;
+}
+.page-leave-to {
+  opacity: 0;
+  translate: 0 -6px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* M3 filled text field, same look as M3Select */
+.tf {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 56px;
+  padding: 6px 16px;
+  border-radius: 12px 12px 4px 4px;
+  border-bottom: 1px solid var(--on-sv);
+  background: var(--schh);
+  transition: border-color 0.2s var(--ease);
+  min-width: 0;
+}
+.tf:focus-within {
+  border-bottom-color: var(--primary);
+  box-shadow: inset 0 -1px 0 var(--primary);
+}
+.tf.invalid {
+  border-bottom-color: var(--error);
+  box-shadow: inset 0 -1px 0 var(--error);
+}
+.tf .lbl {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--primary);
+}
+.tf.invalid .lbl {
+  color: var(--error);
+}
+.tf .count {
+  color: var(--on-sv);
+  font-variant-numeric: tabular-nums;
+}
+.tf .in {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tf input,
+.tf textarea {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--on-surface);
+  font-size: 16px;
+  resize: vertical;
+}
+.tf input::placeholder,
+.tf textarea::placeholder {
+  color: var(--on-sv);
+  opacity: 0.7;
+}
+.tf .suffix {
+  color: var(--on-sv);
+  font-size: 13px;
+}
+.tf-help {
+  margin: 4px 16px 0;
+  font-size: 12px;
+  color: var(--on-sv);
+}
+.tf-help.err {
+  color: var(--error);
+}
+
+/* M3 filter / input chips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--outline-v);
+  background: transparent;
+  color: var(--on-sv);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background 0.2s var(--ease),
+    padding 0.2s var(--ease);
+}
+.fchip.on {
+  padding-left: 8px;
+  border-color: transparent;
+  background: var(--secc);
+  color: var(--on-secc);
+}
+.fchip .x {
+  margin-right: -6px;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+/* M3 segmented button (same as the settings theme picker) */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--outline);
+  border-radius: 20px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 18px;
+  border: none;
+  background: transparent;
+  color: var(--on-surface);
+  font-size: 14px;
+  font-weight: 500;
+}
+.seg button + button {
+  border-left: 1px solid var(--outline);
+}
+.seg button.on {
+  background: var(--secc);
+  color: var(--on-secc);
+}
+
+/* Settings rows */
+.setting {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--sch);
+  flex-wrap: wrap;
+}
+.setting:first-of-type {
+  border-top: none;
+}
+/* Grid rather than a flex column: auto-fit rows inside get their height from the real
+   width, not from a one-column guess. */
+.setting.col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.section-label {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--on-sv);
+}
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 32px 16px;
+  text-align: center;
+}

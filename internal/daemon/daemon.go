@@ -1,0 +1,583 @@
+// Package daemon is the long-running bridge between the device and the desktop.
+// It is built to idle: every goroutine blocks on a channel, a socket or the
+// kernel, and the only timer (stats) runs while a stats page is on screen.
+package daemon
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os/exec"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/beedywool-vibecoded/roundbar/internal/audio"
+	"github.com/beedywool-vibecoded/roundbar/internal/config"
+	"github.com/beedywool-vibecoded/roundbar/internal/desktop"
+	"github.com/beedywool-vibecoded/roundbar/internal/device"
+	"github.com/beedywool-vibecoded/roundbar/internal/stats"
+)
+
+const statsEvery = 1500 * time.Millisecond
+
+type View struct {
+	Profile string `json:"profile"`
+	Page    string `json:"page"`
+	Kind    string `json:"kind"`
+	Awake   bool   `json:"awake"`
+}
+
+type hello struct {
+	FW    string `json:"fw"`
+	Proto int    `json:"proto"`
+	Cfg   string `json:"cfg"`
+}
+
+type Daemon struct {
+	mu               sync.Mutex
+	cfg              *config.Config
+	raw              []byte
+	sha              string
+	port             *device.Port
+	hello            hello
+	view             View
+	focus            desktop.Focus
+	recent           []desktop.Focus
+	sentPro          string
+	lastVol, lastMic string
+	acks             map[string]chan bool
+	ackSeq           int
+
+	desk  *desktop.Desktop
+	audio *audio.Audio
+	stats *stats.Reader
+
+	statsStop chan struct{}
+	watchers  map[chan struct{}]bool
+	done      chan struct{}
+}
+
+func New() *Daemon {
+	return &Daemon{acks: map[string]chan bool{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
+}
+
+func (d *Daemon) Run() error {
+	cfg, raw, err := config.Load()
+	if err != nil {
+		log.Printf("config: %v (using defaults until it is fixed)", err)
+		cfg = config.Default()
+		raw, _ = json.MarshalIndent(cfg, "", "  ")
+	}
+	d.setConfig(cfg, raw)
+	d.stats = stats.New()
+
+	if d.desk, err = desktop.Connect(); err != nil {
+		log.Printf("session bus: %v", err)
+	} else {
+		if f, ok := d.desk.CurrentFocus(); ok {
+			d.onFocus(f)
+		} else {
+			log.Printf("focus: GNOME extension not answering, per-app profiles disabled until it starts")
+		}
+		go d.desktopLoop()
+	}
+	go d.audioLoop()
+	go d.watchConfig()
+	go d.serveSocket()
+	d.deviceLoop() // blocks
+	return nil
+}
+
+func (d *Daemon) setConfig(c *config.Config, raw []byte) {
+	d.mu.Lock()
+	d.cfg, d.raw, d.sha = c, raw, config.Sha(raw)
+	d.mu.Unlock()
+}
+
+// ---- device -------------------------------------------------------------
+
+func (d *Daemon) deviceLoop() {
+	for {
+		path := device.Find()
+		if path == "" {
+			device.WaitHotplug(d.done)
+			continue
+		}
+		p, err := device.Open(path)
+		if err != nil {
+			log.Printf("open %s: %v", path, err)
+			device.WaitHotplug(d.done)
+			continue
+		}
+		log.Printf("device on %s", path)
+		d.mu.Lock()
+		d.port = p
+		d.sentPro, d.lastVol, d.lastMic = "", "", ""
+		d.mu.Unlock()
+		d.notify()
+		_ = p.Send(map[string]any{"t": "hello"})
+		err = p.Read(d.onDeviceMsg)
+		log.Printf("device gone: %v", err)
+		p.Close()
+		d.mu.Lock()
+		d.port = nil
+		d.view = View{}
+		d.hello = hello{}
+		d.mu.Unlock()
+		d.stopStats()
+		d.notify()
+		time.Sleep(300 * time.Millisecond)
+	}
+}
+
+func (d *Daemon) send(v any) {
+	d.mu.Lock()
+	p := d.port
+	d.mu.Unlock()
+	if p == nil {
+		return
+	}
+	if err := p.Send(v); err != nil {
+		log.Printf("send: %v", err)
+	}
+}
+
+// sendWait sends a message with an id and waits for the device's ack.
+func (d *Daemon) sendWait(m map[string]any, timeout time.Duration) bool {
+	d.mu.Lock()
+	d.ackSeq++
+	id := fmt.Sprintf("m%d", d.ackSeq)
+	ch := make(chan bool, 1)
+	d.acks[id] = ch
+	d.mu.Unlock()
+	defer func() { d.mu.Lock(); delete(d.acks, id); d.mu.Unlock() }()
+	m["id"] = id
+	d.send(m)
+	select {
+	case ok := <-ch:
+		return ok
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+func (d *Daemon) pushConfig() {
+	d.mu.Lock()
+	var buf bytes.Buffer
+	err := json.Compact(&buf, d.raw)
+	sha := d.sha
+	d.mu.Unlock()
+	if err != nil {
+		return
+	}
+	go func() {
+		if !d.sendWait(map[string]any{"t": "config", "cfg": json.RawMessage(buf.Bytes()), "sha": sha}, 5*time.Second) {
+			log.Printf("device did not ack the config")
+			return
+		}
+		d.mu.Lock()
+		d.hello.Cfg = sha
+		d.mu.Unlock()
+		d.notify()
+	}()
+}
+
+func (d *Daemon) onDeviceMsg(m device.Msg) {
+	switch m.T {
+	case "hello":
+		var h hello
+		_ = json.Unmarshal(m.Raw, &h)
+		d.mu.Lock()
+		d.hello = h
+		stale := h.Cfg != d.sha
+		d.sentPro = ""
+		d.mu.Unlock()
+		log.Printf("device fw %s", h.FW)
+		if stale {
+			d.pushConfig()
+		}
+		d.syncProfile(true)
+		d.notify()
+	case "view":
+		var v View
+		_ = json.Unmarshal(m.Raw, &v)
+		d.mu.Lock()
+		d.view = v
+		d.lastVol, d.lastMic = "", ""
+		d.mu.Unlock()
+		d.onView(v)
+		d.notify()
+	case "action":
+		var a struct {
+			Action config.Action `json:"action"`
+		}
+		if json.Unmarshal(m.Raw, &a) == nil {
+			go d.run(a.Action)
+		}
+	case "dial":
+		var v struct {
+			Source string `json:"source"`
+			Value  *int   `json:"value"`
+		}
+		if json.Unmarshal(m.Raw, &v) != nil || v.Value == nil || d.audio == nil {
+			return
+		}
+		switch v.Source {
+		case "volume":
+			_ = d.audio.SetVolume(*v.Value)
+		case "mic":
+			_ = d.audio.SetMicVolume(*v.Value)
+		}
+	case "ack":
+		var a struct {
+			ID string `json:"id"`
+			OK bool   `json:"ok"`
+		}
+		_ = json.Unmarshal(m.Raw, &a)
+		d.mu.Lock()
+		ch := d.acks[a.ID]
+		d.mu.Unlock()
+		if ch != nil {
+			ch <- a.OK
+		}
+	case "log":
+		log.Printf("device: %s", m.Raw)
+	}
+}
+
+// page returns the config page the device reports as visible.
+func (d *Daemon) page(v View) *config.Page {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, p := range d.cfg.Profiles {
+		if p.ID != v.Profile {
+			continue
+		}
+		for i := range p.Pages {
+			if p.Pages[i].ID == v.Page {
+				return &p.Pages[i]
+			}
+		}
+	}
+	return nil
+}
+
+func (d *Daemon) onView(v View) {
+	d.stopStats()
+	if !v.Awake {
+		return
+	}
+	pg := d.page(v)
+	switch v.Kind {
+	case "stats":
+		if pg != nil {
+			d.startStats(pg.Items)
+		}
+	case "media":
+		d.sendMedia()
+		d.sendAudio()
+	case "dial":
+		d.sendAudio()
+	}
+}
+
+// ---- stats --------------------------------------------------------------
+
+func (d *Daemon) startStats(items []string) {
+	want := map[string]bool{}
+	for _, it := range items {
+		want[it] = true
+	}
+	stop := make(chan struct{})
+	d.mu.Lock()
+	d.statsStop = stop
+	d.mu.Unlock()
+	go func() {
+		d.stats.Sample(want) // primes the CPU delta
+		t := time.NewTicker(statsEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				msg := map[string]any{"t": "stats"}
+				for k, v := range d.stats.Sample(want) {
+					msg[k] = v
+				}
+				d.send(msg)
+			}
+		}
+	}()
+}
+
+func (d *Daemon) stopStats() {
+	d.mu.Lock()
+	if d.statsStop != nil {
+		close(d.statsStop)
+		d.statsStop = nil
+	}
+	d.mu.Unlock()
+}
+
+// ---- desktop ------------------------------------------------------------
+
+func (d *Daemon) desktopLoop() {
+	for {
+		select {
+		case f := <-d.desk.FocusChanged:
+			d.onFocus(f)
+		case <-d.desk.MediaChanged:
+			d.mu.Lock()
+			on := d.view.Awake && d.view.Kind == "media"
+			d.mu.Unlock()
+			if on {
+				d.sendMedia()
+			}
+		}
+	}
+}
+
+func (d *Daemon) onFocus(f desktop.Focus) {
+	f.ID, f.Class = strings.ToLower(f.ID), strings.ToLower(f.Class)
+	if f.ID == "" && f.Class == "" {
+		return // desktop / shell overview: keep the current profile
+	}
+	if f.ID == "" {
+		f.ID = f.Class
+	}
+	d.mu.Lock()
+	d.focus = f
+	if f.ID != "org.gnome.shell" && f.ID != "gnome-shell" {
+		rec := []desktop.Focus{f}
+		for _, r := range d.recent {
+			if r.ID != f.ID && len(rec) < 16 {
+				rec = append(rec, r)
+			}
+		}
+		d.recent = rec
+	}
+	d.mu.Unlock()
+	d.syncProfile(false)
+	d.notify()
+}
+
+func (d *Daemon) profileFor(f desktop.Focus) (string, string) {
+	for _, p := range d.cfg.Profiles {
+		for _, m := range p.Match {
+			if m == f.ID || m == f.Class || m+".desktop" == f.ID {
+				return p.ID, p.Name
+			}
+		}
+	}
+	return "default", "Default"
+}
+
+func (d *Daemon) syncProfile(force bool) {
+	d.mu.Lock()
+	id, _ := d.profileFor(d.focus)
+	f := d.focus
+	changed := force || id != d.sentPro
+	d.sentPro = id
+	d.mu.Unlock()
+	if !changed {
+		return
+	}
+	d.send(map[string]any{"t": "profile", "id": id})
+	if f.Name != "" && !force {
+		d.send(map[string]any{"t": "app", "id": f.ID, "name": f.Name})
+	}
+}
+
+func (d *Daemon) sendMedia() {
+	if d.desk == nil {
+		return
+	}
+	m, ok := d.desk.Media()
+	if !ok {
+		d.send(map[string]any{"t": "media", "title": "", "artist": "", "album": "", "playing": false, "player": ""})
+		return
+	}
+	d.send(map[string]any{"t": "media", "title": m.Title, "artist": m.Artist, "album": m.Album,
+		"playing": m.Playing, "canNext": m.CanNext, "canPrev": m.CanPrev, "player": m.Player})
+}
+
+// ---- audio --------------------------------------------------------------
+
+func (d *Daemon) audioLoop() {
+	for {
+		a, err := audio.Connect()
+		if err != nil {
+			log.Printf("audio: %v", err)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		d.mu.Lock()
+		d.audio = a
+		d.mu.Unlock()
+		for alive := true; alive; {
+			select {
+			case <-a.Changed:
+				d.sendAudio()
+			case <-a.Closed():
+				alive = false
+			}
+		}
+		d.mu.Lock()
+		d.audio = nil
+		d.mu.Unlock()
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// sendAudio pushes volume and mic state if a page that shows them is visible
+// and the value differs from what the device already has.
+func (d *Daemon) sendAudio() {
+	d.mu.Lock()
+	a, v := d.audio, d.view
+	d.mu.Unlock()
+	if a == nil || !v.Awake || (v.Kind != "media" && v.Kind != "dial") {
+		return
+	}
+	s, err := a.State()
+	if err != nil {
+		return
+	}
+	vol := fmt.Sprintf("%d/%v", s.Volume, s.Muted)
+	mic := fmt.Sprintf("%d/%v", s.Mic, s.MicMuted)
+	d.mu.Lock()
+	sv, sm := vol != d.lastVol, mic != d.lastMic
+	d.lastVol, d.lastMic = vol, mic
+	d.mu.Unlock()
+	if sv {
+		d.send(map[string]any{"t": "volume", "value": min(s.Volume, 100), "muted": s.Muted})
+	}
+	if sm {
+		d.send(map[string]any{"t": "mic", "value": min(s.Mic, 100), "muted": s.MicMuted})
+	}
+}
+
+// ---- actions ------------------------------------------------------------
+
+func spawn(name string, args ...string) {
+	c := exec.Command(name, args...)
+	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	c.Stdin, c.Stdout, c.Stderr = nil, nil, nil
+	if err := c.Start(); err != nil {
+		log.Printf("run %s: %v", name, err)
+		return
+	}
+	go c.Wait() // reap
+}
+
+func (d *Daemon) run(a config.Action) {
+	switch a.Type {
+	case "command":
+		spawn("sh", "-c", a.Cmd)
+	case "open":
+		if strings.HasSuffix(a.Target, ".desktop") {
+			spawn("gtk-launch", strings.TrimSuffix(a.Target, ".desktop"))
+		} else {
+			spawn("xdg-open", a.Target)
+		}
+	case "mic":
+		d.mu.Lock()
+		au := d.audio
+		d.mu.Unlock()
+		if au != nil {
+			if err := au.Mic(a.Cmd); err != nil {
+				log.Printf("mic: %v", err)
+			}
+		}
+	case "macro":
+		for _, s := range a.Steps {
+			switch {
+			case s.Keys != "":
+				d.sendWait(map[string]any{"t": "hid", "keys": s.Keys}, 2*time.Second)
+			case s.Text != "":
+				d.sendWait(map[string]any{"t": "hid", "text": s.Text}, 5*time.Second)
+			case s.Delay > 0:
+				time.Sleep(time.Duration(s.Delay) * time.Millisecond)
+			case s.Command != "":
+				spawn("sh", "-c", s.Command)
+			}
+		}
+	// Device-side actions, only reached through "test" in the configurator.
+	case "keys":
+		d.send(map[string]any{"t": "hid", "keys": a.Keys})
+	case "text":
+		d.send(map[string]any{"t": "hid", "text": a.Text})
+	case "media":
+		d.send(map[string]any{"t": "hid", "media": a.Cmd})
+	case "page":
+		d.mu.Lock()
+		prof := d.view.Profile
+		d.mu.Unlock()
+		d.send(map[string]any{"t": "show", "profile": prof, "page": a.Page})
+	}
+}
+
+// ---- status for the socket ----------------------------------------------
+
+type Status struct {
+	Device     *DeviceStatus   `json:"device"`
+	Focus      desktop.Focus   `json:"focus"`
+	Profile    string          `json:"profile"`
+	RecentApps []desktop.Focus `json:"recentApps"`
+	View       View            `json:"view"`
+	Extension  bool            `json:"extension"`
+}
+
+type DeviceStatus struct {
+	Connected bool   `json:"connected"`
+	Port      string `json:"port,omitempty"`
+	FW        string `json:"fw,omitempty"`
+	Cfg       string `json:"cfg,omitempty"`
+	InSync    bool   `json:"inSync"`
+}
+
+func (d *Daemon) status() Status {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	ds := &DeviceStatus{Connected: d.port != nil}
+	if d.port != nil {
+		ds.Port, ds.FW, ds.Cfg, ds.InSync = d.port.Path, d.hello.FW, d.hello.Cfg, d.hello.Cfg == d.sha
+	}
+	pid, _ := d.profileFor(d.focus)
+	rec := append([]desktop.Focus{}, d.recent...)
+	return Status{Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
+}
+
+// notify wakes every socket watcher (coalesced per watcher).
+func (d *Daemon) notify() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for ch := range d.watchers {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (d *Daemon) reload() error {
+	c, raw, err := config.Load()
+	if err != nil {
+		return err
+	}
+	d.mu.Lock()
+	same := config.Sha(raw) == d.sha
+	d.mu.Unlock()
+	if same {
+		return nil
+	}
+	d.setConfig(c, raw)
+	log.Printf("config reloaded")
+	d.pushConfig()
+	d.syncProfile(true)
+	d.notify()
+	return nil
+}

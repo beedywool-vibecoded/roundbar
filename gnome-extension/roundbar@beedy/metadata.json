@@ -1,0 +1,7 @@
+{
+  "uuid": "roundbar@beedy",
+  "name": "roundbar focus",
+  "description": "Tells the roundbar daemon which app has focus, over D-Bus. No polling: one signal per focus change.",
+  "shell-version": ["47", "48", "49", "50", "51"],
+  "url": "https://github.com/beedywool-vibecoded/roundbar"
+}
