@@ -415,7 +415,10 @@ func (d *Daemon) startStats(items []string) {
 	d.statsStop = stop
 	d.mu.Unlock()
 	go func() {
-		d.stats.Sample(want) // primes the CPU delta
+		// Stops helpers such as the nvidia-smi child once the page is gone. If another
+		// stats page already started, its next Sample starts them again.
+		defer d.stats.Stop()
+		d.stats.Sample(want) // primes the CPU delta (and starts nvidia-smi)
 		t := time.NewTicker(statsEvery)
 		defer t.Stop()
 		for {

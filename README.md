@@ -169,8 +169,8 @@ la pochette**. Précédent, lecture et suivant au centre, **volume sur l'arc du 
 <td valign="top">
 
 ### Système et molettes
-Jauges **CPU, GPU, VRAM, RAM et températures** (AMD via sysfs), relevées seulement quand une page
-de stats est à l'écran. Molettes de **volume**, de **micro**, de **luminosité** ou **personnalisées**,
+Jauges **CPU, GPU, VRAM, RAM et températures** (AMD via sysfs, NVIDIA via `nvidia-smi`, Intel via
+fdinfo), relevées seulement quand une page de stats est à l'écran. Molettes de **volume**, de **micro**, de **luminosité** ou **personnalisées**,
 qu'on tourne en glissant le long du bord.
 
 </td>
@@ -335,7 +335,7 @@ du configurateur fait la même chose.
 <tr><td><code>internal/device</code></td><td>Connexion USB CDC et messages JSON avec la carte.</td></tr>
 <tr><td><code>internal/desktop</code></td><td>Focus, fenêtres, notifications et presse-papiers via l'extension GNOME (D-Bus), MPRIS, actions.</td></tr>
 <tr><td><code>internal/audio</code></td><td>Volume, micro et mixeur par app (PipeWire).</td></tr>
-<tr><td><code>internal/stats</code></td><td>CPU, RAM, GPU et températures lus dans <code>/proc</code>, hwmon et amdgpu.</td></tr>
+<tr><td><code>internal/stats</code></td><td>CPU, RAM, GPU et températures lus dans <code>/proc</code>, hwmon, amdgpu, le fdinfo DRM (Intel i915/xe) et un <code>nvidia-smi</code> lancé seulement pendant l'affichage d'une jauge GPU.</td></tr>
 <tr><td><code>internal/cover</code></td><td>Pochettes : fond flouté et palette tirée de l'image.</td></tr>
 <tr><td><code>internal/assets</code></td><td>Images des pages image, rendues au format de la carte.</td></tr>
 <tr><td><code>internal/icons</code></td><td>Icônes des apps envoyées à la carte.</td></tr>

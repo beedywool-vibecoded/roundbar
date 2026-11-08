@@ -9,7 +9,8 @@ The contract between the four parts. Change it here first, then in code.
 │ LVGL, 360²   │ ◀───────────────────────▶ │ roundbar     │◀── D-Bus ── GNOME extension (focus)
 └──────────────┘                           │  daemon (Go) │◀── D-Bus ── MPRIS players
                                            │              │◀── pulse ── PipeWire (volume, mic)
-                                           │              │◀── sysfs ── /proc, hwmon, amdgpu
+                                           │              │◀── sysfs ── /proc, hwmon, amdgpu, i915/xe
+                                           │              │◀── nvidia-smi (only while a GPU gauge shows)
                                            └──────┬───────┘
                                     unix socket   │
                                            ┌──────┴───────┐
@@ -219,7 +220,7 @@ partition (see §2).
 | `mediaTheme` | `palette: {role: "#RRGGBB"}` (same roles as theme.palette) or `null` | cover palette for media pages when `media.coverColors` is on; `null` restores the theme |
 | `volume` | `value: 0..100`, `muted: bool` | on change, and once when a page that shows volume becomes visible |
 | `mic` | `muted: bool`, `value: 0..100` | same |
-| `stats` | any of `cpu ram gpu vram` (0..100 %), `cpuTemp gpuTemp` (°C) | every 1.5 s while a `stats` page is visible and the screen is awake |
+| `stats` | any of `cpu ram gpu vram` (0..100 %), `cpuTemp gpuTemp` (°C) | every 1.5 s while a `stats` page is visible and the screen is awake. GPU: a discrete one if any (most VRAM first), else the one driving a display. AMD: sysfs. NVIDIA: a long-lived `nvidia-smi -lms` child, running only while a page with a GPU gauge is shown. Intel (i915/xe): load from the DRM fdinfo of the user's own processes (no root needed), else current/max frequency; temperature from hwmon where exposed (discrete cards); no VRAM. Keys the GPU can't provide are left out. |
 | `hid` | `keys?: string`, `text?: string`, `media?: string` | macro steps and configurator tests, typed by the device. With an `id`, acked once typed. |
 | `show` | `profile`, `page` | configurator preview: jump to a page |
 | `bootloader` | – | reboot into the ROM USB download mode (for flashing) |
