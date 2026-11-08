@@ -229,7 +229,8 @@ The daemon stops all periodic work when `view.awake` is false or when no device 
 
 ## 3. Daemon socket (`$XDG_RUNTIME_DIR/roundbar.sock`)
 
-JSON lines, request/response, used by `roundbar config` (and `roundbar status`, `roundbar flash`).
+JSON lines, request/response, used by `roundbar config` (and `roundbar status`, `roundbar bootloader`, `roundbar firmware`).
+`status.device.error` is `"permission"` when the board's port exists but can't be opened (no udev rule).
 
 - `{"op":"status"}` → `{"device":{"connected":true,"port":"/dev/ttyACM1","fw":"0.1.0","cfg":"…","inSync":true},"focus":{"id":"firefox","name":"Firefox","class":"firefox"},"profile":"browser","recentApps":[{"id":"firefox","name":"Firefox","class":"firefox"},…],"view":{"profile":"…","page":"…","kind":"radial","awake":true},"extension":true}`
 - `{"op":"show","profile":"…","page":"…"}` → `{"ok":true}`
@@ -252,10 +253,70 @@ sent as `Authorization: Bearer <token>` on every API call.
 | POST | `/api/run` | `{"action":Action}` → test it |
 | POST | `/api/assets` | raw image body (`Content-Type: image/*`, ≤ 20 MB) → converted → `{"id","kind":"image"\|"gif","w","h","size"}`; `415 {"error"}` if it isn't an image |
 | GET | `/api/assets/<id>` | the converted file (for thumbnails and previews) |
-| GET | `/api/firmware` | `{repo, repoOk, idf, built, running}`: can this machine build & flash, and which version is built |
-| POST | `/api/firmware/update` | builds and flashes; progress comes as SSE `flash` events `{line}` then `{done, ok}` |
+| GET | `/api/firmware` | `{repo, repoOk, idf, built, running}`: local facts only (source checkout, ESP-IDF, built version, update running) |
+| GET | `/api/firmware/release` | the latest published release: `{version, status, appSize, fontsSize}` or `{error}`. `status` compares it with `device.fw`: `upToDate`, `updateAvailable`, `deviceNewer` (development build past the tag) or `unknown` (no device, or a version that isn't a release tag). Fetched only when asked (the Firmware card when shown, its refresh button adds `?refresh=1`), cached 10 min; nothing polls in the background |
+| POST | `/api/firmware/update` | `{"source":"release"}` (default) installs the latest release (§5); `{"source":"build"}` builds the source checkout with ESP-IDF and flashes it with `tools/flash.sh` (developers). Progress comes as SSE `flash` events: `{line}`, `{progress:{done,total}}` (bytes) while downloading and writing, then `{done, ok}`. The configurator doesn't exit while an update runs, even with no tab open |
 | POST | `/api/obs` | `{host, port, password}` → stored by the daemon in `obs.json` (0600), then it connects; state in status `.obs: {connected, error, recording, streaming, scenes, current}` |
 | GET | `/api/backup` | a zip of `config.json` and every asset file (`assets/<id>`) |
 | POST | `/api/restore` | that zip (body, `application/zip`) → validated, assets written, config saved; `400 {error}` otherwise |
 | POST | `/api/discord` | `{clientId, clientSecret}` → stored by the daemon in `discord.json` (0600), then it connects; state in status `.discord` |
 | GET | `/api/events?t=<token>` | SSE: `status` events (same JSON as `/api/status`) whenever it changes. Token in the query because EventSource can't set headers. Also the liveness signal: the server exits 10 s after the last client is gone. |
+
+## 5. Releases, firmware updates, installation
+
+A tag `v*` makes the CI release job publish these release assets:
+
+| asset | what |
+|---|---|
+| `roundbar-linux-amd64`, `roundbar-linux-arm64` | the static binary (daemon, configurator, GNOME extension embedded) |
+| `roundbar_<ver>_<arch>.deb`, `roundbar-<ver>-1.<arch>.rpm` | packages: binary, udev rule, systemd user unit, launcher, extension |
+| `bootloader.bin` (0x0), `partition-table.bin` (0x8000), `roundbar.bin` (0x10000), `fonts.bin` (`fonts` partition, 0x250000) | the flash parts, written unchanged |
+| `roundbar-full.bin` | every part merged at offset 0, gaps 0xFF (same bytes as `esptool merge-bin`), for first installs |
+| `firmware.json` | the manifest below |
+| `roundbar-firmware.tar.gz` | parts, `flash_args`, `partitions.csv` and the manifest, for `esptool write-flash @flash_args` |
+| `SHA256SUMS` | SHA-256 of every asset above |
+
+Release firmware reports the tag as `hello.fw` (CI writes `firmware/version.txt`); local builds report `git describe`.
+
+```jsonc
+// firmware.json, written by tools/fwrelease (internal/fwupdate.Manifest)
+{
+  "version": "v0.2.0", "chip": "esp32s3",
+  "flashMode": "dio", "flashFreq": "80m", "flashSize": "16MB", "flashBytes": 16777216,
+  "parts": [
+    { "name": "app", "file": "roundbar.bin", "offset": 65536, "size": 1086256,
+      "sha256": "<of the file>",
+      // MD5 of the file padded with 0xFF to a multiple of 4: what SPI_FLASH_MD5 returns once it is written
+      "flashMd5": "<hex>" }
+    // and "bootloader", "partition-table", "fonts"
+  ],
+  "merged": { "file": "roundbar-full.bin", "size": 11408404, "sha256": "<hex>" }
+}
+```
+
+**First install**: the web installer (`site/`, GitHub Pages, ESP Web Tools) flashes `roundbar-full.bin`. The Pages
+workflow copies it next to the page because release downloads carry no CORS headers.
+
+**Updates** (configurator Firmware card, or `roundbar firmware update`), no toolchain needed:
+1. Fetch `releases/latest/download/firmware.json`, then the small parts from `releases/download/<version>/`, each
+   checked against its SHA-256 and cached as `~/.cache/roundbar/firmware/<sha256>.bin`.
+2. Send the daemon `{"op":"bootloader"}` (repeated for ~8 s) until a ROM download port appears: USB-OTG CDC `303a:0009`,
+   or USB-Serial-JTAG `303a:1001` after holding BOOT while plugging in (asked for when the firmware doesn't answer;
+   waits 2 min).
+3. Talk to the ROM loader (internal/espflash): SYNC, SPI_ATTACH, SPI_SET_PARAMS (16 MB); on `1001` the RTC and super
+   watchdogs are disabled first. Read SPI_FLASH_MD5 of every part's region; parts matching `flashMd5` are skipped, and
+   the 9 MB font pack is only downloaded and written when it differs.
+4. Write the other parts with FLASH_DEFL_BEGIN/DATA (zlib stream, 1 KiB blocks; plain FLASH_BEGIN/DATA if refused) and
+   verify each with SPI_FLASH_MD5. No FLASH_END: on the ROM it leaves the loader.
+5. Clear `RTC_CNTL_OPTION1.FORCE_DOWNLOAD_BOOT` and reset: watchdog on `0009` (it rejects DTR/RTS), RTS pulse on `1001`.
+   After a failed write the chip stays in download mode so the update can be run again; a failure before anything was
+   written resets it back into the old firmware.
+
+**PC install**: `install.sh` at the repo root (`curl -fsSL …/master/install.sh | sh`) downloads the binary for the
+machine to `~/.local/bin`, checks it against `SHA256SUMS`, explains and offers the udev rule (`roundbar udev --yes`),
+runs `roundbar install --no-udev` and prints next steps. `roundbar install` itself offers the udev rule (sudo, or
+pkexec without a terminal; `--no-udev` skips it), writes the systemd user unit, launcher and GNOME extension (skipping
+any that a package installed under `/usr`) and enables the service. `roundbar uninstall` (or `install.sh --uninstall`)
+reverses it, offers to remove `/etc/udev/rules.d/70-roundbar.rules`, deletes `~/.local/bin/roundbar` (unless
+`--keep-binary`) and keeps `~/.config/roundbar`. `packaging/aur/PKGBUILD` (`roundbar-bin`) and `packaging/nfpm.yaml`
+install the same files system-wide.
