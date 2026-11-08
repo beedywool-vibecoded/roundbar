@@ -2263,8 +2263,7 @@ static void np_fill(void)
         lv_obj_set_size(ib, 20, 20);
         lv_obj_align(ib, LV_ALIGN_TOP_LEFT, 0, 0);
         lv_obj_remove_flag(ib, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_t *ic = app_icon(ib, jstr(n, "icon"), "notifications", P.on_sv, 107); // 20 px
-        if (lv_obj_check_type(ic, &lv_label_class)) lv_obj_set_style_text_font(ic, F.label, 0);
+        lv_obj_t *ic = text(ib, F.icon_xs, P.on_sv, theme_icon("info")); // same small icon on every card
         lv_obj_center(ic);
         lv_obj_t *app = text(c, F.label, P.on_sv, jstr(n, "app") ?: "");
         lv_obj_align(app, LV_ALIGN_TOP_LEFT, 30, 2);
@@ -2471,6 +2470,8 @@ void ui_obs(cJSON *st)
 
 static struct {
     lv_obj_t *art, *name, *session;
+    lv_obj_t *close, *close_icon, *close_label;
+    bool close_armed;
     int64_t since;
 } gw;
 static uint8_t *game_blend;
@@ -2547,13 +2548,57 @@ static void game_key_event(lv_event_t *e)
     show_bubble(keys[0] == 's' ? "Steam overlay" : "Screenshot");
 }
 
-static void game_button(lv_obj_t *tile, const char *icon, const char *keys, int x)
+static lv_obj_t *game_button(lv_obj_t *tile, const char *icon, const char *keys, int x)
 {
-    lv_obj_t *b = mask_button(tile, SH_CIRCLE, 76, P.schh);
-    lv_obj_align(b, LV_ALIGN_CENTER, x, 92);
+    lv_obj_t *b = mask_button(tile, SH_CIRCLE, 68, P.schh);
+    lv_obj_align(b, LV_ALIGN_CENTER, x, 88);
     lv_obj_t *ic = text(b, F.icon_m, P.on_surface, theme_icon(icon));
     lv_obj_center(ic);
-    lv_obj_add_event_cb(b, game_key_event, LV_EVENT_CLICKED, (void *)keys);
+    if (keys) lv_obj_add_event_cb(b, game_key_event, LV_EVENT_CLICKED, (void *)keys);
+    return b;
+}
+
+// Close game: the first tap arms it ("Sure?" in red for 3 s), the second closes.
+static lv_timer_t *game_close_timer; // persistent, paused between uses
+
+static void game_close_set(bool armed)
+{
+    gw.close_armed = armed;
+    if (!gw.close) return;
+    lv_color_t bg = armed ? P.ec : P.schh;
+    lv_obj_set_style_image_recolor(gw.close, bg, 0);
+    lv_obj_set_style_image_recolor(gw.close, lv_color_mix(lv_color_white(), bg, 30), LV_STATE_PRESSED);
+    if (armed) {
+        lv_obj_add_flag(gw.close_icon, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(gw.close_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_remove_flag(gw.close_icon, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(gw.close_label, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void game_close_timeout(lv_timer_t *t)
+{
+    lv_timer_pause(t);
+    game_close_set(false);
+}
+
+static void game_close_event(lv_event_t *e)
+{
+    if (!gw.close_armed) {
+        game_close_set(true);
+        lv_timer_reset(game_close_timer);
+        lv_timer_resume(game_close_timer);
+        return;
+    }
+    lv_timer_pause(game_close_timer);
+    game_close_set(false);
+    if (!usb_host_listening()) {
+        show_bubble("PC app not running");
+        return;
+    }
+    send_simple("gameClose", NULL, NULL, 0);
+    show_bubble("Closing the game");
 }
 
 static void build_game(lv_obj_t *tile)
@@ -2567,9 +2612,19 @@ static void build_game(lv_obj_t *tile)
     lv_obj_set_width(gw.name, 270);
     lv_obj_set_style_text_align(gw.name, LV_TEXT_ALIGN_CENTER, 0);
     game_place_name();
-    // Steam's own shortcuts, typed by the device's keyboard
-    game_button(tile, "layers", "shift+tab", -46);
-    game_button(tile, "photo_camera", "f12", 46);
+    // Steam's own shortcuts, typed by the device's keyboard, and close game
+    game_button(tile, "layers", "shift+tab", -78);
+    game_button(tile, "photo_camera", "f12", 0);
+    gw.close = game_button(tile, "close", NULL, 78);
+    gw.close_icon = lv_obj_get_child(gw.close, 0);
+    gw.close_label = text(gw.close, F.label, P.on_ec, "Sure?");
+    lv_obj_center(gw.close_label);
+    lv_obj_add_flag(gw.close_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(gw.close, game_close_event, LV_EVENT_CLICKED, NULL);
+    if (!game_close_timer) {
+        game_close_timer = lv_timer_create(game_close_timeout, 3000, NULL);
+    }
+    lv_timer_pause(game_close_timer);
     if (game_src) game_art_apply();
 }
 
@@ -2726,7 +2781,7 @@ static lv_obj_t *dc_button(lv_obj_t *parent, int size, bool on, const char *icon
     lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
     lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
     squish_on_press(b, size);
-    lv_obj_t *ic = text(b, size > 70 ? F.icon_l : F.icon_m, on ? on_fg : P.on_surface, theme_icon(icon));
+    lv_obj_t *ic = text(b, size > 70 ? F.icon_l : size > 40 ? F.icon_m : F.icon_s, on ? on_fg : P.on_surface, theme_icon(icon));
     lv_obj_center(ic);
     lv_obj_add_event_cb(b, dc_toggle_event, LV_EVENT_CLICKED, (void *)what);
     return b;
@@ -2775,56 +2830,60 @@ void ui_discord(cJSON *st)
         lv_obj_set_style_border_width(av, speaking ? LV_MAX(3, size / 16) : 0, 0);
         lv_obj_set_style_border_color(av, lv_color_hex(0x23A55A), 0); // Discord's speaking green
         lv_obj_remove_flag(av, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_align(av, LV_ALIGN_CENTER, radius * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, radius * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX);
+        int ax = radius * lv_trigo_cos(ang) / LV_TRIGO_SIN_MAX, ay = radius * lv_trigo_sin(ang) / LV_TRIGO_SIN_MAX;
+        lv_obj_align(av, LV_ALIGN_CENTER, ax, ay);
         const lv_image_dsc_t *img = icon_get(jstr(m, "avatar"));
         lv_obj_t *ic = img ? app_icon(av, jstr(m, "avatar"), "person", P.on_surface, (size - 6) * 256 / (int)img->header.w)
                            : text(av, size > 70 ? F.icon_l : F.icon_m, P.on_surface, theme_icon("person"));
         lv_obj_center(ic);
-        if (muted) {
-            int bs = LV_MAX(20, size / 4);
-            lv_obj_t *badge = box(av);
+        if (muted) { // red badge on the avatar's edge: headset when deafened, mic when muted
+            bool deafened = cJSON_IsTrue(cJSON_GetObjectItem(m, "deaf"));
+            int bs = size >= 72 ? 26 : 22;
+            lv_obj_t *badge = box(dc_root); // on the root, so the round avatar doesn't clip it
             lv_obj_set_size(badge, bs, bs);
             lv_obj_set_style_radius(badge, bs / 2, 0);
             lv_obj_set_style_bg_color(badge, P.ec, 0);
             lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
-            lv_obj_align(badge, LV_ALIGN_BOTTOM_RIGHT, 2, 2);
-            lv_obj_t *bi = text(badge, F.icon_s, P.on_ec, theme_icon("mic_off"));
-            lv_obj_set_style_transform_scale(bi, bs * 256 / 30, 0);
+            lv_obj_set_style_border_width(badge, 2, 0);
+            lv_obj_set_style_border_color(badge, P.surface, 0);
+            lv_obj_remove_flag(badge, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_align(badge, LV_ALIGN_CENTER, ax + size * 35 / 100, ay + size * 35 / 100); // edge, at 45°
+            lv_obj_t *bi = text(badge, F.icon_xs, P.on_ec, theme_icon(deafened ? "headset_off" : "mic_off"));
             lv_obj_center(bi);
         }
     }
+    // The members stay the focus: channel and server in the middle, and when
+    // the client allows it, three small controls under them.
     bool controls = cJSON_IsTrue(cJSON_GetObjectItem(st, "controls"));
-    if (!controls) { // no mute/deafen control available: show the channel only
-        const char *guild = jstr(st, "guild");
-        bool has_guild = channel && channel[0] && guild && guild[0];
-        lv_obj_t *ch = text(dc_root, F.title, P.on_surface, channel && channel[0] ? channel : "Not in voice");
-        lv_obj_set_width(ch, 170);
-        lv_label_set_long_mode(ch, LV_LABEL_LONG_DOT);
-        lv_obj_align(ch, LV_ALIGN_CENTER, 0, has_guild ? -20 : -12);
-        if (has_guild) { // server name, small, under the channel
-            lv_obj_t *g = text(dc_root, F.label, P.on_sv, guild);
-            lv_obj_set_width(g, 160);
-            lv_label_set_long_mode(g, LV_LABEL_LONG_DOT);
-            lv_obj_align(g, LV_ALIGN_CENTER, 0, 4);
-        }
-        if (channel && channel[0]) {
-            lv_obj_t *cnt = text(dc_root, F.label, P.on_sv, "");
-            lv_label_set_text_fmt(cnt, "%d in voice%s", cJSON_GetArraySize(members), mute || deaf ? "  ·  you're muted" : "");
-            lv_obj_align(cnt, LV_ALIGN_CENTER, 0, has_guild ? 26 : 20);
-        }
-        return;
-    }
-    lv_obj_t *ch = text(dc_root, F.body, P.on_sv, channel && channel[0] ? channel : "Not in a voice channel");
+    bool in_voice = channel && channel[0];
+    const char *guild = jstr(st, "guild");
+    bool has_guild = in_voice && guild && guild[0];
+    bool small = controls && in_voice;
+    int y = small ? -24 : 0; // block shifts up to make room for the buttons
+    lv_obj_t *ch = text(dc_root, F.title, P.on_surface, in_voice ? channel : "Not in voice");
     lv_obj_set_width(ch, 170);
     lv_label_set_long_mode(ch, LV_LABEL_LONG_DOT);
-    lv_obj_align(ch, LV_ALIGN_CENTER, 0, -64);
-    lv_obj_t *mb = dc_button(dc_root, 76, mute, mute ? "mic_off" : "mic", P.ec, P.on_ec, "mute");
-    lv_obj_align(mb, LV_ALIGN_CENTER, -44, 6);
-    lv_obj_t *db = dc_button(dc_root, 76, deaf, deaf ? "headset_off" : "headphones", P.ec, P.on_ec, "deaf");
-    lv_obj_align(db, LV_ALIGN_CENTER, 44, 6);
-    if (channel && channel[0]) {
-        lv_obj_t *lb = dc_button(dc_root, 48, true, "call_end", P.error, P.on_primary, "leave");
-        lv_obj_align(lb, LV_ALIGN_CENTER, 0, 78);
+    lv_obj_set_style_text_align(ch, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(ch, LV_ALIGN_CENTER, 0, y + (has_guild ? -20 : -12));
+    if (has_guild) { // server name, small, under the channel
+        lv_obj_t *g = text(dc_root, F.label, P.on_sv, guild);
+        lv_obj_set_width(g, 160);
+        lv_label_set_long_mode(g, LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_align(g, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(g, LV_ALIGN_CENTER, 0, y + 4);
+    }
+    if (in_voice) {
+        lv_obj_t *cnt = text(dc_root, F.label, P.on_sv, "");
+        lv_label_set_text_fmt(cnt, "%d in voice", cJSON_GetArraySize(members));
+        lv_obj_align(cnt, LV_ALIGN_CENTER, 0, y + (has_guild ? 26 : 20));
+    }
+    if (small) {
+        lv_obj_t *mb = dc_button(dc_root, 36, mute, mute ? "mic_off" : "mic", P.ec, P.on_ec, "mute");
+        lv_obj_align(mb, LV_ALIGN_CENTER, -44, 46);
+        lv_obj_t *db = dc_button(dc_root, 36, deaf, deaf ? "headset_off" : "headphones", P.ec, P.on_ec, "deaf");
+        lv_obj_align(db, LV_ALIGN_CENTER, 0, 46);
+        lv_obj_t *lb = dc_button(dc_root, 36, true, "call_end", P.error, P.on_primary, "leave");
+        lv_obj_align(lb, LV_ALIGN_CENTER, 44, 46);
     }
 }
 

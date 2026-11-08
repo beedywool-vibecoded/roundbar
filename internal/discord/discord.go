@@ -60,12 +60,13 @@ type Member struct {
 	Name     string `json:"name"`
 	Avatar   string `json:"avatar"` // CDN URL, "" for the default avatar
 	Muted    bool   `json:"muted"`
+	Deaf     bool   `json:"deaf,omitempty"` // deafened (implies muted)
 	Speaking bool   `json:"speaking"`
 }
 
 type State struct {
 	Connected bool     `json:"connected"` // RPC session authenticated
-	Controls  bool     `json:"controls"`  // mute/deafen can be toggled from the device (RPC only)
+	Controls  bool     `json:"controls"`  // mute/deafen/leave can be used from the device
 	User      string   `json:"user,omitempty"`
 	Channel   string   `json:"channel,omitempty"` // "" = not in voice
 	Guild     string   `json:"guild,omitempty"`   // server name ("" for DMs / group calls)
@@ -421,7 +422,8 @@ func member(v voiceState) Member {
 		name = v.User.Username
 	}
 	m := Member{ID: v.User.ID, Name: name,
-		Muted: v.VoiceState.Mute || v.VoiceState.SelfMute || v.VoiceState.Deaf || v.VoiceState.SelfDeaf}
+		Muted: v.VoiceState.Mute || v.VoiceState.SelfMute || v.VoiceState.Deaf || v.VoiceState.SelfDeaf,
+		Deaf:  v.VoiceState.Deaf || v.VoiceState.SelfDeaf}
 	if v.User.Avatar != "" {
 		m.Avatar = fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.png?size=64", v.User.ID, v.User.Avatar)
 	}

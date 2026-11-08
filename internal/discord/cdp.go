@@ -42,6 +42,7 @@ const cdpScript = `(() => {
         name: nick || (u && (u.globalName || u.username)) || "",
         avatar: (u && u.getAvatarURL && u.getAvatarURL(undefined, 64, false)) || "",
         muted: !!(vs.selfMute || vs.mute || vs.selfDeaf || vs.deaf),
+        deaf: !!(vs.selfDeaf || vs.deaf),
         speaking: speaking.has(vs.userId) || !!(SP && SP.isSpeaking && SP.isSpeaking(vs.userId)),
       };
     }) : [];
@@ -88,6 +89,36 @@ type CDP struct {
 	nextID int
 	live   bool // a session delivered state since the last failure
 	kick   chan struct{}
+	ws     *websocket.Conn // current session, for Toggle
+}
+
+// Discord's own voice actions, found through Vencord's public webpack API.
+var cdpActions = map[string]string{
+	"mute":  `Vencord.Webpack.findByProps("toggleSelfMute", "toggleSelfDeaf").toggleSelfMute()`,
+	"deaf":  `Vencord.Webpack.findByProps("toggleSelfMute", "toggleSelfDeaf").toggleSelfDeaf()`,
+	"leave": `Vencord.Webpack.findByProps("selectVoiceChannel").selectVoiceChannel(null)`,
+}
+
+// Toggle mutes, deafens or leaves the call in Vesktop.
+func (c *CDP) Toggle(what string) error {
+	js, ok := cdpActions[what]
+	if !ok {
+		return fmt.Errorf("unknown Discord control %q", what)
+	}
+	c.mu.Lock()
+	ws := c.ws
+	c.mu.Unlock()
+	if ws == nil {
+		return errors.New("Vesktop isn't connected")
+	}
+	return c.send(ws, "Runtime.evaluate", map[string]any{"expression": "(() => { " + js + "; })()"})
+}
+
+// Connected reports whether a Vesktop session is open.
+func (c *CDP) Connected() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ws != nil
 }
 
 // Kick asks for a session now (a Discord page is on screen).
@@ -165,6 +196,10 @@ func (c *CDP) session(stop <-chan struct{}) error {
 		return err
 	}
 	defer ws.Close()
+	c.mu.Lock()
+	c.ws = ws
+	c.mu.Unlock()
+	defer func() { c.mu.Lock(); c.ws = nil; c.mu.Unlock() }()
 
 	inject := func() {
 		_ = c.send(ws, "Runtime.evaluate", map[string]any{"expression": cdpScript, "returnByValue": true})

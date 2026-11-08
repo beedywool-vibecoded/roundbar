@@ -359,13 +359,13 @@ const clipboard = computed(() => {
   return CLIPS.map((c, i) => ({ text: ellipsize(c.text, 16, false, 220), when: c.when, y: -112 + i * 76 }))
 })
 
-// ---- discord: sample voice channel ----
+// ---- discord: sample voice channel, laid out like the device ----
 const discord = computed(() => {
   if (props.page.type !== 'discord') return null
-  // Five members spread over the top of the ring, clear of the buttons
-  return [-150, -120, -90, -60, -30].map((deg, i) => {
-    const [x, y] = at(132, deg)
-    return { x, y, speaking: i === 1, muted: i === 3 }
+  // 5 members: 72 px avatars on a 126 px ring from 12 o'clock (device sizing for n = 5)
+  return [0, 1, 2, 3, 4].map((i) => {
+    const [x, y] = at(126, 270 + i * 72)
+    return { x, y, speaking: i === 1, muted: i === 3 || i === 4, deaf: i === 4 }
   })
 })
 
@@ -671,21 +671,20 @@ const dots = computed(() => {
       <!-- Discord voice -->
       <template v-else-if="discord">
         <g v-for="(m, i) in discord" :key="i">
-          <circle v-if="m.speaking" :cx="m.x" :cy="m.y" r="30" fill="none" stroke="#23A55A" stroke-width="4" />
-          <circle :cx="m.x" :cy="m.y" r="28" :fill="p.surfaceContainerHighest" />
-          <text class="sym" :x="m.x" :y="m.y" font-size="30" :fill="p.onSurfaceVariant">person</text>
+          <circle :cx="m.x" :cy="m.y" r="36" :fill="p.surfaceContainerHighest" :stroke="m.speaking ? '#23A55A' : 'none'" stroke-width="4.5" />
+          <text class="sym" :x="m.x" :y="m.y" font-size="32" :fill="p.onSurfaceVariant">person</text>
           <g v-if="m.muted">
-            <circle :cx="m.x + 20" :cy="m.y + 20" r="11" :fill="p.errorContainer" :stroke="p.surface" stroke-width="2" />
-            <text class="sym" :x="m.x + 20" :y="m.y + 20" font-size="14" :fill="p.onErrorContainer">mic_off</text>
+            <circle :cx="m.x + 25" :cy="m.y + 25" r="12" :fill="p.errorContainer" :stroke="p.surface" stroke-width="2" />
+            <text class="sym" :x="m.x + 25" :y="m.y + 25" font-size="16" :fill="p.onErrorContainer">{{ m.deaf ? 'headset_off' : 'mic_off' }}</text>
           </g>
         </g>
-        <text class="txt" y="-64" font-size="16" :fill="p.onSurfaceVariant">General</text>
-        <circle cx="-44" cy="6" r="38" :fill="p.surfaceContainerHighest" />
-        <text class="sym" x="-44" y="6" font-size="34" :fill="p.onSurface">mic</text>
-        <circle cx="44" cy="6" r="38" :fill="p.surfaceContainerHighest" />
-        <text class="sym" x="44" y="6" font-size="34" :fill="p.onSurface">headphones</text>
-        <circle cx="0" cy="78" r="24" :fill="p.error" />
-        <text class="sym" x="0" y="78" font-size="24" :fill="p.surface">call_end</text>
+        <text class="txt" y="-44" font-size="22" font-weight="700" :fill="p.onSurface">General</text>
+        <text class="txt" y="-20" font-size="14" :fill="p.onSurfaceVariant">My server</text>
+        <text class="txt" y="2" font-size="14" :fill="p.onSurfaceVariant">5 in voice</text>
+        <g v-for="b in [{ x: -44, icon: 'mic', bg: p.surfaceContainerHighest, fg: p.onSurface }, { x: 0, icon: 'headphones', bg: p.surfaceContainerHighest, fg: p.onSurface }, { x: 44, icon: 'call_end', bg: p.error, fg: p.surface }]" :key="b.icon">
+          <circle :cx="b.x" cy="46" r="18" :fill="b.bg" />
+          <text class="sym" :x="b.x" y="46" font-size="22" :fill="b.fg">{{ b.icon }}</text>
+        </g>
       </template>
 
       <!-- OBS -->
@@ -711,9 +710,9 @@ const dots = computed(() => {
         <circle r="180" :fill="p.surface" fill-opacity="0.45" />
         <text class="txt" y="-85" font-size="34" font-weight="700" :fill="p.onSurface">{{ game.title }}</text>
         <text class="txt" y="-50" font-size="16" :fill="p.onSurfaceVariant">1 h 12 min</text>
-        <g v-for="b in [{ x: -46, icon: 'layers' }, { x: 46, icon: 'photo_camera' }]" :key="b.icon">
-          <circle :cx="b.x" cy="92" r="38" :fill="p.surfaceContainerHighest" />
-          <text class="sym" :x="b.x" y="92" font-size="32" :fill="p.onSurface">{{ b.icon }}</text>
+        <g v-for="b in [{ x: -78, icon: 'layers' }, { x: 0, icon: 'photo_camera' }, { x: 78, icon: 'close' }]" :key="b.icon">
+          <circle :cx="b.x" cy="88" r="34" :fill="p.surfaceContainerHighest" />
+          <text class="sym" :x="b.x" y="88" font-size="32" :fill="p.onSurface">{{ b.icon }}</text>
         </g>
       </template>
 

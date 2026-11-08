@@ -27,6 +27,7 @@ import (
 	"github.com/beedywool-vibecoded/roundbar/internal/discord"
 	"github.com/beedywool-vibecoded/roundbar/internal/obs"
 	"github.com/beedywool-vibecoded/roundbar/internal/stats"
+	"github.com/beedywool-vibecoded/roundbar/internal/steam"
 )
 
 const statsEvery = 1500 * time.Millisecond
@@ -77,7 +78,7 @@ type Daemon struct {
 	discordLive   discord.State // from Vesktop via DevTools
 	discordLiveAt time.Time
 	discordKick   chan struct{}
-	cdpKick       func()
+	cdp           *discord.CDP
 	iconsSent     map[string]bool
 
 	statsStop chan struct{}
@@ -116,7 +117,7 @@ func (d *Daemon) Run() error {
 	go d.obs.Run(d.done)
 	go d.obsLoop()
 	cdp := &discord.CDP{OnState: d.setDiscordLive}
-	d.cdpKick = cdp.Kick
+	d.cdp = cdp
 	go cdp.Run(d.done)
 	go d.discordLoop()
 	go d.watchConfig()
@@ -268,13 +269,35 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 				log.Printf("obs: %v", err)
 			}
 		}()
+	case "gameClose": // confirmed on the device's game page
+		d.mu.Lock()
+		id := d.game.AppID
+		d.mu.Unlock()
+		go func() {
+			n, err := steam.Close(id)
+			if err != nil {
+				log.Printf("game: %v", err)
+				return
+			}
+			log.Printf("game: closing app %s (%d processes)", id, n)
+			d.mu.Lock()
+			d.game = gameInfo{}
+			d.mu.Unlock()
+			if d.viewKind() == "game" {
+				d.sendGame()
+			}
+		}()
 	case "discordToggle":
 		var v struct {
 			What string `json:"what"`
 		}
 		_ = json.Unmarshal(m.Raw, &v)
 		go func() {
-			if err := d.discord.Toggle(v.What); err != nil {
+			toggle := d.discord.Toggle // official client (RPC)
+			if d.cdp != nil && d.cdp.Connected() {
+				toggle = d.cdp.Toggle // Vesktop
+			}
+			if err := toggle(v.What); err != nil {
 				log.Printf("discord: %v", err)
 			}
 		}()

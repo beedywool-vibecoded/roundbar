@@ -98,6 +98,7 @@ static const icon_t ICONS[] = {
     {"home", 0xE88A},
     {"hourglass_top", 0xEA5B},
     {"image", 0xE3F4},
+    {"info", 0xE88E},
     {"joystick", 0xF5EE},
     {"keyboard", 0xE312},
     {"keyboard_arrow_down", 0xE313},

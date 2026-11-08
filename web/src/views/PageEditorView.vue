@@ -354,7 +354,8 @@ function show() {
 
             <div v-else-if="page.type === 'discord'" class="form" style="gap: 8px">
               <p class="muted small" style="margin: 0">
-                Your current Discord voice channel: members around the ring (a green ring while they talk, a badge when muted), big mute and deafen buttons, and leave.
+                Your current Discord voice channel: members around the ring (a green ring while they talk, a mic or headset badge when muted or deafened), the channel and server in the middle, and three small buttons under them: mute, deafen and leave
+                (through Vesktop's local DevTools link, or the official client's RPC).
                 Shows "Not in a voice channel" otherwise. Nothing to set up on the page.
               </p>
               <p v-if="!live.status?.discord?.connected" class="warn-line small">
@@ -376,7 +377,8 @@ function show() {
 
             <p v-else-if="page.type === 'game'" class="muted small" style="margin: 0">
               The game in focus (Steam games, <code>steam_app_*</code> windows): its library art blurred behind, the game name and how long you've been playing,
-              with two buttons that press Steam's own shortcuts: <b>Shift+Tab</b> for the overlay and <b>F12</b> for a screenshot.
+              with buttons for Steam's own shortcuts (<b>Shift+Tab</b> overlay, <b>F12</b> screenshot) and a close button: the first tap turns it into
+              <i>Sure?</i>, the second closes the game (its processes get a polite stop, then a forced one after 6 s).
               Put it in a profile that matches <code>steam_app_*</code> so it shows up on its own. Nothing to set up.
             </p>
 

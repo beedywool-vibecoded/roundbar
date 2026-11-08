@@ -3,10 +3,15 @@
 package steam
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
 
 var appRe = regexp.MustCompile(`^steam_app_(\d+)$`)
@@ -78,4 +83,60 @@ func Art(appid string) string {
 		return m[0]
 	}
 	return ""
+}
+
+// GamePIDs lists our processes Steam launched for appid: Steam puts
+// SteamAppId/SteamGameId in the environment of everything it starts for a game
+// (native or Proton), and nothing else carries it.
+func GamePIDs(appid string) []int {
+	return gamePIDs("/proc", appid)
+}
+
+func gamePIDs(proc, appid string) []int {
+	if appid == "" || appid == "0" {
+		return nil
+	}
+	ents, _ := os.ReadDir(proc)
+	self := os.Getpid()
+	var out []int
+	for _, e := range ents {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil || pid == self {
+			continue
+		}
+		env, err := os.ReadFile(filepath.Join(proc, e.Name(), "environ"))
+		if err != nil {
+			continue // not ours, or gone
+		}
+		for _, kv := range bytes.Split(env, []byte{0}) {
+			if string(kv) == "SteamAppId="+appid || string(kv) == "SteamGameId="+appid {
+				out = append(out, pid)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// Close ends a game: SIGTERM to its processes, SIGKILL to what's left after 6 s.
+func Close(appid string) (int, error) {
+	pids := GamePIDs(appid)
+	if len(pids) == 0 {
+		return 0, fmt.Errorf("no running processes for app %s", appid)
+	}
+	for _, p := range pids {
+		_ = syscall.Kill(p, syscall.SIGTERM)
+	}
+	go func() {
+		for i := 0; i < 20; i++ {
+			time.Sleep(300 * time.Millisecond)
+			if len(GamePIDs(appid)) == 0 {
+				return
+			}
+		}
+		for _, p := range GamePIDs(appid) {
+			_ = syscall.Kill(p, syscall.SIGKILL)
+		}
+	}()
+	return len(pids), nil
 }

@@ -17,6 +17,7 @@ typedef struct {
     const lv_font_t *title;  // 22 bold
     const lv_font_t *value;  // 34 bold
     const lv_font_t *big;    // 56 bold
+    const lv_font_t *icon_xs; // 16
     const lv_font_t *icon_s; // 24
     const lv_font_t *icon_m; // 32
     const lv_font_t *icon_l; // 44

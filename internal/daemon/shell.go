@@ -126,8 +126,7 @@ func (d *Daemon) sendNotifs(newID string) {
 	}
 	for i := range list {
 		list[i].Title = clip(list[i].Title, 80)
-		list[i].Body = clip(list[i].Body, 160)
-		d.sendIcons(list[i].Icon)
+		list[i].Body = clip(list[i].Body, 160) // no app icons: the device shows one info icon
 		if list[i].ID == newID && toast {
 			d.send(map[string]any{"t": "notif", "id": list[i].ID, "app": list[i].App, "title": list[i].Title,
 				"body": list[i].Body, "icon": list[i].Icon})
@@ -152,8 +151,8 @@ func (d *Daemon) onShellView(kind string) {
 		case d.discordKick <- struct{}{}:
 		default:
 		}
-		if d.cdpKick != nil {
-			d.cdpKick()
+		if d.cdp != nil {
+			d.cdp.Kick()
 		}
 		go d.sendDiscord()
 	}
@@ -240,7 +239,7 @@ func (d *Daemon) discordState() discord.State {
 }
 
 func (d *Daemon) setDiscordLive(st discord.State) {
-	st.Controls = false // your own keybinds handle mute/deafen in Vesktop
+	st.Controls = st.Connected // mute, deafen and leave through Vesktop's DevTools
 	if len(st.Members) > 12 {
 		st.Members = st.Members[:12]
 	}

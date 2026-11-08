@@ -37,6 +37,7 @@ void theme_fonts_init(void)
     F.title = ttf(gsf700_start, gsf700_end, 22);
     F.value = ttf(gsf700_start, gsf700_end, 34);
     F.big = ttf(gsf700_start, gsf700_end, 56);
+    F.icon_xs = ttf(sym_start, sym_end, 16);
     F.icon_s = ttf(sym_start, sym_end, 24);
     F.icon_m = ttf(sym_start, sym_end, 32);
     F.icon_l = ttf(sym_start, sym_end, 44);
