@@ -3,11 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"unsafe"
 
 	"github.com/beedywool-vibecoded/roundbar/internal/daemon"
@@ -46,6 +46,7 @@ func setup(cmd string) {
 		if f := openLog(); f != nil {
 			log.SetOutput(f)
 			log.SetFlags(log.LstdFlags)
+			_ = debug.SetCrashOutput(f, debug.CrashOptions{}) // a crash leaves its trace there too
 		}
 		return
 	}
@@ -61,7 +62,7 @@ func setup(cmd string) {
 }
 
 // openLog appends to %LOCALAPPDATA%\roundbar\roundbar.log, starting over past 1 MB.
-func openLog() io.Writer {
+func openLog() *os.File {
 	dir := filepath.Join(os.Getenv("LOCALAPPDATA"), "roundbar")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil

@@ -517,6 +517,9 @@ func matches(pattern string, f desktop.Focus) bool {
 }
 
 func (d *Daemon) profileFor(f desktop.Focus) (string, string) {
+	if d.cfg == nil { // asked (by the tray app) before Run loaded the config
+		return "default", "Default"
+	}
 	for _, p := range d.cfg.Profiles {
 		for _, m := range p.Match {
 			if matches(m, f) {

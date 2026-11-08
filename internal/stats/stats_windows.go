@@ -7,6 +7,9 @@ package stats
 
 import (
 	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"unsafe"
 
@@ -49,14 +52,27 @@ func New() *Reader {
 	r := &Reader{}
 	if g, ok := pickAdapter(); ok {
 		r.GPU = g
-		if g.Vendor == 0x10de { // NVIDIA: nvidia-smi ships with the driver (System32)
-			r.gpu = newNvidiaQuery("")
-		} else {
-			r.gpu = &pdhGPU{g: g}
+		r.gpu = &pdhGPU{g: g}
+		if bin := findNvidiaSMI(); g.Vendor == 0x10de && bin != "" { // NVIDIA: also the temperature
+			n := newNvidiaQuery("")
+			n.bin = bin
+			r.gpu = n
 		}
 		log.Printf("stats: GPU %s (vendor %04x, %d MiB)", g.Name, g.Vendor, g.Dedicated>>20)
 	}
 	return r
+}
+
+// findNvidiaSMI finds nvidia-smi: System32 with current drivers, NVSMI with older ones.
+func findNvidiaSMI() string {
+	if p, err := exec.LookPath("nvidia-smi"); err == nil {
+		return p
+	}
+	p := filepath.Join(os.Getenv("ProgramFiles"), "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe")
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+	return ""
 }
 
 func filetime(ft windows.Filetime) uint64 {
