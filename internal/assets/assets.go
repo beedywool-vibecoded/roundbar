@@ -97,7 +97,8 @@ func DeviceName(id, fit string) string {
 	if fit == "contain" {
 		f = "f"
 	}
-	return strings.TrimSuffix(id, ext) + "-" + f + ext
+	// "2": device format version (JFIF header); a bump makes the device refetch.
+	return strings.TrimSuffix(id, ext) + "-" + f + "2" + ext
 }
 
 // DeviceFile renders (and caches on disk) the device version of an asset.
@@ -173,8 +174,17 @@ func deviceJPEG(raw []byte, contain bool) ([]byte, error) {
 	}
 	var buf bytes.Buffer
 	// Go writes baseline JPEG, which the device's TJpgDec decoder needs.
-	err = jpeg.Encode(&buf, flatten(fitted(img, contain)), &jpeg.Options{Quality: 88})
-	return buf.Bytes(), err
+	if err := jpeg.Encode(&buf, flatten(fitted(img, contain)), &jpeg.Options{Quality: 88}); err != nil {
+		return nil, err
+	}
+	// LVGL's TJpgDec glue only recognises files starting with a JFIF APP0
+	// segment, which Go's encoder doesn't write: insert one after SOI.
+	jfif := []byte{0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00}
+	b := buf.Bytes()
+	out := make([]byte, 0, len(b)+len(jfif))
+	out = append(out, b[:2]...)
+	out = append(out, jfif...)
+	return append(out, b[2:]...), nil
 }
 
 // deviceGIF composites every frame (honouring disposal), scales it and writes

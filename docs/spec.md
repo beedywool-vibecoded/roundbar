@@ -140,7 +140,8 @@ Uploaded through the configurator and stored in `~/.config/roundbar/assets/<id>`
 the SHA-256 of the stored file plus `.jpg` or `.gif`. Stills are re-encoded as JPEG with the longest side ≤ 1080 px;
 GIFs are kept as uploaded (≤ 20 MB). When syncing, the daemon renders the device version of each image for the page's
 `fit` (exactly 360×360 for cover, inside 360×360 for contain; baseline JPEG, or a re-encoded full-frame GIF ≤ 3 MB),
-named `<stem>-c.jpg` / `<stem>-f.jpg` (`.gif` likewise), and copies the ones the device lacks to its `assets`
+named `<stem>-c2.jpg` / `<stem>-f2.jpg` (`.gif` likewise; the digit is the device format version, JPEGs carry a
+JFIF APP0 segment), and copies the ones the device lacks to its `assets`
 partition (see §2).
 
 ## 2. Serial protocol (USB CDC, both directions)

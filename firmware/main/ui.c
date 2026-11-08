@@ -367,7 +367,7 @@ static void build_radial(lv_obj_t *tile, cJSON *pg)
 // first ~10 px decide: moving along the ring drags the value, moving across it
 // horizontally scrolls the pages under the finger. Nothing changes until then.
 
-typedef enum { ARC_IDLE, ARC_UNDECIDED, ARC_DRAG, ARC_SWIPE } arc_mode_t;
+typedef enum { ARC_IDLE, ARC_UNDECIDED, ARC_DRAG, ARC_SWIPE, ARC_NONE } arc_mode_t;
 static arc_mode_t arc_mode;
 static lv_point_t arc_p0;
 static int32_t arc_v0, arc_scroll0;
@@ -395,7 +395,12 @@ static void arc_gate_event(lv_event_t *e)
             int32_t rx = arc_p0.x - LCD_W / 2, ry = arc_p0.y - LCD_H / 2;
             int32_t radial = dx * rx + dy * ry, tangential = dx * ry - dy * rx;
             bool across = LV_ABS(radial) > LV_ABS(tangential) && LV_ABS(dx) > LV_ABS(dy);
-            arc_mode = across && page_count > 1 ? ARC_SWIPE : ARC_DRAG;
+            if (across && dy > 0 && arc_p0.y < 70) arc_mode = ARC_NONE; // pull-down: quick settings
+            else arc_mode = across && page_count > 1 ? ARC_SWIPE : ARC_DRAG;
+        }
+        if (arc_mode == ARC_NONE) {
+            lv_arc_set_value(a, arc_v0);
+            return;
         }
         if (arc_mode == ARC_SWIPE) {
             lv_arc_set_value(a, arc_v0);
@@ -884,7 +889,7 @@ static void device_name(char *out, size_t n, const char *id, const char *fit)
 {
     const char *dot = strrchr(id, '.');
     int stem = dot ? (int)(dot - id) : (int)strlen(id);
-    snprintf(out, n, "%.*s-%s%s", stem, id, fit && !strcmp(fit, "contain") ? "f" : "c", dot ? dot : "");
+    snprintf(out, n, "%.*s-%s2%s", stem, id, fit && !strcmp(fit, "contain") ? "f" : "c", dot ? dot : "");
 }
 
 static void slide_fade_exec(void *o, int32_t v) { lv_obj_set_style_opa(o, (lv_opa_t)v, 0); }
@@ -1129,12 +1134,51 @@ static void build_touchpad(lv_obj_t *tile, cJSON *pg)
 
 // ---- navigation: wrap-around & gestures ----------------------------------------------------
 
+static lv_obj_t *wrap_shot;
+static void wrap_x_exec(void *o, int32_t v) { lv_obj_set_x(o, v); }
+static void wrap_shot_x_exec(void *o, int32_t v) { lv_obj_set_x(o, v); }
+static void wrap_done(lv_anim_t *a)
+{
+    if (!wrap_shot) return;
+    lv_draw_buf_t *buf = (lv_draw_buf_t *)lv_image_get_src(wrap_shot);
+    lv_obj_delete(wrap_shot);
+    wrap_shot = NULL;
+    if (buf) lv_draw_buf_destroy(buf);
+}
+
+// Wrapping can't scroll the tileview past its ends, so fake the slide: the old
+// page leaves as a snapshot while the tileview, already on the target, slides in.
+static void wrap_slide(int dir)
+{
+    if (wrap_shot) return;
+    lv_draw_buf_t *shot = lv_snapshot_take(tv, LV_COLOR_FORMAT_RGB565);
+    if (!shot) return;
+    wrap_shot = lv_image_create(lv_obj_get_parent(tv));
+    lv_image_set_src(wrap_shot, shot);
+    lv_obj_set_pos(wrap_shot, 0, 0);
+    lv_obj_remove_flag(wrap_shot, LV_OBJ_FLAG_CLICKABLE);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_duration(&a, 300);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_var(&a, tv);
+    lv_anim_set_values(&a, dir * LCD_W, 0);
+    lv_anim_set_exec_cb(&a, wrap_x_exec);
+    lv_anim_start(&a);
+    lv_anim_set_var(&a, wrap_shot);
+    lv_anim_set_values(&a, 0, -dir * LCD_W);
+    lv_anim_set_exec_cb(&a, wrap_shot_x_exec);
+    lv_anim_set_completed_cb(&a, wrap_done);
+    lv_anim_start(&a);
+}
+
 static void goto_index(int idx, bool wrap_anim)
 {
     if (page_count < 1) return;
     bool wrapped = idx < 0 || idx >= page_count;
+    int dir = idx < 0 ? -1 : 1;
     idx = (idx % page_count + page_count) % page_count;
-    // Wrapping jumps straight there; animating would sweep through every page.
+    if (wrapped && wrap_anim) wrap_slide(dir);
     lv_tileview_set_tile_by_index(tv, idx, 0, wrapped || !wrap_anim ? LV_ANIM_OFF : LV_ANIM_ON);
     if (wrapped) { // no scroll animation means no VALUE_CHANGED from the tileview
         cur_page = idx;
@@ -1149,9 +1193,7 @@ static void screen_gesture(lv_event_t *e)
 {
     if (arc_mode == ARC_DRAG || arc_mode == ARC_SWIPE || (qs && !lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN))) return;
     lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
-    if (dir == LV_DIR_BOTTOM) {
-        qs_open();
-    } else if (dir == LV_DIR_RIGHT && cur_page == 0 && page_count > 1) {
+    if (dir == LV_DIR_RIGHT && cur_page == 0 && page_count > 1) {
         goto_index(-1, true); // finger moved right on the first page: wrap to the last
     } else if (dir == LV_DIR_LEFT && cur_page == page_count - 1 && page_count > 1) {
         goto_index(page_count, true);
@@ -1249,7 +1291,7 @@ static void qs_build(void)
     lv_obj_set_size(qs, LCD_W, LCD_H);
     lv_obj_set_style_radius(qs, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(qs, P.sc, 0);
-    lv_obj_set_style_bg_opa(qs, 248, 0);
+    lv_obj_set_style_bg_opa(qs, LV_OPA_COVER, 0);
     lv_obj_add_flag(qs, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_y(qs, -LCD_H);
     lv_obj_add_event_cb(qs, qs_event, LV_EVENT_CLICKED, (void *)0);
@@ -1300,7 +1342,10 @@ static void qs_open(void)
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
     lv_anim_set_exec_cb(&a, qs_y_exec);
     lv_anim_start(&a);
-    lv_indev_wait_release(lv_indev_active()); // the swipe must not also press a button
+    if (indev) { // the pull must not also press, drag or scroll whatever was under the finger
+        lv_indev_reset(indev, NULL);
+        lv_indev_wait_release(indev);
+    }
 }
 
 // ---- page dots ---------------------------------------------------------------------
@@ -1626,6 +1671,49 @@ static void power_tick(lv_timer_t *t)
     }
 }
 
+// ---- pull-down detector -----------------------------------------------------------------
+// Wraps the touch driver's read callback: a press that starts in the top band
+// and moves down opens quick settings, whatever widget is under the finger.
+
+static lv_indev_read_cb_t touch_read_orig;
+static struct {
+    bool down, armed;
+    lv_point_t p0;
+} pull;
+
+static void pull_open_async(void *arg) { qs_open(); }
+
+static void touch_read_wrap(lv_indev_t *in, lv_indev_data_t *d)
+{
+    touch_read_orig(in, d);
+    if (d->state != LV_INDEV_STATE_PRESSED) {
+        pull.down = false;
+        return;
+    }
+    lv_point_t p = d->point; // same rotation mapping LVGL applies after this callback
+    lv_display_rotation_t r = lv_display_get_rotation(disp);
+    if (r == LV_DISPLAY_ROTATION_180 || r == LV_DISPLAY_ROTATION_270) {
+        p.x = LCD_W - p.x - 1;
+        p.y = LCD_H - p.y - 1;
+    }
+    if (r == LV_DISPLAY_ROTATION_90 || r == LV_DISPLAY_ROTATION_270) {
+        int32_t t = p.y;
+        p.y = p.x;
+        p.x = LCD_H - t - 1;
+    }
+    if (!pull.down) {
+        pull.down = true;
+        pull.p0 = p;
+        pull.armed = p.y < 64 && (power == AWAKE || power == DIM) && (!qs || lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN));
+        return;
+    }
+    int32_t dy = p.y - pull.p0.y, dx = LV_ABS(p.x - pull.p0.x);
+    if (pull.armed && dy > 50 && dx < dy) {
+        pull.armed = false;
+        lv_async_call(pull_open_async, NULL);
+    }
+}
+
 // ---- init -------------------------------------------------------------------------------
 
 void ui_init(lv_display_t *d, lv_indev_t *touch)
@@ -1644,6 +1732,10 @@ void ui_init(lv_display_t *d, lv_indev_t *touch)
     lv_timer_create(power_tick, 500, NULL);
     lv_timer_create(slideshow_tick, 250, NULL);
     autoswitch_paused = store_local_get("autosw_paused", 0);
+    if (indev) {
+        touch_read_orig = lv_indev_get_read_cb(indev);
+        lv_indev_set_read_cb(indev, touch_read_wrap);
+    }
     ui_reload();
     // style the toast now that the palette is loaded
     lv_obj_set_style_bg_color(toast, P.schh, 0);
