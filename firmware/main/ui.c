@@ -7,6 +7,8 @@
 
 #include <math.h>
 #include <stdio.h>
+#include "esp_timer.h"
+#include <time.h>
 #include <string.h>
 
 #include "assets.h"
@@ -77,6 +79,7 @@ static void qs_open(void);
 static void screen_off(void);
 static void goto_index(int idx, bool wrap_anim);
 static void update_dots(void);
+static void wake(void);
 
 static int vol = 50, mic = 50;
 static bool vol_muted, mic_muted;
@@ -930,8 +933,10 @@ static slideshow_t *slides[MAX_PAGES];
 
 static void slide_fade_exec(void *o, int32_t v) { lv_obj_set_style_opa(o, (lv_opa_t)v, 0); }
 
+static void saver_photo_tick(void);
 static void slideshow_tick(lv_timer_t *t)
 {
+    saver_photo_tick();
     if (power != AWAKE && power != DIM) return;
     int p = cur_page;
     slideshow_t *ss = p >= 0 && p < page_count ? slides[p] : NULL;
@@ -1400,6 +1405,574 @@ static void qs_open(void)
     }
 }
 
+
+// ---- time & weather (pushed by the daemon) -------------------------------------------------
+
+static struct {
+    bool valid;
+    int64_t base, at_us; // unix seconds at esp_timer time at_us
+    int32_t offset;      // local UTC offset
+    struct {
+        char tz[40];
+        int32_t off;
+    } zones[12];
+    int nzones;
+} clk;
+
+static struct {
+    bool valid;
+    char city[48];
+    int temp, hi, lo, code;
+    bool day, imperial;
+} wx;
+
+static int64_t now_utc(void) { return clk.base + (esp_timer_get_time() - clk.at_us) / 1000000; }
+
+static void broken_down(int32_t offset, struct tm *out)
+{
+    time_t t = (time_t)(now_utc() + offset);
+    gmtime_r(&t, out);
+}
+
+static int32_t zone_offset(const char *tz)
+{
+    for (int i = 0; i < clk.nzones; i++)
+        if (!strcmp(clk.zones[i].tz, tz)) return clk.zones[i].off;
+    return clk.offset;
+}
+
+static const char *weather_icon(int code, bool day)
+{
+    if (code == 0) return day ? "clear_day" : "clear_night";
+    if (code <= 2) return day ? "partly_cloudy_day" : "partly_cloudy_night";
+    if (code == 3) return "cloud";
+    if (code == 45 || code == 48) return "foggy";
+    if (code == 65 || code == 67 || code == 82) return "rainy_heavy";
+    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "rainy";
+    if ((code >= 71 && code <= 77) || code == 85 || code == 86) return "weather_snowy";
+    if (code >= 95) return "thunderstorm";
+    return "cloud";
+}
+
+// ---- clock widgets (pages and the screen saver share them) -----------------------------------
+
+typedef struct {
+    bool used, analog;
+    lv_obj_t *hour, *min, *sec, *time_lbl, *date_lbl, *wx_icon, *wx_lbl, *zone_lbl[3];
+    lv_point_precise_t hp[2], mp[2];
+    char tz[3][40], zname[3][17];
+    int nz;
+} clock_w;
+static clock_w clocks[MAX_PAGES + 1]; // last slot: screen saver
+#define SAVER_CLOCK MAX_PAGES
+
+static void hand(lv_obj_t *line, lv_point_precise_t *pts, int angle10, int len)
+{
+    // angle in tenths of a degree, 0 = 12 o'clock, clockwise
+    int a = (angle10 / 10 + 270) % 360;
+    pts[0].x = LCD_W / 2;
+    pts[0].y = LCD_H / 2;
+    pts[1].x = LCD_W / 2 + len * lv_trigo_cos(a) / LV_TRIGO_SIN_MAX;
+    pts[1].y = LCD_H / 2 + len * lv_trigo_sin(a) / LV_TRIGO_SIN_MAX;
+    lv_line_set_points(line, pts, 2);
+}
+
+static void clock_update(clock_w *c)
+{
+    if (!c->used) return;
+    if (!clk.valid) {
+        if (c->time_lbl) lv_label_set_text(c->time_lbl, "--:--");
+        return;
+    }
+    struct tm t;
+    broken_down(clk.offset, &t);
+    if (c->analog) {
+        hand(c->hour, c->hp, (t.tm_hour % 12) * 300 + t.tm_min * 5, 78);
+        hand(c->min, c->mp, t.tm_min * 60 + t.tm_sec, 118);
+        int a = (t.tm_sec * 6 + 270) % 360;
+        lv_obj_set_pos(c->sec, LCD_W / 2 + 132 * lv_trigo_cos(a) / LV_TRIGO_SIN_MAX - 5,
+                       LCD_H / 2 + 132 * lv_trigo_sin(a) / LV_TRIGO_SIN_MAX - 5);
+    } else {
+        lv_label_set_text_fmt(c->time_lbl, "%02d:%02d", t.tm_hour, t.tm_min);
+        static const char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+        static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        lv_label_set_text_fmt(c->date_lbl, "%s %d %s", days[t.tm_wday], t.tm_mday, months[t.tm_mon]);
+    }
+    for (int i = 0; i < c->nz; i++) {
+        struct tm z;
+        broken_down(zone_offset(c->tz[i]), &z);
+        lv_label_set_text_fmt(c->zone_lbl[i], "%s  %02d:%02d", c->zname[i], z.tm_hour, z.tm_min);
+    }
+    if (c->wx_lbl) {
+        if (wx.valid) {
+            lv_label_set_text(c->wx_icon, theme_icon(weather_icon(wx.code, wx.day)));
+            lv_label_set_text_fmt(c->wx_lbl, "%d°  %d° / %d°", wx.temp, wx.hi, wx.lo);
+        } else {
+            lv_label_set_text(c->wx_icon, "");
+            lv_label_set_text(c->wx_lbl, "");
+        }
+    }
+}
+
+static void build_clock_into(lv_obj_t *parent, cJSON *pg, clock_w *c, bool force_digital, bool weather)
+{
+    memset(c, 0, sizeof(*c));
+    c->used = true;
+    const char *style = jstr(pg, "style");
+    c->analog = !force_digital && !(style && !strcmp(style, "digital"));
+    if (c->analog) {
+        lv_obj_t *face = box(parent);
+        lv_obj_set_size(face, 300, 300);
+        lv_obj_center(face);
+        lv_obj_set_style_radius(face, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(face, P.pc, 0);
+        lv_obj_set_style_bg_opa(face, LV_OPA_40, 0);
+        lv_obj_remove_flag(face, LV_OBJ_FLAG_CLICKABLE);
+        for (int i = 0; i < 12; i++) {
+            int a = (i * 30 + 270) % 360;
+            lv_obj_t *tk = box(parent);
+            int r = i % 3 == 0 ? 5 : 3;
+            lv_obj_set_size(tk, 2 * r, 2 * r);
+            lv_obj_set_style_radius(tk, r, 0);
+            lv_obj_set_style_bg_color(tk, i % 3 == 0 ? P.primary : P.on_sv, 0);
+            lv_obj_set_style_bg_opa(tk, LV_OPA_COVER, 0);
+            lv_obj_set_pos(tk, LCD_W / 2 + 132 * lv_trigo_cos(a) / LV_TRIGO_SIN_MAX - r,
+                           LCD_H / 2 + 132 * lv_trigo_sin(a) / LV_TRIGO_SIN_MAX - r);
+            lv_obj_remove_flag(tk, LV_OBJ_FLAG_CLICKABLE);
+        }
+    } else {
+        c->time_lbl = text(parent, theme_font_clock(), P.on_surface, "--:--");
+        lv_obj_align(c->time_lbl, LV_ALIGN_CENTER, 0, -26);
+        c->date_lbl = text(parent, F.body, P.on_sv, "");
+        lv_obj_align(c->date_lbl, LV_ALIGN_CENTER, 0, 26);
+    }
+    cJSON *wflag = cJSON_GetObjectItem(pg, "weather");
+    if (weather && !(cJSON_IsBool(wflag) && cJSON_IsFalse(wflag))) {
+        c->wx_icon = text(parent, F.icon_m, P.primary, "");
+        c->wx_lbl = text(parent, F.body, P.on_surface, "");
+        int y = c->analog ? 52 : 70;
+        lv_obj_align(c->wx_icon, LV_ALIGN_CENTER, -54, y);
+        lv_obj_align(c->wx_lbl, LV_ALIGN_CENTER, 22, y);
+    }
+    cJSON *zones = cJSON_GetObjectItem(pg, "zones"), *z;
+    cJSON_ArrayForEach(z, zones)
+    {
+        if (c->nz >= 3) break;
+        const char *tz = jstr(z, "tz"), *label = jstr(z, "label");
+        if (!tz) continue;
+        strlcpy(c->tz[c->nz], tz, sizeof(c->tz[0]));
+        if (!label || !label[0]) {
+            const char *slash = strrchr(tz, '/');
+            label = slash ? slash + 1 : tz;
+        }
+        strlcpy(c->zname[c->nz], label, sizeof(c->zname[0]));
+        for (char *u = c->zname[c->nz]; *u; u++)
+            if (*u == '_') *u = ' ';
+        c->zone_lbl[c->nz] = text(parent, F.label, P.on_sv, "");
+        lv_obj_align(c->zone_lbl[c->nz], LV_ALIGN_CENTER, 0, (c->analog ? 84 : 100) + c->nz * 20);
+        c->nz++;
+    }
+    if (c->analog) { // hands last so they draw on top
+        c->hour = lv_line_create(parent);
+        c->min = lv_line_create(parent);
+        lv_obj_set_style_line_width(c->hour, 10, 0);
+        lv_obj_set_style_line_color(c->hour, P.primary, 0);
+        lv_obj_set_style_line_rounded(c->hour, true, 0);
+        lv_obj_set_style_line_width(c->min, 6, 0);
+        lv_obj_set_style_line_color(c->min, P.on_surface, 0);
+        lv_obj_set_style_line_rounded(c->min, true, 0);
+        c->sec = box(parent);
+        lv_obj_set_size(c->sec, 10, 10);
+        lv_obj_set_style_radius(c->sec, 5, 0);
+        lv_obj_set_style_bg_color(c->sec, P.tertiary, 0);
+        lv_obj_set_style_bg_opa(c->sec, LV_OPA_COVER, 0);
+        lv_obj_t *pin = box(parent);
+        lv_obj_set_size(pin, 14, 14);
+        lv_obj_center(pin);
+        lv_obj_set_style_radius(pin, 7, 0);
+        lv_obj_set_style_bg_color(pin, P.primary, 0);
+        lv_obj_set_style_bg_opa(pin, LV_OPA_COVER, 0);
+        lv_obj_remove_flag(c->hour, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(c->min, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(c->sec, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(pin, LV_OBJ_FLAG_CLICKABLE);
+    }
+    clock_update(c);
+}
+
+static void build_clock(lv_obj_t *tile, cJSON *pg, int page)
+{
+    build_clock_into(tile, pg, &clocks[page], false, true);
+}
+
+static lv_obj_t *saver;
+static void clock_tick(lv_timer_t *t)
+{
+    if (power == OFF || power == ASLEEP) return;
+    if (cur_page >= 0 && cur_page < page_count) clock_update(&clocks[cur_page]);
+    if (saver) clock_update(&clocks[SAVER_CLOCK]);
+}
+
+void ui_time(cJSON *m)
+{
+    cJSON *e = cJSON_GetObjectItem(m, "epoch"), *o = cJSON_GetObjectItem(m, "offset");
+    if (!cJSON_IsNumber(e)) return;
+    clk.base = (int64_t)e->valuedouble;
+    clk.at_us = esp_timer_get_time();
+    clk.offset = cJSON_IsNumber(o) ? o->valueint : 0;
+    clk.nzones = 0;
+    cJSON *z;
+    cJSON_ArrayForEach(z, cJSON_GetObjectItem(m, "zones"))
+    {
+        if (clk.nzones >= 12 || !cJSON_IsNumber(z)) continue;
+        strlcpy(clk.zones[clk.nzones].tz, z->string, sizeof(clk.zones[0].tz));
+        clk.zones[clk.nzones++].off = z->valueint;
+    }
+    clk.valid = true;
+    clock_tick(NULL);
+}
+
+void ui_weather(cJSON *m)
+{
+    cJSON *t = cJSON_GetObjectItem(m, "temp");
+    if (!cJSON_IsNumber(t)) return;
+    wx.temp = (int)lroundf(t->valuedouble);
+    cJSON *hi = cJSON_GetObjectItem(m, "hi"), *lo = cJSON_GetObjectItem(m, "lo"), *c = cJSON_GetObjectItem(m, "code");
+    wx.hi = cJSON_IsNumber(hi) ? (int)lroundf(hi->valuedouble) : wx.temp;
+    wx.lo = cJSON_IsNumber(lo) ? (int)lroundf(lo->valuedouble) : wx.temp;
+    wx.code = cJSON_IsNumber(c) ? c->valueint : 3;
+    wx.day = cJSON_IsTrue(cJSON_GetObjectItem(m, "day"));
+    strlcpy(wx.city, jstr(m, "city") ?: "", sizeof(wx.city));
+    wx.valid = true;
+    for (int i = 0; i <= MAX_PAGES; i++) clock_update(&clocks[i]);
+}
+
+// ---- timer / pomodoro ----------------------------------------------------------------------
+
+static struct {
+    int set_s, left_ms, phase, cycle; // phase 0 work, 1 break (pomodoro)
+    bool running, pomodoro;
+    uint32_t last;
+    char label[25];
+} tmr = {.set_s = 25 * 60, .left_ms = 25 * 60 * 1000};
+
+static struct {
+    lv_obj_t *arc, *time_lbl, *state_icon, *phase_lbl;
+} tw;
+
+static void timer_show(void)
+{
+    if (!tw.arc) return;
+    int s = (tmr.left_ms + 999) / 1000;
+    lv_label_set_text_fmt(tw.time_lbl, "%d:%02d", s / 60, s % 60);
+    lv_label_set_text(tw.state_icon, theme_icon(tmr.running ? "pause" : "play_arrow"));
+    if (tmr.running || tmr.left_ms != tmr.set_s * 1000) { // counting: ring shows what's left
+        lv_arc_set_range(tw.arc, 0, 1000);
+        lv_arc_set_value(tw.arc, tmr.set_s ? (int32_t)((int64_t)tmr.left_ms * 1000 / (tmr.set_s * 1000)) : 0);
+    } else { // stopped at full: the ring sets the minutes
+        lv_arc_set_range(tw.arc, 0, 120);
+        lv_arc_set_value(tw.arc, tmr.set_s / 60);
+    }
+    if (tw.phase_lbl)
+        lv_label_set_text(tw.phase_lbl, tmr.pomodoro ? (tmr.phase ? "Break" : "Focus") : (tmr.label[0] ? tmr.label : ""));
+}
+
+static lv_obj_t *pulse;
+static void pulse_exec(void *o, int32_t v) { lv_obj_set_style_bg_opa(o, (lv_opa_t)v, 0); }
+static void pulse_done(lv_anim_t *a)
+{
+    lv_obj_delete(a->var);
+    pulse = NULL;
+}
+
+static void timer_finished(void)
+{
+    wake();
+    if (!pulse) { // three soft flashes of the primary color
+        pulse = box(lv_layer_top());
+        lv_obj_set_size(pulse, LCD_W, LCD_H);
+        lv_obj_set_style_radius(pulse, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(pulse, P.primary, 0);
+        lv_obj_remove_flag(pulse, LV_OBJ_FLAG_CLICKABLE);
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, pulse);
+        lv_anim_set_values(&a, 0, 160);
+        lv_anim_set_duration(&a, 350);
+        lv_anim_set_playback_duration(&a, 350);
+        lv_anim_set_repeat_count(&a, 3);
+        lv_anim_set_exec_cb(&a, pulse_exec);
+        lv_anim_set_completed_cb(&a, pulse_done);
+        lv_anim_start(&a);
+    }
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "t", "timerDone");
+    cJSON_AddStringToObject(o, "label", tmr.label);
+    if (tmr.pomodoro) cJSON_AddStringToObject(o, "phase", tmr.phase ? "break" : "work");
+    char *js = cJSON_PrintUnformatted(o);
+    if (js) usb_send_line(js);
+    free(js);
+    cJSON_Delete(o);
+    ui_toast(tmr.pomodoro ? (tmr.phase ? "Back to work" : "Break time") : "Time's up");
+    if (tmr.pomodoro) { // next phase starts by itself
+        if (tmr.phase == 0) {
+            tmr.cycle++;
+            tmr.phase = 1;
+            tmr.set_s = (tmr.cycle % 4 == 0 ? 15 : 5) * 60;
+        } else {
+            tmr.phase = 0;
+            tmr.set_s = 25 * 60;
+        }
+        tmr.left_ms = tmr.set_s * 1000;
+        tmr.running = true;
+        tmr.last = lv_tick_get();
+    } else {
+        tmr.running = false;
+        tmr.left_ms = tmr.set_s * 1000;
+    }
+}
+
+static void timer_tick(lv_timer_t *t)
+{
+    if (!tmr.running) return;
+    uint32_t now = lv_tick_get();
+    tmr.left_ms -= (int)(now - tmr.last);
+    tmr.last = now;
+    if (tmr.left_ms <= 0) timer_finished();
+    timer_show();
+}
+
+static void timer_center_event(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED) {
+        tmr.running = !tmr.running;
+        tmr.last = lv_tick_get();
+    } else { // long press: reset
+        tmr.running = false;
+        if (tmr.pomodoro) {
+            tmr.phase = 0;
+            tmr.cycle = 0;
+            tmr.set_s = 25 * 60;
+        }
+        tmr.left_ms = tmr.set_s * 1000;
+    }
+    timer_show();
+}
+
+static void timer_arc_event(lv_event_t *e)
+{
+    if (!ARC_DRAGGING() || tmr.running || tmr.left_ms != tmr.set_s * 1000 || tmr.pomodoro) return;
+    int m = LV_MAX(1, lv_arc_get_value(lv_event_get_target_obj(e)));
+    tmr.set_s = m * 60;
+    tmr.left_ms = tmr.set_s * 1000;
+    timer_show();
+}
+
+static void timer_preset_event(lv_event_t *e)
+{
+    if (tmr.running) return;
+    tmr.set_s = (int)(intptr_t)lv_event_get_user_data(e) * 60;
+    tmr.left_ms = tmr.set_s * 1000;
+    timer_show();
+}
+
+static void build_timer(lv_obj_t *tile, cJSON *pg)
+{
+    tmr.pomodoro = cJSON_IsTrue(cJSON_GetObjectItem(pg, "pomodoro"));
+    strlcpy(tmr.label, jstr(pg, "label") ?: "", sizeof(tmr.label));
+    if (tmr.pomodoro && !tmr.running && tmr.left_ms == tmr.set_s * 1000 && tmr.phase == 0) {
+        tmr.set_s = 25 * 60;
+        tmr.left_ms = tmr.set_s * 1000;
+    }
+    tw.arc = bezel_arc(tile, P.primary, true);
+    lv_arc_set_bg_angles(tw.arc, 0, 360);
+    lv_arc_set_rotation(tw.arc, 270);
+    lv_obj_add_event_cb(tw.arc, arc_drag_event, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(tw.arc, timer_arc_event, LV_EVENT_VALUE_CHANGED, NULL);
+
+    lv_obj_t *center = box(tile); // tap: start/pause, hold: reset
+    lv_obj_set_size(center, 200, 200);
+    lv_obj_center(center);
+    lv_obj_set_style_radius(center, LV_RADIUS_CIRCLE, 0);
+    lv_obj_add_flag(center, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(center, timer_center_event, LV_EVENT_SHORT_CLICKED, NULL);
+    lv_obj_add_event_cb(center, timer_center_event, LV_EVENT_LONG_PRESSED, NULL);
+
+    tw.state_icon = text(tile, F.icon_m, P.primary, "");
+    lv_obj_align(tw.state_icon, LV_ALIGN_CENTER, 0, -62);
+    tw.time_lbl = text(tile, F.big, P.on_surface, "");
+    lv_obj_align(tw.time_lbl, LV_ALIGN_CENTER, 0, -6);
+    tw.phase_lbl = text(tile, F.body, P.on_sv, "");
+    lv_obj_align(tw.phase_lbl, LV_ALIGN_CENTER, 0, 42);
+
+    if (!tmr.pomodoro) {
+        int presets[4] = {5, 15, 25, 0}, n = 3;
+        cJSON *mins = cJSON_GetObjectItem(pg, "minutes");
+        if (cJSON_IsArray(mins) && cJSON_GetArraySize(mins) > 0) {
+            n = 0;
+            cJSON *mm;
+            cJSON_ArrayForEach(mm, mins) if (cJSON_IsNumber(mm) && n < 4) presets[n++] = mm->valueint;
+        }
+        lv_obj_t *row = box(tile);
+        lv_obj_set_size(row, LV_SIZE_CONTENT, 34);
+        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_style_pad_column(row, 8, 0);
+        lv_obj_align(row, LV_ALIGN_CENTER, 0, 92);
+        for (int i = 0; i < n; i++) {
+            lv_obj_t *chip = box(row);
+            lv_obj_set_size(chip, 46, 34);
+            lv_obj_set_style_radius(chip, 17, 0);
+            lv_obj_set_style_bg_color(chip, P.secc, 0);
+            lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+            lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+            squish_on_press(chip, 34);
+            char b[6];
+            snprintf(b, sizeof(b), "%d", presets[i]);
+            lv_obj_t *l = text(chip, F.label, P.on_secc, b);
+            lv_obj_center(l);
+            lv_obj_add_event_cb(chip, timer_preset_event, LV_EVENT_CLICKED, (void *)(intptr_t)presets[i]);
+        }
+    }
+    timer_show();
+}
+
+// ---- mic-in-use ring ------------------------------------------------------------------------
+
+static lv_obj_t *mic_ring;
+static bool mic_on;
+
+static void mic_ring_sync(void)
+{
+    if (!mic_ring) return;
+    bool show = mic_on && power != OFF && power != ASLEEP;
+    if (show) lv_obj_remove_flag(mic_ring, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(mic_ring, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void mic_ring_build(void)
+{
+    if (mic_ring) lv_obj_delete(mic_ring);
+    mic_ring = lv_arc_create(lv_layer_top());
+    lv_obj_set_size(mic_ring, LCD_W, LCD_H);
+    lv_obj_center(mic_ring);
+    lv_arc_set_bg_angles(mic_ring, 0, 360);
+    lv_obj_set_style_arc_width(mic_ring, 5, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(mic_ring, P.error, LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(mic_ring, LV_OPA_TRANSP, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(mic_ring, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_remove_flag(mic_ring, LV_OBJ_FLAG_CLICKABLE);
+    mic_ring_sync();
+}
+
+void ui_mic_in_use(bool on)
+{
+    mic_on = on && store_get_bool("micIndicator", true);
+    mic_ring_sync();
+}
+
+// ---- screen saver ---------------------------------------------------------------------------
+
+static struct {
+    const uint8_t *raw[20];
+    size_t len[20];
+    int n, i, front;
+    uint8_t *px[2];
+    lv_image_dsc_t dsc[2];
+    lv_obj_t *img[2];
+    uint32_t last;
+} ssv;
+
+static void saver_hide(void)
+{
+    if (!saver) return;
+    lv_obj_delete(saver);
+    saver = NULL;
+    clocks[SAVER_CLOCK].used = false;
+    lv_image_cache_drop(NULL);
+    for (int i = 0; i < ssv.n; i++) free((void *)ssv.raw[i]);
+    free(ssv.px[0]);
+    free(ssv.px[1]);
+    memset(&ssv, 0, sizeof(ssv));
+    if (power == AWAKE) board_backlight(store_brightness());
+}
+
+static void saver_event(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
+        lv_display_trigger_activity(disp);
+        if (indev) lv_indev_wait_release(indev); // the waking touch presses nothing
+        saver_hide();
+    }
+}
+
+static void saver_photo_tick(void)
+{
+    if (!saver || ssv.n < 2 || lv_tick_get() - ssv.last < 8000) return;
+    ssv.last = lv_tick_get();
+    int next = (ssv.i + 1) % ssv.n, back = ssv.front ^ 1;
+    if (!decode_jpeg(ssv.raw[next], ssv.len[next], &ssv.dsc[back], ssv.px[back], SLIDE_BUF)) return;
+    lv_obj_set_style_opa(ssv.img[back], LV_OPA_TRANSP, 0);
+    lv_image_set_src(ssv.img[back], &ssv.dsc[back]);
+    lv_obj_move_foreground(ssv.img[back]);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, ssv.img[back]);
+    lv_anim_set_values(&a, 0, 255);
+    lv_anim_set_duration(&a, 900);
+    lv_anim_set_exec_cb(&a, slide_fade_exec);
+    lv_anim_start(&a);
+    ssv.i = next;
+    ssv.front = back;
+}
+
+static void saver_show(const char *mode)
+{
+    if (saver) return;
+    saver = box(lv_layer_top());
+    lv_obj_set_size(saver, LCD_W, LCD_H);
+    lv_obj_set_style_bg_color(saver, P.surface, 0);
+    lv_obj_set_style_bg_opa(saver, LV_OPA_COVER, 0);
+    lv_obj_add_flag(saver, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(saver, saver_event, LV_EVENT_PRESSED, NULL);
+    bool photos = !strcmp(mode, "photos");
+    if (photos) {
+        cJSON *it;
+        cJSON_ArrayForEach(it, cJSON_GetObjectItem(cJSON_GetObjectItem(store_config(), "device"), "screensaverImages"))
+        {
+            if (!cJSON_IsString(it) || ssv.n >= 20) continue;
+            char name[48];
+            device_name(name, sizeof(name), it->valuestring, "cover");
+            size_t len;
+            uint8_t *raw = assets_load(name, &len);
+            if (raw) {
+                ssv.raw[ssv.n] = raw;
+                ssv.len[ssv.n++] = len;
+            }
+        }
+        if (ssv.n) {
+            ssv.px[0] = heap_caps_malloc(SLIDE_BUF, MALLOC_CAP_SPIRAM);
+            ssv.px[1] = ssv.n > 1 ? heap_caps_malloc(SLIDE_BUF, MALLOC_CAP_SPIRAM) : NULL;
+            for (int k = 0; k < 2; k++) {
+                ssv.img[k] = lv_image_create(saver);
+                lv_obj_center(ssv.img[k]);
+                lv_obj_remove_flag(ssv.img[k], LV_OBJ_FLAG_CLICKABLE);
+            }
+            if (ssv.px[0] && decode_jpeg(ssv.raw[0], ssv.len[0], &ssv.dsc[0], ssv.px[0], SLIDE_BUF))
+                lv_image_set_src(ssv.img[0], &ssv.dsc[0]);
+            ssv.last = lv_tick_get();
+        } else {
+            photos = false; // nothing synced: fall back to the clock
+        }
+    }
+    if (!photos) {
+        cJSON *pg = cJSON_CreateObject();
+        cJSON_AddStringToObject(pg, "style", "digital");
+        build_clock_into(saver, pg, &clocks[SAVER_CLOCK], true, true);
+        cJSON_Delete(pg);
+    }
+    board_backlight(LV_MAX(5, store_brightness() / 2));
+}
+
 // ---- page dots ---------------------------------------------------------------------
 
 static void dot_width_exec(void *o, int32_t v) { lv_obj_set_width(o, v); }
@@ -1454,6 +2027,10 @@ static void build(bool animate)
 {
     theme_load(store_config());
     prof = find_profile(cur_profile);
+    cJSON *ppal = cJSON_GetObjectItem(prof, "palette"); // profile color
+    if (cJSON_IsObject(ppal)) theme_parse_palette(ppal, &P);
+    for (int i = 0; i < MAX_PAGES; i++) clocks[i].used = false;
+    memset(&tw, 0, sizeof(tw));
     strlcpy(cur_profile, jstr(prof, "id") ?: "default", sizeof(cur_profile));
     memset(&live, 0, sizeof(live));
     memset(&media_live, 0, sizeof(media_live));
@@ -1492,6 +2069,8 @@ static void build(bool animate)
         else if (!strcmp(k, "dial")) build_dial(tile, pages[i]);
         else if (!strcmp(k, "image")) build_image(tile, pages[i], i);
         else if (!strcmp(k, "touchpad")) build_touchpad(tile, pages[i]);
+        else if (!strcmp(k, "clock")) build_clock(tile, pages[i], i);
+        else if (!strcmp(k, "timer")) build_timer(tile, pages[i]);
         else build_radial(tile, pages[i]);
     }
 
@@ -1533,6 +2112,7 @@ static void build(bool animate)
     for (int i = 0; i < page_count; i++) lv_obj_set_width(dots[i], i == cur_page ? 18 : 6);
     update_dots();
     sync_gifs();
+    mic_ring_build();
     if (qs) {
         lv_obj_delete(qs); // rebuilt with the new pages when opened
         qs = NULL;
@@ -1636,6 +2216,7 @@ static void wake(void)
         sync_gifs();
         ui_announce();
     }
+    mic_ring_sync();
 }
 
 static uint32_t last_shield_tap;
@@ -1669,6 +2250,7 @@ static void screen_off(void)
 {
     if (power == OFF) return;
     power = OFF;
+    saver_hide();
     board_backlight(0);
     board_panel_sleep(true); // display off + sleep in: no light at all
     make_shield();
@@ -1709,12 +2291,19 @@ static void power_tick(lv_timer_t *t)
     if (sleep_s > 0 && idle > (uint32_t)sleep_s * 1000) {
         if (power != ASLEEP) {
             power = ASLEEP;
+            saver_hide();
             board_backlight(0);
             make_shield();
+            mic_ring_sync();
             sync_gifs();
             ui_announce();
         }
-    } else if (dim_s > 0 && idle > (uint32_t)dim_s * 1000) {
+    } else if (strcmp(jstr(cJSON_GetObjectItem(store_config(), "device"), "screensaver") ?: "off", "off") &&
+               power == AWAKE && !saver && (!qs || lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN)) &&
+               idle > (uint32_t)LV_MAX(10, store_get_int("screensaverAfter", 60)) * 1000) {
+        saver_show(jstr(cJSON_GetObjectItem(store_config(), "device"), "screensaver"));
+    } else if (!saver && dim_s > 0 && idle > (uint32_t)dim_s * 1000 &&
+               !strcmp(jstr(cJSON_GetObjectItem(store_config(), "device"), "screensaver") ?: "off", "off")) {
         if (power == AWAKE) {
             power = DIM;
             board_backlight(store_brightness() / 4);
@@ -1828,6 +2417,8 @@ void ui_init(lv_display_t *d, lv_indev_t *touch)
     lv_timer_create(level_flush, 50, NULL);
     lv_timer_create(power_tick, 500, NULL);
     lv_timer_create(slideshow_tick, 250, NULL);
+    lv_timer_create(clock_tick, 1000, NULL);
+    lv_timer_create(timer_tick, 250, NULL);
     autoswitch_paused = store_local_get("autosw_paused", 0);
     if (indev) {
         touch_read_orig = lv_indev_get_read_cb(indev);

@@ -53,6 +53,9 @@ the device keeps a copy in flash so it works without the daemon.
     "blur": 60,                // 0 (nearly sharp) … 100 (very soft); missing = 60
     "coverOpacity": 50         // how much the art shows through the surface-colored scrim, 0..100; missing = 50
   },
+  "weather": {                 // optional; used by clock pages. Geocoded by the configurator (Open-Meteo)
+    "city": "Paris", "lat": 48.85, "lon": 2.35, "units": "metric"   // "metric" | "imperial"
+  },
   "device": {
     "brightness": 80,          // 5..100
     "dimAfter": 30,            // seconds idle before dimming to 20 %, 0 = never
@@ -62,6 +65,10 @@ the device keeps a copy in flash so it works without the daemon.
     "rotation": 0,             // screen rotation, degrees clockwise: 0 | 90 | 180 | 270 (touch follows)
     "edgeDoubleTap": "page",   // double tap near the left/right edge: "page" (prev/next, instant) |
                                // "quickSettings" | "screenOff" | "off"; missing = "page"
+    "micIndicator": true,      // red ring around the screen while any app records the microphone; missing = true
+    "screensaver": "off",      // after screensaverAfter s idle: "off" | "clock" | "photos" (dimmed); replaces the dim step
+    "screensaverAfter": 60,    // seconds, 10..3600
+    "screensaverImages": [],   // asset ids for "photos" (stills only, ≤ 20), synced like image pages (cover fit)
     "followPc": true           // screen goes black ~8 s after the PC side disappears (shutdown, daemon stopped,
                                // USB suspend) and wakes when it comes back; missing = true
   },
@@ -70,6 +77,8 @@ the device keeps a copy in flash so it works without the daemon.
       "id": "default",         // [a-z0-9-]{1,24}, unique. "default" must exist and is used when nothing matches.
       "name": "Default",
       "match": [],             // window classes / app ids, lowercase, e.g. ["firefox", "org.mozilla.firefox"]
+      "seed": "#386A20",       // optional: own color; the configurator also writes "palette" (same roles as theme.palette,
+                               // SchemeTonalSpot for theme.mode). The device uses it for this profile's pages.
       "pages": [ /* Page, 1..8 */ ]
     }
   ]
@@ -86,6 +95,8 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `media` | `shapes?: {prev?, next?, play?, playing?}` (shape names as for buttons) | now playing (title, artist, album art), prev / play-pause / next, volume on the edge arc. Defaults: prev/next/play `circle`, playing `square` (the play button switches shape with the playback state). |
 | `stats` | `items: ("cpu"\|"cpuTemp"\|"ram"\|"gpu"\|"gpuTemp"\|"vram")[]` (1..4) | M3 expressive gauges |
 | `dial` | `icon`, `label`, `source: "volume"\|"mic"\|"brightness"\|"custom"`, `step?: number` (custom only, 1..20), `onUp?: Action`, `onDown?: Action` (custom only) | one big value arc, drag along the edge |
+| `clock` | `style?: "analog"\|"digital"` (default analog), `weather?: bool` (default true, needs top-level `weather`), `zones?: [{ "label": "Tokyo", "tz": "Asia/Tokyo" }]` (0..3 world clocks, IANA names) | home time large, weather below, world clocks as small dials/rows |
+| `timer` | `minutes?: number[]` (1..4 presets, 1..180, default [5, 15, 25]), `pomodoro?: bool`, `label?` | turn the bezel ring to set minutes, tap the center to start/pause, hold to reset; the ring empties as time runs out; pomodoro alternates 25 min work / 5 min break (4th break 15). At the end the screen pulses and the PC shows a notification. |
 | `touchpad` | `speed?: number` (1..10, default 5) | the device acts as a USB mouse: drag moves the cursor, tap = left click, long-press = right click, double-tap then drag = drag & drop, sliding along the outer ring scrolls. A sideways swipe starting on the ring changes page; a downward swipe from the top of the ring opens quick settings. |
 | `image` | `images: string[]` (asset ids, 1..20; a `.gif` must be alone), `interval?: number` (seconds, 2..3600, default 8), `fit?: "cover"\|"contain"` (default cover) | full-screen picture; several stills cross-fade as a slideshow; a GIF plays |
 
@@ -161,6 +172,7 @@ partition (see §2).
 | `dial` | `source: "volume"\|"mic"`, `value: 0..100` | edge drag, throttled to ≤ 20 Hz. Brightness dials act on the device only; custom dials run their `onUp`/`onDown` actions on the device (daemon-side ones arrive as `action`). |
 | `ack` | `id`, `ok: bool`, `err?` | reply to a PC message that carried an `id` |
 | `assets` | `have: [ids]`, `free` | reply to `assetsWant` |
+| `timerDone` | `label`, `phase?: "work"\|"break"` | a timer page finished: the daemon shows a desktop notification with a sound |
 | `log` | `msg` | debug |
 
 ### PC → Device
@@ -180,6 +192,9 @@ partition (see §2).
 | `hid` | `keys?: string`, `text?: string`, `media?: string` | macro steps and configurator tests, typed by the device. With an `id`, acked once typed. |
 | `show` | `profile`, `page` | configurator preview: jump to a page |
 | `bootloader` | – | reboot into the ROM USB download mode (for flashing) |
+| `time` | `epoch` (unix s), `offset` (local UTC offset, s), `zones: {tz: offset}` | on connect and every hour (DST); the device keeps time from it |
+| `weather` | `city`, `temp`, `code` (WMO), `hi`, `lo`, `units`, `day: bool` | on connect and every 30 min while a clock page or the clock screensaver can show |
+| `micInUse` | `on: bool` | whenever capture streams start/stop (default source, excluding monitors) |
 | `assetsWant` | `id` | device replies `{"t":"assets","have":[ids],"free":bytes}` |
 | `asset` | `name`, `n`, `i`, `data` (base64, ≤ 32 KiB raw per chunk), `id` (ack) | one file in `n` chunks; every chunk is acked, the file is renamed into place after the last |
 | `assetsPrune` | `keep: [ids]` | delete every stored asset not listed |

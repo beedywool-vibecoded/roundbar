@@ -4,6 +4,7 @@ package audio
 
 import (
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,8 @@ type Audio struct {
 	closed chan struct{}
 	// Changed receives a value (coalesced) whenever the default sink/source changes.
 	Changed chan struct{}
+	// Capture receives a value (coalesced) whenever recording streams come or go.
+	Capture chan struct{}
 }
 
 func Connect() (*Audio, error) {
@@ -31,7 +34,7 @@ func Connect() (*Audio, error) {
 		return nil, err
 	}
 	c.SetTimeout(2 * time.Second)
-	a := &Audio{c: c, closed: make(chan struct{}), Changed: make(chan struct{}, 1)}
+	a := &Audio{c: c, closed: make(chan struct{}), Changed: make(chan struct{}, 1), Capture: make(chan struct{}, 1)}
 	c.Callback = func(msg any) {
 		switch m := msg.(type) {
 		case *proto.SubscribeEvent:
@@ -39,6 +42,12 @@ func Connect() (*Audio, error) {
 			if f == proto.EventSink || f == proto.EventSource || f == proto.EventServer {
 				select {
 				case a.Changed <- struct{}{}:
+				default:
+				}
+			}
+			if f == proto.EventSinkSourceOutput {
+				select {
+				case a.Capture <- struct{}{}:
 				default:
 				}
 			}
@@ -59,7 +68,8 @@ func Connect() (*Audio, error) {
 		conn.Close()
 		return nil, err
 	}
-	mask := proto.SubscriptionMaskSink | proto.SubscriptionMaskSource | proto.SubscriptionMaskServer
+	mask := proto.SubscriptionMaskSink | proto.SubscriptionMaskSource | proto.SubscriptionMaskServer |
+		proto.SubscriptionMaskSourceInput // pulse calls recording streams "source outputs"
 	if err := c.Request(&proto.Subscribe{Mask: mask}, nil); err != nil {
 		conn.Close()
 		return nil, err
@@ -142,6 +152,31 @@ func (a *Audio) SetMicVolume(p int) error {
 		return err
 	}
 	return a.c.Request(&proto.SetSourceVolume{SourceIndex: proto.Undefined, SourceName: source, ChannelVolumes: volumes(len(so.ChannelVolumes), p)}, nil)
+}
+
+// MicInUse reports whether any app is recording from a real input (monitor
+// sources, level meters and paused streams don't count).
+func (a *Audio) MicInUse() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var outs proto.GetSourceOutputInfoListReply
+	if err := a.c.Request(&proto.GetSourceOutputInfoList{}, &outs); err != nil {
+		return false
+	}
+	for _, o := range outs {
+		if o.Corked || strings.Contains(strings.ToLower(o.MediaName), "peak") {
+			continue
+		}
+		var src proto.GetSourceInfoReply
+		if err := a.c.Request(&proto.GetSourceInfo{SourceIndex: o.SourceIndex}, &src); err != nil {
+			continue
+		}
+		if src.MonitorSourceIndex != proto.Undefined { // monitor of a sink, not a microphone
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // Mic applies "toggle" | "mute" | "unmute" to the default source.

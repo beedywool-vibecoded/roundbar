@@ -67,13 +67,16 @@ type Daemon struct {
 	artCancel context.CancelFunc // in-flight artwork job
 	coverSeq  int
 
+	clockKick         chan struct{}
+	micInUse, micSent bool
+
 	statsStop chan struct{}
 	watchers  map[chan struct{}]bool
 	done      chan struct{}
 }
 
 func New() *Daemon {
-	return &Daemon{acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
+	return &Daemon{clockKick: make(chan struct{}, 1), acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
 }
 
 func (d *Daemon) Run() error {
@@ -97,6 +100,7 @@ func (d *Daemon) Run() error {
 		go d.desktopLoop()
 	}
 	go d.audioLoop()
+	go d.clockLoop()
 	go d.watchConfig()
 	go d.serveSocket()
 	d.deviceLoop() // blocks
@@ -128,6 +132,7 @@ func (d *Daemon) deviceLoop() {
 		d.mu.Lock()
 		d.port = p
 		d.sentPro, d.lastVol, d.lastMic, d.artSent = "", "", "", ""
+		d.micSent = false
 		d.mu.Unlock()
 		d.notify()
 		_ = p.Send(map[string]any{"t": "hello"})
@@ -216,6 +221,8 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		}
 		d.syncProfile(true)
 		d.notify()
+		d.kickClock()
+		go d.sendMicInUse()
 	case "view":
 		var v View
 		_ = json.Unmarshal(m.Raw, &v)
@@ -232,6 +239,13 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		if json.Unmarshal(m.Raw, &a) == nil {
 			go d.run(a.Action)
 		}
+	case "timerDone":
+		var v struct {
+			Label string `json:"label"`
+			Phase string `json:"phase"`
+		}
+		_ = json.Unmarshal(m.Raw, &v)
+		d.timerDone(v.Label, v.Phase)
 	case "dial":
 		var v struct {
 			Source string `json:"source"`
@@ -594,6 +608,13 @@ func (d *Daemon) audioLoop() {
 			select {
 			case <-a.Changed:
 				d.sendAudio()
+			case <-a.Capture:
+				d.mu.Lock()
+				on := d.cfg.Device.MicIndicator == nil || *d.cfg.Device.MicIndicator
+				d.mu.Unlock()
+				if on {
+					d.sendMicInUse()
+				}
 			case <-a.Closed():
 				alive = false
 			}
@@ -748,6 +769,7 @@ func (d *Daemon) reload() error {
 	}
 	d.setConfig(c, raw)
 	log.Printf("config reloaded")
+	d.kickClock() // zones or weather city may have changed
 	d.mu.Lock()
 	d.artSent = "" // the cover settings may have changed
 	onMedia := d.view.Awake && d.view.Kind == "media"

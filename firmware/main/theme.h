@@ -27,6 +27,7 @@ extern palette_t P;
 extern fonts_t F;
 
 void theme_fonts_init(void);
+const lv_font_t *theme_font_clock(void); // 72 px bold, created on first use
 void theme_load(cJSON *cfg);
 // Fill `out` from a {role: "#RRGGBB"} object, falling back to the current P.
 void theme_parse_palette(cJSON *pal, palette_t *out);

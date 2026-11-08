@@ -21,3 +21,6 @@ void ui_cover(const uint8_t *rgb565, int w, int h);
 void ui_media_theme(cJSON *palette);
 // Asset files changed on flash: rebuild so image pages reload them.
 void ui_assets_changed(void);
+void ui_time(cJSON *msg);      // {"t":"time"}
+void ui_weather(cJSON *msg);   // {"t":"weather"}
+void ui_mic_in_use(bool on);

@@ -21,6 +21,15 @@ static lv_font_t *ttf(const uint8_t *s, const uint8_t *e, int px)
     return lv_tiny_ttf_create_data(s, e - s, px);
 }
 
+const lv_font_t *theme_font_clock(void)
+{
+    static lv_font_t *f;
+    if (!f) {
+        f = ttf(gsf700_start, gsf700_end, 72);
+    }
+    return f;
+}
+
 void theme_fonts_init(void)
 {
     F.label = ttf(gsf500_start, gsf500_end, 14);

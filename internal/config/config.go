@@ -11,12 +11,15 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
+	_ "time/tzdata" // world clocks validate the same on every machine
 )
 
 type Config struct {
 	Version  int       `json:"version"`
 	Theme    Theme     `json:"theme"`
 	Media    Media     `json:"media"`
+	Weather  *Weather  `json:"weather,omitempty"`
 	Device   Device    `json:"device"`
 	Profiles []Profile `json:"profiles"`
 }
@@ -25,6 +28,18 @@ type Theme struct {
 	Seed    string            `json:"seed"`
 	Mode    string            `json:"mode"`
 	Palette map[string]string `json:"palette"`
+}
+
+type Weather struct {
+	City  string  `json:"city"`
+	Lat   float64 `json:"lat"`
+	Lon   float64 `json:"lon"`
+	Units string  `json:"units"`
+}
+
+type Zone struct {
+	Label string `json:"label"`
+	TZ    string `json:"tz"`
 }
 
 type Media struct {
@@ -43,21 +58,27 @@ func (m Media) BlurOrDefault() int {
 }
 
 type Device struct {
-	Brightness     int    `json:"brightness"`
-	DimAfter       int    `json:"dimAfter"`
-	SleepAfter     int    `json:"sleepAfter"`
-	LongPressMs    int    `json:"longPressMs"`
-	KeyboardLayout string `json:"keyboardLayout"`
-	Rotation       int    `json:"rotation"` // degrees clockwise: 0, 90, 180, 270
-	FollowPc       *bool  `json:"followPc,omitempty"`
-	EdgeDoubleTap  string `json:"edgeDoubleTap,omitempty"`
+	Brightness        int      `json:"brightness"`
+	DimAfter          int      `json:"dimAfter"`
+	SleepAfter        int      `json:"sleepAfter"`
+	LongPressMs       int      `json:"longPressMs"`
+	KeyboardLayout    string   `json:"keyboardLayout"`
+	Rotation          int      `json:"rotation"` // degrees clockwise: 0, 90, 180, 270
+	FollowPc          *bool    `json:"followPc,omitempty"`
+	EdgeDoubleTap     string   `json:"edgeDoubleTap,omitempty"`
+	MicIndicator      *bool    `json:"micIndicator,omitempty"`
+	Screensaver       string   `json:"screensaver,omitempty"`
+	ScreensaverAfter  int      `json:"screensaverAfter,omitempty"`
+	ScreensaverImages []string `json:"screensaverImages,omitempty"`
 }
 
 type Profile struct {
-	ID    string   `json:"id"`
-	Name  string   `json:"name"`
-	Match []string `json:"match"`
-	Pages []Page   `json:"pages"`
+	ID      string            `json:"id"`
+	Name    string            `json:"name"`
+	Match   []string          `json:"match"`
+	Pages   []Page            `json:"pages"`
+	Seed    string            `json:"seed,omitempty"`
+	Palette map[string]string `json:"palette,omitempty"`
 }
 
 type Page struct {
@@ -81,6 +102,13 @@ type Page struct {
 	Fit      string   `json:"fit,omitempty"`
 	// touchpad pages
 	Speed int `json:"speed,omitempty"`
+	// clock pages
+	Style       string `json:"style,omitempty"`
+	ShowWeather *bool  `json:"weather,omitempty"`
+	Zones       []Zone `json:"zones,omitempty"`
+	// timer pages
+	Minutes  []int `json:"minutes,omitempty"`
+	Pomodoro bool  `json:"pomodoro,omitempty"`
 }
 
 var assetRe = regexp.MustCompile(`^[0-9a-f]{12}\.(jpg|gif)$`)
@@ -255,10 +283,31 @@ func (c *Config) Validate() error {
 		return fail("device.longPressMs", "must be 200..2000")
 	case !oneOf(d.KeyboardLayout, "fr", "us"):
 		return fail("device.keyboardLayout", "must be fr or us")
+	case !oneOf(d.Screensaver, "", "off", "clock", "photos"):
+		return fail("device.screensaver", "must be off, clock or photos")
+	case d.ScreensaverAfter != 0 && (d.ScreensaverAfter < 10 || d.ScreensaverAfter > 3600):
+		return fail("device.screensaverAfter", "must be 10..3600 seconds")
+	case len(d.ScreensaverImages) > 20:
+		return fail("device.screensaverImages", "at most 20 images")
 	case !oneOf(d.EdgeDoubleTap, "", "page", "quickSettings", "screenOff", "off"):
 		return fail("device.edgeDoubleTap", "must be page, quickSettings, screenOff or off")
 	case d.Rotation != 0 && d.Rotation != 90 && d.Rotation != 180 && d.Rotation != 270:
 		return fail("device.rotation", "must be 0, 90, 180 or 270")
+	}
+	for k, id := range d.ScreensaverImages {
+		if !assetRe.MatchString(id) || strings.HasSuffix(id, ".gif") {
+			return fail(fmt.Sprintf("device.screensaverImages[%d]", k), "must be a still image asset")
+		}
+	}
+	if w := c.Weather; w != nil {
+		switch {
+		case w.City == "" || len(w.City) > 64:
+			return fail("weather.city", "must be 1..64 chars")
+		case w.Lat < -90 || w.Lat > 90 || w.Lon < -180 || w.Lon > 180:
+			return fail("weather", "bad coordinates")
+		case !oneOf(w.Units, "metric", "imperial"):
+			return fail("weather.units", "must be metric or imperial")
+		}
 	}
 	if len(c.Profiles) == 0 || len(c.Profiles) > 32 {
 		return fail("profiles", "need 1..32 profiles")
@@ -281,6 +330,14 @@ func (c *Config) Validate() error {
 		for j, m := range p.Match {
 			if m == "" || m != strings.ToLower(m) || len(m) > 128 {
 				return fail(fmt.Sprintf("%s.match[%d]", pp, j), "must be a non-empty lowercase window class")
+			}
+		}
+		if p.Seed != "" && !hexRe.MatchString(p.Seed) {
+			return fail(pp+".seed", "must be #RRGGBB")
+		}
+		for role, v := range p.Palette {
+			if !hexRe.MatchString(v) {
+				return fail(pp+".palette."+role, "must be #RRGGBB")
 			}
 		}
 		if len(p.Pages) == 0 || len(p.Pages) > 8 {
@@ -345,6 +402,33 @@ func (pg *Page) validate(pp string, pageIDs map[string]bool) error {
 			if !oneOf(v, Shapes...) {
 				return fail(pp+".shapes."+k, "unknown shape %q", v)
 			}
+		}
+	case "clock":
+		if !oneOf(pg.Style, "", "analog", "digital") {
+			return fail(pp+".style", "must be analog or digital")
+		}
+		if len(pg.Zones) > 3 {
+			return fail(pp+".zones", "at most 3 world clocks")
+		}
+		for k, z := range pg.Zones {
+			if _, err := time.LoadLocation(z.TZ); err != nil || z.TZ == "" || z.TZ == "Local" {
+				return fail(fmt.Sprintf("%s.zones[%d].tz", pp, k), "unknown time zone %q", z.TZ)
+			}
+			if len([]rune(z.Label)) > 16 {
+				return fail(fmt.Sprintf("%s.zones[%d].label", pp, k), "at most 16 chars")
+			}
+		}
+	case "timer":
+		if len(pg.Minutes) > 4 {
+			return fail(pp+".minutes", "at most 4 presets")
+		}
+		for k, m := range pg.Minutes {
+			if m < 1 || m > 180 {
+				return fail(fmt.Sprintf("%s.minutes[%d]", pp, k), "must be 1..180")
+			}
+		}
+		if len([]rune(pg.Label)) > 24 {
+			return fail(pp+".label", "at most 24 chars")
 		}
 	case "touchpad":
 		if pg.Speed != 0 && (pg.Speed < 1 || pg.Speed > 10) {
