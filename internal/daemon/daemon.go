@@ -84,22 +84,15 @@ type Daemon struct {
 	cdp           *discord.CDP
 	iconsSent     map[string]bool
 
-<<<<<<< HEAD
 	layout   keymap.Detected // the PC's active keyboard layout
 	layoutMu sync.Mutex      // one detection at a time
 
-	statsStop chan struct{}
-	syncNote  string // last config sync with the board, for the configurator
-	mangoStop chan struct{}
-	watchers  map[chan struct{}]bool
-	done      chan struct{}
-=======
 	statsStop  chan struct{}
+	syncNote   string // last config sync with the board, for the configurator
 	lastRelink time.Time
 	mangoStop  chan struct{}
 	watchers   map[chan struct{}]bool
 	done       chan struct{}
->>>>>>> master
 }
 
 func New() *Daemon {
