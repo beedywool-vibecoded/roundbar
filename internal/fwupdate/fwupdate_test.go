@@ -72,7 +72,7 @@ func TestParseManifestRejects(t *testing.T) {
 		func(m *Manifest) { m.Chip = "esp32" },
 		func(m *Manifest) { m.Parts[2].File = "../x" },
 		func(m *Manifest) { m.Parts[2].Offset = 0x8100 },
-		func(m *Manifest) { m.Parts[3].Offset = 0x10000 }, // overlaps the app
+		func(m *Manifest) { m.Parts[3].Offset = 0x10000 },                         // overlaps the app
 		func(m *Manifest) { m.Parts[3].Offset = 0xFF000; m.Parts[3].Size = 5000 }, // past the end of flash
 		func(m *Manifest) { m.Parts[1].SHA256 = "x" },
 	}
