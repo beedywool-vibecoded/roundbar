@@ -1550,7 +1550,7 @@ static void build_clock_into(lv_obj_t *parent, cJSON *pg, clock_w *c, bool force
         }
     } else {
         c->time_lbl = text(parent, theme_font_clock(), P.on_surface, "--:--");
-        lv_obj_align(c->time_lbl, LV_ALIGN_CENTER, 0, -26);
+        lv_obj_align(c->time_lbl, LV_ALIGN_CENTER, 0, -24);
         c->date_lbl = text(parent, F.body, P.on_sv, "");
         lv_obj_align(c->date_lbl, LV_ALIGN_CENTER, 0, 26);
     }
@@ -1558,7 +1558,7 @@ static void build_clock_into(lv_obj_t *parent, cJSON *pg, clock_w *c, bool force
     if (weather && !(cJSON_IsBool(wflag) && cJSON_IsFalse(wflag))) {
         c->wx_icon = text(parent, F.icon_m, P.primary, "");
         c->wx_lbl = text(parent, F.body, P.on_surface, "");
-        int y = c->analog ? 52 : 70;
+        int y = c->analog ? -66 : -92; // weather sits above the home time
         lv_obj_align(c->wx_icon, LV_ALIGN_CENTER, -54, y);
         lv_obj_align(c->wx_lbl, LV_ALIGN_CENTER, 22, y);
     }
@@ -1577,7 +1577,7 @@ static void build_clock_into(lv_obj_t *parent, cJSON *pg, clock_w *c, bool force
         for (char *u = c->zname[c->nz]; *u; u++)
             if (*u == '_') *u = ' ';
         c->zone_lbl[c->nz] = text(parent, F.label, P.on_sv, "");
-        lv_obj_align(c->zone_lbl[c->nz], LV_ALIGN_CENTER, 0, (c->analog ? 84 : 100) + c->nz * 20);
+        lv_obj_align(c->zone_lbl[c->nz], LV_ALIGN_CENTER, 0, (c->analog ? 56 : 62) + c->nz * 20); // world clocks below
         c->nz++;
     }
     if (c->analog) { // hands last so they draw on top

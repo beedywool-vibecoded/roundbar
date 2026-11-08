@@ -257,16 +257,10 @@ const clock = computed(() => {
   const weather = (pg.weather ?? CLOCK_DEFAULTS.weather) && w ? (w.units === 'imperial' ? '54°' : '12°') : ''
   const zones = (pg.zones ?? []).slice(0, 3).map((z) => `${z.label} ${zoneTime(z.tz, d)}`)
   const analog = (pg.style ?? CLOCK_DEFAULTS.style) === 'analog'
-  // Rows stack upwards from the bottom: weather lowest, world clocks above it. On the
-  // analog face they sit inside the hour ticks.
-  const base = analog ? 98 : 128
-  const rows: { y: number; text: string }[] = []
-  let y = base
-  if (weather) y -= 24
-  for (let i = zones.length - 1; i >= 0; i--) {
-    rows.unshift({ y, text: zones[i]! })
-    y -= 20
-  }
+  // Same layout as the device: weather above the home time, world clocks below it.
+  const base = analog ? -66 : -92 // weather row
+  const rowsTop = analog ? 56 : 62
+  const rows = zones.map((text, i) => ({ y: rowsTop + i * 20, text }))
   const hourAngle = ((h % 12) + m / 60) * 30 - 90
   const minAngle = (m + sec / 60) * 6 - 90
   const ticks = Array.from({ length: 12 }, (_, i) => {
@@ -275,14 +269,12 @@ const clock = computed(() => {
     const [x2, y2] = at(140, i * 30 - 90)
     return { x1, y1, x2, y2, big }
   })
-  const lifted = rows.length + (weather ? 1 : 0)
   return {
     analog,
     base,
     time: `${pad(h)}:${pad(m)}`,
     date: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-    // The digital time moves up to leave room for the rows
-    timeY: lifted > 2 ? -44 : lifted ? -26 : -12,
+    timeY: -24, // baseline-centred like the device; date 50 px below
     hour: at(70, hourAngle),
     minute: at(108, minAngle),
     second: at(124, sec * 6 - 90),
@@ -547,7 +539,7 @@ const dots = computed(() => {
         </template>
         <template v-else>
           <text class="txt num" :y="clock.timeY" font-size="72" font-weight="700" :fill="p.onSurface">{{ clock.time }}</text>
-          <text class="txt" :y="clock.timeY + 52" font-size="16" :fill="p.onSurfaceVariant">{{ clock.date }}</text>
+          <text class="txt" :y="clock.timeY + 50" font-size="16" :fill="p.onSurfaceVariant">{{ clock.date }}</text>
         </template>
         <text v-for="r in clock.rows" :key="r.text" class="txt num" :y="r.y" font-size="14" :fill="p.onSurfaceVariant">{{ r.text }}</text>
         <text v-if="clock.weather" class="txt" :y="clock.base" font-size="16" :fill="p.onSurface">
