@@ -148,6 +148,13 @@ func (d *Daemon) onShellView(kind string) {
 	case "clipboard":
 		go d.sendClips()
 	case "discord":
+		select { // connect on demand: RPC (official client) and Vesktop's DevTools
+		case d.discordKick <- struct{}{}:
+		default:
+		}
+		if d.cdpKick != nil {
+			d.cdpKick()
+		}
 		go d.sendDiscord()
 	}
 }
@@ -230,19 +237,6 @@ func (d *Daemon) discordState() discord.State {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.discordStateLocked()
-}
-
-func (d *Daemon) hasDiscordPage() bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	for _, p := range d.cfg.Profiles {
-		for _, pg := range p.Pages {
-			if pg.Type == "discord" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func (d *Daemon) setDiscordLive(st discord.State) {

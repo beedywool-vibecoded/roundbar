@@ -192,7 +192,9 @@ appui long pour cliquer, glisser-déposer, anneau de défilement). **Discord** :
 Vesktop ni Vencord ; ou via le RPC du client officiel, avec couper le micro, le son, quitter.
 **OBS** : bouton d'enregistrement avec sa durée, badge **LIVE** et scènes en anneau, via le WebSocket
 d'OBS (marche même quand OBS n'est pas au premier plan). **Jeu** : le jeu Steam en cours avec son
-illustration floutée, le temps de session et les jauges GPU.
+illustration floutée, le temps de session et deux boutons : l'overlay Steam et une capture Steam.
+**MangoHud** : FPS, moyenne et 1 % low, graphe des temps de frame, CPU et GPU sur les arcs du bord,
+puissance et VRAM ; le log de MangoHud n'est activé que pendant que la page est affichée.
 
 </td>
 </tr>

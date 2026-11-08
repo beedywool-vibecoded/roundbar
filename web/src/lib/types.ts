@@ -199,6 +199,9 @@ export interface ObsPage extends PageBase {
 export interface GamePage extends PageBase {
   type: 'game'
 }
+export interface MangoHudPage extends PageBase {
+  type: 'mangohud'
+}
 export type Page =
   | RadialPage
   | MediaPage
@@ -212,6 +215,7 @@ export type Page =
   | DiscordPage
   | ObsPage
   | GamePage
+  | MangoHudPage
   | ImagePage
   | TouchpadPage
 export type PageType = Page['type']

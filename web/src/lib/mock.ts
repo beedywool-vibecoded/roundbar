@@ -41,6 +41,7 @@ function sample(): Config {
     pages: [
       { id: 'game', type: 'game', title: 'Game' },
       { id: 'obs', type: 'obs', title: 'OBS' },
+      { id: 'mango', type: 'mangohud', title: 'MangoHud' },
       {
         id: 'stream',
         type: 'radial',

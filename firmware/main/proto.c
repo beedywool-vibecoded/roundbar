@@ -294,6 +294,10 @@ static void handle(cJSON *m)
         lvgl_port_unlock();
     } else if (!strcmp(t, "gameArt")) {
         handle_game_art(m);
+    } else if (!strcmp(t, "mangohud")) {
+        lvgl_port_lock(0);
+        ui_mangohud(m);
+        lvgl_port_unlock();
     } else if (!strcmp(t, "obs") || !strcmp(t, "game")) {
         lvgl_port_lock(0);
         if (t[0] == 'o') ui_obs(m);

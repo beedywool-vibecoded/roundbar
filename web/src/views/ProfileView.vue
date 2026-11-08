@@ -146,7 +146,9 @@ const pageSummary = (pg: Page) => {
     case 'obs':
       return 'Record button and live scenes'
     case 'game':
-      return 'Focused game, session time, GPU'
+      return 'Focused game, Steam overlay, screenshot'
+    case 'mangohud':
+      return 'FPS, frame times, CPU and GPU'
     case 'timer':
       return `${(pg.minutes ?? TIMER_DEFAULTS.minutes).join(' / ')} min${pg.pomodoro ? ', Pomodoro' : ''}`
     case 'image':

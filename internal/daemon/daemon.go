@@ -73,20 +73,21 @@ type Daemon struct {
 	clockKick     chan struct{}
 	discord       *discord.Client
 	obs           *obs.Client
-	obsKick       chan struct{}
 	game          gameInfo
 	discordLive   discord.State // from Vesktop via DevTools
 	discordLiveAt time.Time
 	discordKick   chan struct{}
+	cdpKick       func()
 	iconsSent     map[string]bool
 
 	statsStop chan struct{}
+	mangoStop chan struct{}
 	watchers  map[chan struct{}]bool
 	done      chan struct{}
 }
 
 func New() *Daemon {
-	return &Daemon{obs: obs.New(), obsKick: make(chan struct{}, 1), clockKick: make(chan struct{}, 1), discord: discord.New(), discordKick: make(chan struct{}, 1), iconsSent: map[string]bool{}, acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
+	return &Daemon{obs: obs.New(), clockKick: make(chan struct{}, 1), discord: discord.New(), discordKick: make(chan struct{}, 1), iconsSent: map[string]bool{}, acks: map[string]chan bool{}, replies: map[string]chan json.RawMessage{}, watchers: map[chan struct{}]bool{}, done: make(chan struct{})}
 }
 
 func (d *Daemon) Run() error {
@@ -112,10 +113,11 @@ func (d *Daemon) Run() error {
 	go d.audioLoop()
 	go d.clockLoop()
 	go d.discord.Run(d.done, d.discordKick)
-	go d.obs.Run(d.done, d.obsKick)
+	go d.obs.Run(d.done)
 	go d.obsLoop()
 	cdp := &discord.CDP{OnState: d.setDiscordLive}
-	go cdp.Run(d.done, d.hasDiscordPage)
+	d.cdpKick = cdp.Kick
+	go cdp.Run(d.done)
 	go d.discordLoop()
 	go d.watchConfig()
 	go d.serveSocket()
@@ -345,6 +347,7 @@ func (d *Daemon) page(v View) *config.Page {
 
 func (d *Daemon) onView(v View) {
 	d.stopStats()
+	d.stopMango()
 	if !v.Awake {
 		return
 	}
@@ -360,9 +363,11 @@ func (d *Daemon) onView(v View) {
 	case "dial":
 		d.sendAudio()
 	case "obs":
+		d.obs.Kick() // connects if OBS is open; state follows on Changed
 		go d.sendObs()
+	case "mangohud":
+		d.startMango()
 	case "game":
-		d.startStats([]string{"gpu", "gpuTemp", "cpuTemp"})
 		go d.sendGame()
 	default:
 		d.onShellView(v.Kind)

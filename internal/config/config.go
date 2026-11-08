@@ -397,7 +397,7 @@ func (pg *Page) validate(pp string, pageIDs map[string]bool) error {
 				return fail(pp+".shapes."+k, "unknown shape %q", v)
 			}
 		}
-	case "mixer", "windows", "clipboard", "discord", "obs", "game":
+	case "mixer", "windows", "clipboard", "discord", "obs", "game", "mangohud":
 	case "clock":
 		if !oneOf(pg.Style, "", "analog", "digital") {
 			return fail(pp+".style", "must be analog or digital")

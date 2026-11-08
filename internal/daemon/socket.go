@@ -96,10 +96,7 @@ func (d *Daemon) handle(c net.Conn) {
 				_ = enc.Encode(map[string]string{"error": err.Error()})
 				continue
 			}
-			select {
-			case d.obsKick <- struct{}{}:
-			default:
-			}
+			d.obs.Kick()
 			_ = enc.Encode(ok)
 		case "discord": // save Discord app credentials from the configurator
 			var cr struct {

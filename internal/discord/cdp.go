@@ -87,6 +87,21 @@ type CDP struct {
 	mu     sync.Mutex
 	nextID int
 	live   bool // a session delivered state since the last failure
+	kick   chan struct{}
+}
+
+// Kick asks for a session now (a Discord page is on screen).
+func (c *CDP) Kick() {
+	c.mu.Lock()
+	if c.kick == nil {
+		c.kick = make(chan struct{}, 1)
+	}
+	k := c.kick
+	c.mu.Unlock()
+	select {
+	case k <- struct{}{}:
+	default:
+	}
 }
 
 func discordTarget() (string, error) {
@@ -110,20 +125,23 @@ func discordTarget() (string, error) {
 	return "", errors.New("no Discord page in Vesktop yet")
 }
 
-// Run keeps trying while `want()` says a Discord page is configured. When
-// Vesktop isn't running this costs one failed localhost connect every 15 s.
-func (c *CDP) Run(stop <-chan struct{}, want func() bool) {
+// Run sleeps until Kick, then holds a session while Vesktop is open (Discord
+// pushes changes; nothing is polled) and sleeps again once Vesktop closes.
+func (c *CDP) Run(stop <-chan struct{}) {
+	c.Kick()
+	c.mu.Lock()
+	k := c.kick
+	c.mu.Unlock()
+	<-k // drop the priming kick
 	for {
-		if want() {
-			if err := c.session(stop); err != nil && c.live && c.OnState != nil {
-				c.live = false
-				c.OnState(State{}) // Vesktop closed: report it once
-			}
-		}
 		select {
 		case <-stop:
 			return
-		case <-time.After(15 * time.Second):
+		case <-k:
+		}
+		if err := c.session(stop); err != nil && c.live && c.OnState != nil {
+			c.live = false
+			c.OnState(State{}) // Vesktop closed: report it once
 		}
 	}
 }

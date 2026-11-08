@@ -8,6 +8,7 @@ import (
 
 	"github.com/beedywool-vibecoded/roundbar/internal/cover"
 	"github.com/beedywool-vibecoded/roundbar/internal/desktop"
+	"github.com/beedywool-vibecoded/roundbar/internal/mangohud"
 	"github.com/beedywool-vibecoded/roundbar/internal/steam"
 )
 
@@ -25,8 +26,8 @@ func (d *Daemon) sendObs() {
 // obsLoop forwards OBS changes, plus a once-a-second tick for the recording
 // timer, only while an OBS page is on screen.
 func (d *Daemon) obsLoop() {
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
+	var tick *time.Ticker
+	var tickC <-chan time.Time
 	for {
 		select {
 		case <-d.obs.Changed:
@@ -34,10 +35,19 @@ func (d *Daemon) obsLoop() {
 				d.sendObs()
 			}
 			d.notify()
-		case <-tick.C:
+		case <-tickC:
 			if d.viewKind() == "obs" && d.obs.State().Recording {
 				d.sendObs()
 			}
+		}
+		// the clock only runs while a recording is on screen
+		need := d.viewKind() == "obs" && d.obs.State().Recording
+		if need && tick == nil {
+			tick = time.NewTicker(time.Second)
+			tickC = tick.C
+		} else if !need && tick != nil {
+			tick.Stop()
+			tick, tickC = nil, nil
 		}
 	}
 }
@@ -104,4 +114,46 @@ func (d *Daemon) sendGame() {
 		d.send(map[string]any{"t": "gameArt", "seq": seq, "n": len(chunks), "i": i, "w": cover.Size, "h": cover.Size,
 			"data": base64.StdEncoding.EncodeToString(c)})
 	}
+}
+
+// ---- MangoHud ---------------------------------------------------------------
+
+// startMango turns MangoHud logging on while the page is visible and streams
+// a snapshot twice a second; stopMango turns it off and cleans up its files.
+func (d *Daemon) startMango() {
+	if changed, err := mangohud.EnsureConf(); err != nil {
+		log.Printf("mangohud: %v", err)
+	} else if changed {
+		log.Printf("mangohud: added the control socket to %s (restart running games)", mangohud.ConfPath())
+	}
+	stop := make(chan struct{})
+	d.mu.Lock()
+	d.mangoStop = stop
+	d.mu.Unlock()
+	go func() {
+		s := mangohud.Start()
+		defer s.Stop()
+		t := time.NewTicker(500 * time.Millisecond)
+		defer t.Stop()
+		for {
+			sn := s.Poll()
+			d.send(map[string]any{"t": "mangohud", "active": sn.Active, "hint": sn.Hint, "fps": sn.FPS, "ft": sn.Frametime,
+				"avg": sn.Avg, "low": sn.Low1, "cpu": sn.CPU, "gpu": sn.GPU, "cpuTemp": sn.CPUTemp, "gpuTemp": sn.GPUTemp,
+				"power": sn.Power, "vram": sn.VRAM, "graph": sn.Graph})
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+			}
+		}
+	}()
+}
+
+func (d *Daemon) stopMango() {
+	d.mu.Lock()
+	if d.mangoStop != nil {
+		close(d.mangoStop)
+		d.mangoStop = nil
+	}
+	d.mu.Unlock()
 }

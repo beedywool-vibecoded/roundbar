@@ -70,7 +70,8 @@ func TestClientAgainstFake(t *testing.T) {
 	c := New()
 	stop := make(chan struct{})
 	defer close(stop)
-	go c.Run(stop, nil)
+	go c.Run(stop)
+	c.Kick()
 
 	deadline := time.After(5 * time.Second)
 	for {

@@ -268,19 +268,20 @@ func (c *Client) ensureToken(cr *Creds) error {
 
 // Run keeps a session alive while credentials exist, reconnecting when Discord
 // starts or restarts. It returns when stop is closed.
+// Run sleeps until kicked (Discord page shown, credentials saved), then holds
+// one RPC session while Discord stays open; nothing is retried in the background.
 func (c *Client) Run(stop <-chan struct{}, kick <-chan struct{}) {
 	for {
+		select {
+		case <-stop:
+			return
+		case <-kick:
+		}
 		cr, err := LoadCreds()
 		if err == nil && cr.ClientID != "" && cr.ClientSecret != "" {
 			if err := c.session(cr); err != nil {
 				c.setErr(err)
 			}
-		}
-		select {
-		case <-stop:
-			return
-		case <-kick: // credentials saved from the configurator
-		case <-time.After(15 * time.Second):
 		}
 	}
 }

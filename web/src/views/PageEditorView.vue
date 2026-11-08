@@ -366,7 +366,7 @@ function show() {
             <div v-else-if="page.type === 'obs'" class="form" style="gap: 8px">
               <p class="muted small" style="margin: 0">
                 Live OBS: the center starts and stops recording (with the elapsed time), the ring shows your OBS scenes with the current one highlighted (tap to switch, up to 8),
-                and a badge at the top while streaming. Nothing to set up on the page.
+                and a LIVE label in the record button while streaming. OBS is only contacted while this page is on screen or an OBS button is pressed. Nothing to set up on the page.
               </p>
               <p v-if="!live.status?.obs?.connected" class="warn-line small">
                 <Icon name="link_off" :size="16" />
@@ -375,8 +375,16 @@ function show() {
             </div>
 
             <p v-else-if="page.type === 'game'" class="muted small" style="margin: 0">
-              The game in focus (Steam games, <code>steam_app_*</code> windows): its library art blurred behind, the game name, how long you've been playing, GPU load and temperature.
+              The game in focus (Steam games, <code>steam_app_*</code> windows): its library art blurred behind, the game name and how long you've been playing,
+              with two buttons that press Steam's own shortcuts: <b>Shift+Tab</b> for the overlay and <b>F12</b> for a screenshot.
               Put it in a profile that matches <code>steam_app_*</code> so it shows up on its own. Nothing to set up.
+            </p>
+
+            <p v-else-if="page.type === 'mangohud'" class="muted small" style="margin: 0">
+              Live numbers from <a href="https://github.com/flightlessmango/MangoHud" target="_blank" rel="noopener">MangoHud</a>: FPS, average and 1% low over 30 s,
+              a frame-time graph, CPU and GPU load and temperature, GPU power and VRAM. MangoHud has no live API, so Roundbar turns its CSV logging on
+              (through MangoHud's control socket) only while this page is on screen, and deletes those log files afterwards. The in-game HUD doesn't change.
+              The first time, Roundbar adds <code>control=mangohud-%p</code> to <code>MangoHud.conf</code>: restart games that were already running.
             </p>
 
             <p v-else-if="page.type === 'media'" class="muted small" style="margin: 0">

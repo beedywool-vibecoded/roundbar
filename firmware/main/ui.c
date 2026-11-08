@@ -101,6 +101,7 @@ static int cover_scrim_pct(void)
 }
 
 static void game_session_update(void);
+static void game_place_name(void);
 // out = in blended toward `surface` by pct %, in RGB565.
 static void blend_scrim(const uint16_t *in, uint16_t *out, size_t n, lv_color_t surface, int pct)
 {
@@ -2521,36 +2522,38 @@ void ui_game(cJSON *msg)
     gw.since = playing && cJSON_IsNumber(since) ? (int64_t)since->valuedouble : 0;
     if (!playing) lv_label_set_text(gw.session, "Start a Steam game");
     game_session_update();
+    game_place_name();
 }
 
-static void game_gauge(lv_obj_t *tile, const char *key, const char *caption, int x)
+static void game_place_name(void)
 {
-    if (live.nstat >= MAX_PAGES * 4) return;
-    lv_obj_t *holder = box(tile);
-    lv_obj_set_size(holder, 96, 96);
-    lv_obj_align(holder, LV_ALIGN_CENTER, x, 72);
-    lv_obj_remove_flag(holder, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_t *a = lv_arc_create(holder);
-    lv_obj_set_size(a, 96, 96);
-    lv_obj_center(a);
-    lv_arc_set_bg_angles(a, ARC_START, ARC_END);
-    lv_arc_set_range(a, 0, 100);
-    lv_arc_set_value(a, 0);
-    lv_obj_set_style_arc_width(a, 8, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(a, 8, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(a, P.schh, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(a, P.tertiary, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_rounded(a, true, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_KNOB);
-    lv_obj_remove_flag(a, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_t *v = text(holder, F.body, P.on_surface, "–");
-    lv_obj_align(v, LV_ALIGN_CENTER, 0, -4);
-    lv_obj_t *cap = text(holder, F.label, P.on_sv, caption);
-    lv_obj_align(cap, LV_ALIGN_CENTER, 0, 18);
-    live.stat[live.nstat].arc = a;
-    live.stat[live.nstat].val = v;
-    strlcpy(live.stat[live.nstat].key, key, sizeof(live.stat[0].key));
-    live.nstat++;
+    // two lines at most, top pinned high; the session time follows below
+    lv_label_set_long_mode(gw.name, LV_LABEL_LONG_WRAP);
+    lv_obj_set_height(gw.name, LV_SIZE_CONTENT);
+    lv_obj_update_layout(gw.name);
+    int two = 2 * lv_font_get_line_height(F.value);
+    if (lv_obj_get_height(gw.name) > two) {
+        lv_obj_set_height(gw.name, two);
+        lv_label_set_long_mode(gw.name, LV_LABEL_LONG_DOT);
+    }
+    lv_obj_align(gw.name, LV_ALIGN_TOP_MID, 0, 74);
+    lv_obj_align_to(gw.session, gw.name, LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
+}
+
+static void game_key_event(lv_event_t *e)
+{
+    const char *keys = lv_event_get_user_data(e);
+    usb_hid(HID_KEYS, keys, NULL);
+    show_bubble(keys[0] == 's' ? "Steam overlay" : "Screenshot");
+}
+
+static void game_button(lv_obj_t *tile, const char *icon, const char *keys, int x)
+{
+    lv_obj_t *b = mask_button(tile, SH_CIRCLE, 76, P.schh);
+    lv_obj_align(b, LV_ALIGN_CENTER, x, 92);
+    lv_obj_t *ic = text(b, F.icon_m, P.on_surface, theme_icon(icon));
+    lv_obj_center(ic);
+    lv_obj_add_event_cb(b, game_key_event, LV_EVENT_CLICKED, (void *)keys);
 }
 
 static void build_game(lv_obj_t *tile)
@@ -2559,15 +2562,152 @@ static void build_game(lv_obj_t *tile)
     lv_obj_center(gw.art);
     lv_obj_remove_flag(gw.art, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(gw.art, LV_OBJ_FLAG_HIDDEN);
-    gw.name = text(tile, F.title, P.on_surface, usb_host_listening() ? "" : "Connect the PC");
-    lv_obj_set_width(gw.name, 240);
-    lv_label_set_long_mode(gw.name, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_align(gw.name, LV_ALIGN_CENTER, 0, -54);
     gw.session = text(tile, F.body, P.on_sv, "");
-    lv_obj_align(gw.session, LV_ALIGN_CENTER, 0, -22);
-    game_gauge(tile, "gpu", "GPU", -54);
-    game_gauge(tile, "gpuTemp", "GPU °C", 54);
+    gw.name = text(tile, F.value, P.on_surface, usb_host_listening() ? "" : "Connect the PC");
+    lv_obj_set_width(gw.name, 270);
+    lv_obj_set_style_text_align(gw.name, LV_TEXT_ALIGN_CENTER, 0);
+    game_place_name();
+    // Steam's own shortcuts, typed by the device's keyboard
+    game_button(tile, "layers", "shift+tab", -46);
+    game_button(tile, "photo_camera", "f12", 46);
     if (game_src) game_art_apply();
+}
+
+// ---- page: MangoHud ------------------------------------------------------------------------
+
+#define MH_GRAPH 60
+static struct {
+    lv_obj_t *fps, *fps_cap, *avg, *ft, *top, *hint;
+    lv_obj_t *arc[2], *val[2], *temp[2];
+    lv_obj_t *chart;
+    lv_chart_series_t *ser;
+} mh;
+
+static void mh_side(lv_obj_t *tile, int i, const char *caption)
+{
+    bool right = i == 1;
+    lv_obj_t *a = lv_arc_create(tile);
+    lv_obj_set_size(a, 344, 344);
+    lv_obj_center(a);
+    if (right) {
+        lv_arc_set_bg_angles(a, 320, 40);
+        lv_arc_set_mode(a, LV_ARC_MODE_REVERSE); // fills bottom-up like the left one
+    } else {
+        lv_arc_set_bg_angles(a, 140, 220);
+    }
+    lv_arc_set_range(a, 0, 100);
+    lv_arc_set_value(a, 0);
+    lv_obj_set_style_arc_width(a, 10, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(a, 10, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(a, P.schh, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(a, right ? P.tertiary : P.primary, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(a, true, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_KNOB);
+    lv_obj_remove_flag(a, LV_OBJ_FLAG_CLICKABLE);
+    mh.arc[i] = a;
+    int x = right ? 124 : -124;
+    mh.val[i] = text(tile, F.body, P.on_surface, "–");
+    lv_obj_align(mh.val[i], LV_ALIGN_CENTER, x, -18);
+    mh.temp[i] = text(tile, F.label, P.on_sv, "");
+    lv_obj_align(mh.temp[i], LV_ALIGN_CENTER, x, 2);
+    lv_obj_t *cap = text(tile, F.label, P.on_sv, caption);
+    lv_obj_align(cap, LV_ALIGN_CENTER, x, 22);
+}
+
+static void build_mangohud(lv_obj_t *tile)
+{
+    memset(&mh, 0, sizeof(mh));
+    mh.top = text(tile, F.label, P.on_sv, "");
+    lv_obj_align(mh.top, LV_ALIGN_CENTER, 0, -118);
+    mh.fps = text(tile, F.big, P.on_surface, "–");
+    lv_obj_align(mh.fps, LV_ALIGN_CENTER, 0, -54);
+    mh.fps_cap = text(tile, F.label, P.on_sv, "FPS");
+    lv_obj_align(mh.fps_cap, LV_ALIGN_CENTER, 0, -16);
+    mh.avg = text(tile, F.label, P.on_surface, "");
+    lv_obj_align(mh.avg, LV_ALIGN_CENTER, 0, 8);
+    mh_side(tile, 0, "CPU");
+    mh_side(tile, 1, "GPU");
+
+    mh.chart = lv_chart_create(tile);
+    lv_obj_set_size(mh.chart, 176, 52);
+    lv_obj_align(mh.chart, LV_ALIGN_CENTER, 0, 62);
+    lv_chart_set_type(mh.chart, LV_CHART_TYPE_LINE);
+    lv_chart_set_point_count(mh.chart, MH_GRAPH);
+    lv_chart_set_div_line_count(mh.chart, 0, 0);
+    lv_chart_set_update_mode(mh.chart, LV_CHART_UPDATE_MODE_SHIFT);
+    lv_obj_set_style_bg_opa(mh.chart, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(mh.chart, 0, 0);
+    lv_obj_set_style_pad_all(mh.chart, 0, 0);
+    lv_obj_set_style_line_width(mh.chart, 2, LV_PART_ITEMS);
+    lv_obj_set_style_line_rounded(mh.chart, true, LV_PART_ITEMS);
+    lv_obj_set_style_size(mh.chart, 0, 0, LV_PART_INDICATOR); // no point dots
+    lv_obj_remove_flag(mh.chart, LV_OBJ_FLAG_CLICKABLE);
+    mh.ser = lv_chart_add_series(mh.chart, P.primary, LV_CHART_AXIS_PRIMARY_Y);
+    lv_chart_set_all_values(mh.chart, mh.ser, LV_CHART_POINT_NONE);
+    mh.ft = text(tile, F.label, P.on_sv, "");
+    lv_obj_align(mh.ft, LV_ALIGN_CENTER, 0, 104);
+
+    mh.hint = text(tile, F.body, P.on_sv, usb_host_listening() ? "" : "Connect the PC");
+    lv_obj_set_width(mh.hint, 200);
+    lv_obj_set_style_text_align(mh.hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(mh.hint, LV_LABEL_LONG_WRAP);
+    lv_obj_align(mh.hint, LV_ALIGN_CENTER, 0, 62);
+}
+
+static double jnum(cJSON *o, const char *k)
+{
+    cJSON *v = cJSON_GetObjectItem(o, k);
+    return cJSON_IsNumber(v) ? v->valuedouble : 0;
+}
+
+void ui_mangohud(cJSON *m)
+{
+    if (!mh.fps) return;
+    bool on = cJSON_IsTrue(cJSON_GetObjectItem(m, "active"));
+    lv_obj_t *data[] = {mh.chart, mh.ft, mh.avg, mh.top};
+    for (size_t i = 0; i < sizeof(data) / sizeof(data[0]); i++) {
+        if (on) lv_obj_remove_flag(data[i], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(data[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    if (on) lv_obj_add_flag(mh.hint, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_remove_flag(mh.hint, LV_OBJ_FLAG_HIDDEN);
+    if (!on) {
+        const char *h = jstr(m, "hint");
+        lv_label_set_text(mh.hint, h && !strcmp(h, "waiting") ? "Waiting for MangoHud…"
+                                                               : "Start a game with MangoHud (restart games that were already running)");
+        lv_label_set_text(mh.fps, "–");
+        for (int i = 0; i < 2; i++) {
+            lv_arc_set_value(mh.arc[i], 0);
+            lv_label_set_text(mh.val[i], "–");
+            lv_label_set_text(mh.temp[i], "");
+        }
+        return;
+    }
+    lv_label_set_text_fmt(mh.fps, "%d", (int)(jnum(m, "fps") + 0.5));
+    lv_label_set_text_fmt(mh.avg, "avg %d  ·  1%% low %d", (int)(jnum(m, "avg") + 0.5), (int)(jnum(m, "low") + 0.5));
+    char top[48];
+    snprintf(top, sizeof(top), "%d W  ·  %.1f GB", (int)(jnum(m, "power") + 0.5), jnum(m, "vram"));
+    lv_label_set_text(mh.top, top);
+    char ft[24];
+    snprintf(ft, sizeof(ft), "%.1f ms", jnum(m, "ft"));
+    lv_label_set_text(mh.ft, ft);
+    const char *load[] = {"cpu", "gpu"}, *temp[] = {"cpuTemp", "gpuTemp"};
+    for (int i = 0; i < 2; i++) {
+        int v = (int)(jnum(m, load[i]) + 0.5);
+        lv_arc_set_value(mh.arc[i], v);
+        lv_label_set_text_fmt(mh.val[i], "%d%%", v);
+        lv_label_set_text_fmt(mh.temp[i], "%d°", (int)(jnum(m, temp[i]) + 0.5));
+    }
+    // frametime graph, scaled to its own peak (at least 20 ms so a flat line sits low)
+    cJSON *g = cJSON_GetObjectItem(m, "graph");
+    int n = LV_MIN(cJSON_GetArraySize(g), MH_GRAPH);
+    double peak = 20;
+    for (int i = 0; i < n; i++) peak = LV_MAX(peak, cJSON_GetArrayItem(g, i)->valuedouble);
+    lv_chart_set_range(mh.chart, LV_CHART_AXIS_PRIMARY_Y, 0, (int32_t)(peak * 10 * 1.1));
+    lv_chart_set_all_values(mh.chart, mh.ser, LV_CHART_POINT_NONE);
+    for (int i = 0; i < n; i++)
+        lv_chart_set_value_by_id(mh.chart, mh.ser, MH_GRAPH - n + i, (int32_t)(cJSON_GetArrayItem(g, i)->valuedouble * 10));
+    lv_chart_refresh(mh.chart);
 }
 
 // ---- page: Discord voice --------------------------------------------------------------------
@@ -2774,6 +2914,7 @@ static void build(bool animate)
     obs_root = obs_time = NULL;
     obs_sig = 0;
     memset(&gw, 0, sizeof(gw));
+    memset(&mh, 0, sizeof(mh));
     strlcpy(cur_profile, jstr(prof, "id") ?: "default", sizeof(cur_profile));
     memset(&live, 0, sizeof(live));
     memset(&media_live, 0, sizeof(media_live));
@@ -2820,6 +2961,7 @@ static void build(bool animate)
         else if (!strcmp(k, "discord")) build_discord(tile);
         else if (!strcmp(k, "obs")) build_obs(tile);
         else if (!strcmp(k, "game")) build_game(tile);
+        else if (!strcmp(k, "mangohud")) build_mangohud(tile);
         else build_radial(tile, pages[i]);
     }
 

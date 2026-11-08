@@ -77,10 +77,28 @@ type Client struct {
 	state   State
 	pending map[string]chan json.RawMessage
 	Changed chan struct{} // coalesced
+	kick    chan struct{}
+	up      chan struct{} // closed-and-replaced each time a session is identified
 }
 
 func New() *Client {
-	return &Client{pending: map[string]chan json.RawMessage{}, Changed: make(chan struct{}, 1)}
+	return &Client{pending: map[string]chan json.RawMessage{}, Changed: make(chan struct{}, 1),
+		kick: make(chan struct{}, 1), up: make(chan struct{})}
+}
+
+// Kick asks for a connection now (OBS page shown, OBS button pressed,
+// settings saved). Without kicks the client stays idle: no timers, no sockets.
+func (c *Client) Kick() {
+	select {
+	case c.kick <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Client) connected() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ws != nil
 }
 
 func (c *Client) State() State {
@@ -109,23 +127,24 @@ func Auth(password, salt, challenge string) string {
 	return base64.StdEncoding.EncodeToString(h2[:])
 }
 
-// Run keeps a session while credentials exist; OBS not running costs one
-// refused localhost connection every 10 s.
-func (c *Client) Run(stop <-chan struct{}, kick <-chan struct{}) {
+// Run connects on demand: it sleeps until Kick, then holds one session while
+// OBS stays open (events only, no polling) and goes back to sleep when OBS closes.
+func (c *Client) Run(stop <-chan struct{}) {
 	for {
-		if cr, err := LoadCreds(); err == nil {
-			if err := c.session(cr, stop); err != nil {
-				c.mu.Lock()
-				c.state = State{Error: err.Error()}
-				c.mu.Unlock()
-				c.changed()
-			}
-		}
 		select {
 		case <-stop:
 			return
-		case <-kick:
-		case <-time.After(10 * time.Second):
+		case <-c.kick:
+		}
+		cr, err := LoadCreds()
+		if err != nil {
+			continue // not set up
+		}
+		if err := c.session(cr, stop); err != nil {
+			c.mu.Lock()
+			c.state = State{Error: err.Error()}
+			c.mu.Unlock()
+			c.changed()
 		}
 	}
 }
@@ -165,6 +184,8 @@ func (c *Client) session(cr *Creds, stop <-chan struct{}) error {
 	c.mu.Lock()
 	c.ws = ws
 	c.state = State{Connected: true}
+	close(c.up)
+	c.up = make(chan struct{})
 	c.mu.Unlock()
 	defer func() { c.mu.Lock(); c.ws = nil; c.mu.Unlock() }()
 
@@ -337,8 +358,18 @@ func (c *Client) onEvent(kind string, data json.RawMessage) {
 	}
 }
 
-// Do runs a Roundbar `obs` action (docs/spec.md §1).
+// Do runs a Roundbar `obs` action (docs/spec.md §1), connecting first if needed.
 func (c *Client) Do(request, scene, input string) error {
+	if !c.connected() {
+		c.mu.Lock()
+		up := c.up
+		c.mu.Unlock()
+		c.Kick()
+		select {
+		case <-up:
+		case <-time.After(3 * time.Second):
+		}
+	}
 	switch request {
 	case "ToggleRecord", "ToggleRecordPause", "ToggleStream", "SaveReplayBuffer", "ToggleVirtualCam":
 		_, err := c.Request(request, nil)

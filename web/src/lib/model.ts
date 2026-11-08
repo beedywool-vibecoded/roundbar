@@ -84,7 +84,8 @@ export const PAGE_TYPES: { value: PageType; label: string; icon: string; hint: s
   { value: 'clipboard', label: 'Clipboard', icon: 'content_paste', hint: 'Paste from your recent copies' },
   { value: 'discord', label: 'Discord voice', icon: 'headset_mic', hint: "Your voice channel: who's talking, mute and deafen" },
   { value: 'obs', label: 'OBS', icon: 'videocam', hint: 'Live OBS: record button and your scenes' },
-  { value: 'game', label: 'Game', icon: 'sports_esports', hint: "The game you're playing: art, session time, GPU load" },
+  { value: 'game', label: 'Game', icon: 'sports_esports', hint: "The game you're playing: art, session time, Steam overlay and screenshot" },
+  { value: 'mangohud', label: 'MangoHud', icon: 'monitor_heart', hint: 'Live FPS, 1% low, frame times, CPU and GPU from MangoHud' },
   { value: 'image', label: 'Image', icon: 'image', hint: 'A picture, a GIF, or a slideshow of pictures' },
   {
     value: 'touchpad',
@@ -279,6 +280,8 @@ export function newPage(type: PageType, taken: string[]): Page {
       return { id, type, title: 'OBS' }
     case 'game':
       return { id, type, title: 'Game' }
+    case 'mangohud':
+      return { id, type, title: 'MangoHud' }
     case 'image':
       return { id, type, title: 'Image', images: [] }
     case 'touchpad':
@@ -579,6 +582,7 @@ function checkPage(pg: Page, pages: Page[], icons: Set<string>, path: string, ou
     case 'discord':
     case 'obs':
     case 'game':
+    case 'mangohud':
       break
     case 'touchpad':
       if (pg.speed != null && !(Number.isInteger(pg.speed) && pg.speed >= 1 && pg.speed <= 10))

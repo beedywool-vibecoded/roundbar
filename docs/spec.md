@@ -100,8 +100,9 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | `windows` | – | icons of the open windows on a ring (most recent first, up to 8); tap focuses the window |
 | `clipboard` | – | the last 10 copied texts as a scrolling list; tap one to paste it into the focused app |
 | `discord` | – | your Discord voice channel: members around the ring (avatar, speaking = green ring, muted badge), big mute / deafen buttons, leave; "Not in a voice channel" otherwise. Needs a Discord application set up in the configurator (Device view). |
-| `obs` | – | live OBS (via obs-websocket): the center toggles recording (red rounded square + elapsed time while recording), the ring holds your OBS scenes (current one highlighted; tap to switch, up to 8), a small streaming badge at the top. Needs OBS set up in the configurator (Device view). |
-| `game` | – | the game in focus (Steam `steam_app_<id>` windows): blurred library art behind, game name, session time, GPU load and CPU/GPU temperatures |
+| `obs` | – | live OBS (via obs-websocket): the center toggles recording (red rounded square + elapsed time while recording), the ring holds your OBS scenes (current one highlighted; tap to switch, up to 8), a "● LIVE" label inside the record button while streaming. The daemon connects to OBS only when this page is shown or an `obs` action runs, and holds the connection only while OBS is open. Needs OBS set up in the configurator (Device view). |
+| `game` | – | the game in focus (Steam `steam_app_<id>` windows): blurred library art behind, large game name (two lines max) and session time, and two buttons the device types itself: Steam overlay (`shift+tab`) and Steam screenshot (`f12`) |
+| `mangohud` | – | live MangoHud metrics: big FPS, average and 1% low over 30 s, frame-time graph (slowest frame per 250 ms, last 15 s), CPU (left edge arc) and GPU (right edge arc) load + temperature, GPU power and VRAM. The daemon adds `control=mangohud-%p` to MangoHud.conf once, turns CSV logging on over each game's control socket only while the page is visible (per-frame rows, MangoHud's default), reads the file of the process that is rendering, and deletes the log files it caused when the page goes away |
 | `touchpad` | `speed?: number` (1..10, default 5) | the device acts as a USB mouse: drag moves the cursor, tap = left click, long-press = right click, double-tap then drag = drag & drop, sliding along the outer ring scrolls. A sideways swipe starting on the ring changes page; a downward swipe from the top of the ring opens quick settings. |
 | `image` | `images: string[]` (asset ids, 1..20; a `.gif` must be alone), `interval?: number` (seconds, 2..3600, default 8), `fit?: "cover"\|"contain"` (default cover) | full-screen picture; several stills cross-fade as a slideshow; a GIF plays |
 
@@ -212,6 +213,7 @@ partition (see §2).
 | `obs` | `connected`, `recording`, `paused`, `recTime` (s), `streaming`, `scenes: [string]`, `current` | while an `obs` page is visible, on change and every second while recording |
 | `game` | `name`, `appid`, `since` (unix s) | while a `game` page is visible; `{"t":"game","name":""}` when no game is focused |
 | `gameArt` | same fields as `cover` | blurred library art for `game` pages |
+| `mangohud` | `active`, `hint?` (`noGame`\|`waiting`), `fps`, `ft` (ms), `avg`, `low` (1% low fps), `cpu`, `gpu` (%), `cpuTemp`, `gpuTemp` (°C), `power` (W), `vram` (GB), `graph: [ms]` (≤ 60, oldest first) | every 500 ms while a `mangohud` page is visible |
 | `windows` | `list: [{id, app, title, icon}]` | while a `windows` page is visible, on change |
 | `mixer` | `apps: [{id, name, icon, vol, muted}]` | while a `mixer` page is visible, on change |
 | `clips` | `list: [string]` (newest first, ≤ 10, each ≤ 200 chars) | while a `clipboard` page is visible, on change |

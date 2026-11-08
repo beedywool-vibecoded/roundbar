@@ -370,35 +370,39 @@ const discord = computed(() => {
 })
 
 // ---- obs: record button in the center, sample scenes on the ring ----
-const OBS_SCENES = ['Main', 'BRB', 'Game', 'Chat', 'End']
+// Same geometry as the device: symmetric around 12 o'clock, bottom 60° left for the page dots
+const OBS_SCENES = ['Starting soon', 'Gameplay', 'Chatting', 'BRB']
 const obs = computed(() => {
   if (props.page.type !== 'obs') return null
-  // Five of six 60° slots, leaving 12 o'clock free for the streaming badge
+  const n = OBS_SCENES.length
+  const step = n > 1 ? Math.min(300 / (n - 1), 360 / n) : 0
   return OBS_SCENES.map((name, i) => {
-    const [x, y] = at(128, 330 + i * 60)
-    return { name: ellipsize(name, 14, true, 60), x, y, on: i === 0 }
+    const [x, y] = at(128, 270 - (step * (n - 1)) / 2 + i * step)
+    return { name: ellipsize(name, 14, true, 68), x, y, on: i === 1 }
   })
 })
 
-// ---- game: blurred art, name, session time, two small gauges ----
+// ---- game: blurred art, big name, session time, Steam overlay + screenshot ----
 const game = computed(() => {
   if (props.page.type !== 'game') return null
-  const width = 10
-  const r = 104 / 2 - width / 2
-  const g = (key: string, x: number, v: number, value: string, caption: string, color: string) => ({
-    key,
-    x,
-    y: 62,
-    width,
-    track: arcPath(r, ARC_START, ARC_START + ARC_SWEEP),
-    ind: arcPath(r, ARC_START, valueAngle(v)),
-    value,
-    caption,
-    color,
-  })
+  return { title: ellipsize('Game name', 34, true, 270) }
+})
+
+// ---- mangohud: big FPS, edge arcs for CPU (left) and GPU (right), frame-time graph ----
+const MANGO_GRAPH = [6.2, 6.3, 6.1, 6.4, 6.2, 9.8, 6.3, 6.2, 6.1, 6.3, 6.2, 14.5, 6.4, 6.2, 6.3, 6.1, 6.2, 7.9, 6.3, 6.2, 6.2, 6.4, 6.1, 6.3]
+const mango = computed(() => {
+  if (props.page.type !== 'mangohud') return null
+  const r = 172 - 5
+  const cpu = 38, gpu = 97
+  const peak = Math.max(20, ...MANGO_GRAPH) * 1.1
+  const w = 176, h = 52, y0 = 62 - h / 2
+  const pts = MANGO_GRAPH.map((v, i) => `${(-w / 2 + (w * i) / (MANGO_GRAPH.length - 1)).toFixed(1)},${(y0 + h - (h * v) / peak).toFixed(1)}`).join(' ')
   return {
-    title: ellipsize('Game name', 22, true, 236),
-    gauges: [g('gpu', -60, 64, '64%', 'GPU', p.value.tertiary), g('gpuTemp', 60, 71, '71°', 'GPU °C', p.value.primary)],
+    cpuTrack: arcPath(r, 140, 220),
+    cpuInd: arcPath(r, 220 - (80 * cpu) / 100, 220),
+    gpuTrack: arcPath(r, 320, 400),
+    gpuInd: arcPath(r, 320 + (80 * (100 - gpu)) / 100, 400),
+    pts,
   }
 })
 
@@ -687,16 +691,13 @@ const dots = computed(() => {
       <!-- OBS -->
       <template v-else-if="obs">
         <g v-for="sc in obs" :key="sc.name">
-          <circle :cx="sc.x" :cy="sc.y" r="36" :fill="sc.on ? p.primaryContainer : p.surfaceContainerHighest" />
-          <text class="txt" :x="sc.x" :y="sc.y" font-size="14" :font-weight="sc.on ? 700 : 400" :fill="sc.on ? p.onPrimaryContainer : p.onSurface">{{ sc.name }}</text>
+          <circle :cx="sc.x" :cy="sc.y" r="39" :fill="sc.on ? p.primaryContainer : p.surfaceContainerHighest" />
+          <text class="txt" :x="sc.x" :y="sc.y" font-size="14" :fill="sc.on ? p.onPrimaryContainer : p.onSurface">{{ sc.name }}</text>
         </g>
-        <g transform="translate(0 -146)">
-          <rect x="-26" y="-11" width="52" height="22" rx="11" :fill="p.error" />
-          <text class="txt" x="0" y="0" font-size="12" font-weight="700" :fill="p.surface">LIVE</text>
-        </g>
-        <path :d="buttonPath('square', 0, 0, 112)" :fill="p.errorContainer" />
-        <text class="sym" x="0" y="-12" font-size="40" :fill="p.onErrorContainer">videocam</text>
-        <text class="txt num" x="0" y="28" font-size="16" font-weight="700" :fill="p.onErrorContainer">12:34</text>
+        <path :d="buttonPath('square', 0, 0, 104)" :fill="p.errorContainer" />
+        <text class="txt" x="0" y="-36" font-size="14" :fill="p.onErrorContainer">● LIVE</text>
+        <text class="sym" x="0" y="-8" font-size="40" :fill="p.onErrorContainer">videocam</text>
+        <text class="txt num" x="0" y="24" font-size="14" :fill="p.onErrorContainer">12:34</text>
       </template>
 
       <!-- Game -->
@@ -708,14 +709,31 @@ const dots = computed(() => {
           <circle cx="-20" cy="120" r="70" fill="#d08a3c" fill-opacity="0.35" />
         </g>
         <circle r="180" :fill="p.surface" fill-opacity="0.45" />
-        <text class="txt" y="-62" font-size="22" font-weight="700" :fill="p.onSurface">{{ game.title }}</text>
-        <text class="txt" y="-32" font-size="16" :fill="p.onSurfaceVariant">1 h 12 min</text>
-        <g v-for="g in game.gauges" :key="g.key" :transform="`translate(${g.x} ${g.y})`">
-          <path :d="g.track" fill="none" :stroke="p.surfaceContainerHighest" :stroke-width="g.width" stroke-linecap="round" />
-          <path :d="g.ind" fill="none" :stroke="g.color" :stroke-width="g.width" stroke-linecap="round" />
-          <text class="txt" y="-4" font-size="24" font-weight="700" :fill="p.onSurface">{{ g.value }}</text>
-          <text class="txt" y="20" font-size="12" :fill="p.onSurfaceVariant">{{ g.caption }}</text>
+        <text class="txt" y="-85" font-size="34" font-weight="700" :fill="p.onSurface">{{ game.title }}</text>
+        <text class="txt" y="-50" font-size="16" :fill="p.onSurfaceVariant">1 h 12 min</text>
+        <g v-for="b in [{ x: -46, icon: 'layers' }, { x: 46, icon: 'photo_camera' }]" :key="b.icon">
+          <circle :cx="b.x" cy="92" r="38" :fill="p.surfaceContainerHighest" />
+          <text class="sym" :x="b.x" y="92" font-size="32" :fill="p.onSurface">{{ b.icon }}</text>
         </g>
+      </template>
+
+      <!-- MangoHud -->
+      <template v-else-if="mango">
+        <path :d="mango.cpuTrack" fill="none" :stroke="p.surfaceContainerHighest" stroke-width="10" stroke-linecap="round" />
+        <path :d="mango.cpuInd" fill="none" :stroke="p.primary" stroke-width="10" stroke-linecap="round" />
+        <path :d="mango.gpuTrack" fill="none" :stroke="p.surfaceContainerHighest" stroke-width="10" stroke-linecap="round" />
+        <path :d="mango.gpuInd" fill="none" :stroke="p.tertiary" stroke-width="10" stroke-linecap="round" />
+        <text class="txt num" y="-118" font-size="14" :fill="p.onSurfaceVariant">245 W · 7.4 GB</text>
+        <text class="txt num" y="-54" font-size="56" font-weight="700" :fill="p.onSurface">161</text>
+        <text class="txt" y="-16" font-size="14" :fill="p.onSurfaceVariant">FPS</text>
+        <text class="txt num" y="8" font-size="14" :fill="p.onSurface">avg 158 · 1% low 104</text>
+        <g v-for="side in [{ x: -124, v: '38%', t: '64°', c: 'CPU' }, { x: 124, v: '97%', t: '71°', c: 'GPU' }]" :key="side.c">
+          <text class="txt num" :x="side.x" y="-18" font-size="16" :fill="p.onSurface">{{ side.v }}</text>
+          <text class="txt num" :x="side.x" y="2" font-size="14" :fill="p.onSurfaceVariant">{{ side.t }}</text>
+          <text class="txt" :x="side.x" y="22" font-size="14" :fill="p.onSurfaceVariant">{{ side.c }}</text>
+        </g>
+        <polyline :points="mango.pts" fill="none" :stroke="p.primary" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+        <text class="txt num" y="104" font-size="14" :fill="p.onSurfaceVariant">6.2 ms</text>
       </template>
 
       <!-- Touchpad -->
