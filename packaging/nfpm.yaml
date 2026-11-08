@@ -1,6 +1,7 @@
 # .deb and .rpm packages, built by the release job:
+#   install -Dm755 dist/roundbar-linux-amd64 build/nfpm/roundbar
 #   VERSION=0.2.0 GOARCH=amd64 nfpm package -f packaging/nfpm.yaml -p deb -t dist/
-# Paths are relative to the repository root; the binary comes from dist/.
+# Paths are relative to the repository root.
 name: roundbar
 arch: ${GOARCH}
 platform: linux
@@ -14,7 +15,7 @@ description: |
 homepage: https://github.com/beedywool-vibecoded/roundbar
 license: MIT
 contents:
-  - src: dist/roundbar-linux-${GOARCH}
+  - src: build/nfpm/roundbar
     dst: /usr/bin/roundbar
     file_info:
       mode: 0755
