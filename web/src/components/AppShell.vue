@@ -40,7 +40,7 @@ const DOTS = Array.from({ length: 6 }, (_, k) => {
 <template>
   <div class="shell">
     <nav class="rail" aria-label="Sections">
-      <RouterLink to="/" class="logo" aria-label="roundbar home">
+      <RouterLink to="/" class="logo" aria-label="Roundbar home">
         <M3Shape kind="cookie" :size="48" fill="var(--pc)">
           <circle v-for="(d, i) in DOTS" :key="i" :cx="d.cx" :cy="d.cy" r="6" fill="var(--on-pc)" />
           <circle cx="50" cy="50" r="9" fill="var(--on-pc)" />

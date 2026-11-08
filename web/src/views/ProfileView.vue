@@ -8,11 +8,13 @@ import MatchChips from '@/components/MatchChips.vue'
 import RoundPreview from '@/components/RoundPreview.vue'
 import ShapeLoader from '@/components/ShapeLoader.vue'
 import TextField from '@/components/TextField.vue'
+import M3Switch from '@/components/M3Switch.vue'
+import SeedPicker from '@/components/SeedPicker.vue'
 import { api } from '@/lib/api'
-import { ID_RE, LIMITS, PAGE_TYPES, newPage, pageTypeInfo, pastePage } from '@/lib/model'
+import { CLOCK_DEFAULTS, ID_RE, LIMITS, PAGE_TYPES, TIMER_DEFAULTS, newPage, pageTypeInfo, pastePage, syncProfilePalette } from '@/lib/model'
 import { clipboardPage, copyPage } from '@/lib/clipboard'
-import { config, daemonUp, dirty, findProfile, focusKeys, issuesUnder, profileIndex } from '@/lib/store'
-import { devicePalette } from '@/lib/theme'
+import { config, daemonUp, dirty, findProfile, focusKeys, issuesUnder, profileIndex, profilePalette } from '@/lib/store'
+import { SEEDS } from '@/lib/theme'
 import type { Page, PageType } from '@/lib/types'
 import { confirm, toast, toastError } from '@/lib/ui'
 
@@ -21,7 +23,31 @@ const router = useRouter()
 
 const profile = computed(() => findProfile(props.pid))
 const index = computed(() => profileIndex(props.pid))
-const palette = computed(() => devicePalette(config.value!.theme.seed, config.value!.theme.mode))
+const palette = computed(() => profilePalette(profile.value))
+
+// ---- profile color: its own seed, or the theme's ----
+const ownColor = computed({
+  get: () => profile.value?.seed !== undefined,
+  set: (on: boolean) => {
+    const p = profile.value
+    if (!p) return
+    if (on) {
+      // Start from a preset that differs from the theme, so the change shows
+      const theme = config.value!.theme.seed.toLowerCase()
+      p.seed = SEEDS.find((s) => s.hex.toLowerCase() !== theme)!.hex
+    } else delete p.seed
+    syncProfilePalette(p, config.value!.theme.mode)
+  },
+})
+const profileSeed = computed({
+  get: () => profile.value?.seed ?? config.value!.theme.seed,
+  set: (v: string) => {
+    const p = profile.value
+    if (!p) return
+    p.seed = v
+    syncProfilePalette(p, config.value!.theme.mode)
+  },
+})
 const isDefault = computed(() => props.pid === 'default')
 
 // The id is the route: renaming it moves to the new address.
@@ -105,6 +131,20 @@ const pageSummary = (pg: Page) => {
       return `${pg.label || pg.source} dial`
     case 'touchpad':
       return `Mouse, speed ${pg.speed ?? 5}`
+    case 'clock': {
+      const zones = pg.zones?.length ?? 0
+      return [pg.style ?? CLOCK_DEFAULTS.style, ...(zones ? [`${zones} world clock${zones > 1 ? 's' : ''}`] : [])].join(', ')
+    }
+    case 'mixer':
+      return 'Per-app volume and output'
+    case 'windows':
+      return 'Open windows on a ring'
+    case 'clipboard':
+      return 'Recent copies'
+    case 'discord':
+      return 'Voice channel controls'
+    case 'timer':
+      return `${(pg.minutes ?? TIMER_DEFAULTS.minutes).join(' / ')} min${pg.pomodoro ? ', Pomodoro' : ''}`
     case 'image':
       return !pg.images.length ? 'No image yet' : pg.images.length === 1 ? (pg.images[0]!.endsWith('.gif') ? 'GIF' : '1 picture') : `Slideshow of ${pg.images.length}`
   }
@@ -159,6 +199,16 @@ async function show(pg: Page) {
           <p v-if="!isDefault" class="muted small" style="margin: 0">
             App id or window class, lowercase, as GNOME reports it (either one matches): <code>firefox</code>, <code>org.gnome.nautilus</code>, <code>code</code>.
           </p>
+        </div>
+        <div class="setting color-row">
+          <div class="grow">
+            <div>Profile color</div>
+            <div class="muted small">{{ ownColor ? 'Its pages get their own palette, in the device mode set in Appearance.' : 'Uses the device theme. Turn on to give this profile its own color.' }}</div>
+          </div>
+          <M3Switch v-model="ownColor" label="Profile color" />
+        </div>
+        <div v-if="ownColor" class="setting col" style="border-top: none; padding-top: 0">
+          <SeedPicker v-model="profileSeed" label="Profile color" />
         </div>
       </section>
 
@@ -232,6 +282,9 @@ async function show(pg: Page) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 16px;
   align-items: start;
+}
+.color-row {
+  margin-top: 12px;
 }
 .chip.active {
   background: var(--pc);

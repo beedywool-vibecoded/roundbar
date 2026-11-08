@@ -1,15 +1,47 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import M3Shape from '@/components/M3Shape.vue'
 import M3Slider from '@/components/M3Slider.vue'
 import M3Switch from '@/components/M3Switch.vue'
 import NumField from '@/components/NumField.vue'
-import { PAGE_TYPES, ROTATIONS } from '@/lib/model'
-import { config, daemonUp, findProfile, live } from '@/lib/store'
-import type { EdgeDoubleTap, KeyboardLayout } from '@/lib/types'
+import ImageList from '@/components/ImageList.vue'
+import DiscordCard from '@/components/DiscordCard.vue'
+import FirmwareCard from '@/components/FirmwareCard.vue'
+import type { ImageBinding } from '@/lib/assets'
+import { LIMITS, PAGE_TYPES, ROTATIONS, SCREENSAVER_DEFAULTS } from '@/lib/model'
+import { config, daemonUp, findProfile, issuesUnder, live } from '@/lib/store'
+import type { EdgeDoubleTap, KeyboardLayout, Screensaver } from '@/lib/types'
 
 const dev = computed(() => config.value!.device)
+
+// Linked from page editors: /device#discord, /device#firmware
+const route = useRoute()
+onMounted(async () => {
+  const id = route.hash.slice(1)
+  if (id !== 'discord' && id !== 'firmware') return
+  await nextTick()
+  setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250)
+})
+
+// ---- screen saver ----
+const SAVERS: { id: Screensaver; label: string; icon: string }[] = [
+  { id: 'off', label: 'Off', icon: 'block' },
+  { id: 'clock', label: 'Clock', icon: 'schedule' },
+  { id: 'photos', label: 'Photos', icon: 'photo_library' },
+]
+const SAVER_MAX = 600
+const saverAfter = computed({
+  get: () => Math.min(SAVER_MAX, Math.max(SCREENSAVER_DEFAULTS.minAfter, dev.value.screensaverAfter)),
+  set: (v: number) => (dev.value.screensaverAfter = v),
+})
+// Bound to this device object, so an upload finishing later still lands here
+const photos: ImageBinding = {
+  get: () => config.value!.device.screensaverImages,
+  set: (ids) => (config.value!.device.screensaverImages = ids),
+}
+const photoIssue = computed(() => issuesUnder('device.screensaverImages')[0]?.message)
 const st = computed(() => live.status)
 
 const EDGE_TAPS: { id: EdgeDoubleTap; label: string }[] = [
@@ -45,178 +77,256 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
     <div class="page-title"><h1>Device</h1></div>
 
     <div class="cols">
-      <section class="card status" :class="{ off: !daemonUp || !st?.device?.connected }">
-        <div class="card-head"><h2>Status</h2></div>
+      <div class="left">
+        <section class="card status" :class="{ off: !daemonUp || !st?.device?.connected }">
+          <div class="card-head"><h2>Status</h2></div>
 
-        <div v-if="!live.connected && st" class="state">
-          <M3Shape kind="clover" :size="72" fill="var(--ec)" />
-          <div>
-            <div class="big">Configurator offline</div>
-            <p class="muted small">The connection to <code>roundbar config</code> dropped. Reconnecting… If it stopped, run it again.</p>
-          </div>
-        </div>
-
-        <div v-else-if="!st" class="state">
-          <M3Shape kind="cookie" :size="72" fill="var(--sch)" />
-          <div class="big">Connecting…</div>
-        </div>
-
-        <div v-else-if="!daemonUp" class="state">
-          <M3Shape kind="clover" :size="72" fill="var(--tc)" />
-          <div>
-            <div class="big">The daemon isn't running</div>
-            <p class="muted small">
-              You can still edit and save: the daemon picks the config up when it starts. To start it now and at every login:
-            </p>
-            <pre class="cmd"><code>systemctl --user enable --now roundbar</code></pre>
-          </div>
-        </div>
-
-        <template v-else>
-          <div class="state">
-            <M3Shape :kind="st.device?.connected ? 'sunny' : 'cookie'" :size="72" :fill="st.device?.connected ? 'var(--pc)' : 'var(--sch)'">
-              <text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-size="44" class="sym" :fill="st.device?.connected ? 'var(--on-pc)' : 'var(--on-sv)'">
-                {{ st.device?.connected ? 'usb' : 'link_off' }}
-              </text>
-            </M3Shape>
+          <div v-if="!live.connected && st" class="state">
+            <M3Shape kind="clover" :size="72" fill="var(--ec)" />
             <div>
-              <div class="big">{{ st.device?.connected ? 'Connected' : 'No device' }}</div>
-              <p v-if="!st.device?.connected" class="muted small">Plug the roundbar in over USB. Settings are sent as soon as it shows up.</p>
+              <div class="big">Configurator offline</div>
+              <p class="muted small">The connection to <code>roundbar config</code> dropped. Reconnecting… If it stopped, run it again.</p>
             </div>
           </div>
-          <dl class="facts">
-            <template v-if="st.device?.connected">
-              <dt>Port</dt>
-              <dd><code class="plain">{{ st.device.port ?? '—' }}</code></dd>
-              <dt>Firmware</dt>
-              <dd>{{ st.device.fw ?? '—' }}</dd>
-              <dt>Config</dt>
+
+          <div v-else-if="!st" class="state">
+            <M3Shape kind="cookie" :size="72" fill="var(--sch)" />
+            <div class="big">Connecting…</div>
+          </div>
+
+          <div v-else-if="!daemonUp" class="state">
+            <M3Shape kind="clover" :size="72" fill="var(--tc)" />
+            <div>
+              <div class="big">The daemon isn't running</div>
+              <p class="muted small">
+                You can still edit and save: the daemon picks the config up when it starts. To start it now and at every login:
+              </p>
+              <pre class="cmd"><code>systemctl --user enable --now roundbar</code></pre>
+            </div>
+          </div>
+
+          <template v-else>
+            <div class="state">
+              <M3Shape :kind="st.device?.connected ? 'sunny' : 'cookie'" :size="72" :fill="st.device?.connected ? 'var(--pc)' : 'var(--sch)'">
+                <text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-size="44" class="sym" :fill="st.device?.connected ? 'var(--on-pc)' : 'var(--on-sv)'">
+                  {{ st.device?.connected ? 'usb' : 'link_off' }}
+                </text>
+              </M3Shape>
+              <div>
+                <div class="big">{{ st.device?.connected ? 'Connected' : 'No device' }}</div>
+                <p v-if="!st.device?.connected" class="muted small">Plug the Roundbar in over USB. Settings are sent as soon as it shows up.</p>
+              </div>
+            </div>
+            <dl class="facts">
+              <template v-if="st.device?.connected">
+                <dt>Port</dt>
+                <dd><code class="plain">{{ st.device.port ?? '—' }}</code></dd>
+                <dt>Firmware</dt>
+                <dd>{{ st.device.fw ?? '—' }}</dd>
+                <dt>Config</dt>
+                <dd>
+                  <span v-if="st.device.inSync === false" class="warn-text">Sending the latest config…</span>
+                  <span v-else>Up to date</span>
+                  <code v-if="st.device.cfg" class="plain muted small" style="margin-left: 8px">{{ st.device.cfg.slice(0, 8) }}</code>
+                </dd>
+                <dt>On screen</dt>
+                <dd>
+                  <template v-if="view">
+                    <RouterLink v-if="view.to" :to="view.to">{{ view.profile }} · {{ view.page }}</RouterLink>
+                    <span v-else>{{ view.profile }} · {{ view.page }}</span>
+                    <span class="chip chip-outline" style="margin-left: 8px">{{ view.awake ? 'awake' : 'asleep' }}</span>
+                  </template>
+                  <span v-else class="muted">—</span>
+                </dd>
+              </template>
+              <dt>Focused app</dt>
               <dd>
-                <span v-if="st.device.inSync === false" class="warn-text">Sending the latest config…</span>
-                <span v-else>Up to date</span>
-                <code v-if="st.device.cfg" class="plain muted small" style="margin-left: 8px">{{ st.device.cfg.slice(0, 8) }}</code>
-              </dd>
-              <dt>On screen</dt>
-              <dd>
-                <template v-if="view">
-                  <RouterLink v-if="view.to" :to="view.to">{{ view.profile }} · {{ view.page }}</RouterLink>
-                  <span v-else>{{ view.profile }} · {{ view.page }}</span>
-                  <span class="chip chip-outline" style="margin-left: 8px">{{ view.awake ? 'awake' : 'asleep' }}</span>
+                <template v-if="st.focus">
+                  {{ st.focus.name }} <code class="plain muted">{{ st.focus.id }}</code>
+                  <code v-if="st.focus.class && st.focus.class !== st.focus.id" class="plain muted"> · class {{ st.focus.class }}</code>
                 </template>
+                <span v-else-if="st.extension === false" class="warn-text">The GNOME extension isn't running, so profiles can't follow the focused window. Enable it in Extensions.</span>
                 <span v-else class="muted">—</span>
               </dd>
-            </template>
-            <dt>Focused app</dt>
-            <dd>
-              <template v-if="st.focus">
-                {{ st.focus.name }} <code class="plain muted">{{ st.focus.id }}</code>
-                <code v-if="st.focus.class && st.focus.class !== st.focus.id" class="plain muted"> · class {{ st.focus.class }}</code>
-              </template>
-              <span v-else-if="st.extension === false" class="warn-text">The GNOME extension isn't running, so profiles can't follow the focused window. Enable it in Extensions.</span>
-              <span v-else class="muted">—</span>
-            </dd>
-          </dl>
-        </template>
-      </section>
+            </dl>
+          </template>
+        </section>
 
-      <section class="card">
-        <div class="card-head"><h2>Screen</h2></div>
-        <div class="setting col">
-          <div class="row-head">
-            <span>Brightness</span>
-            <span class="muted">{{ dev.brightness }} %</span>
-          </div>
-          <M3Slider v-model="dev.brightness" label="Brightness" :min="5" :max="100" :step="5" :format="(v) => `${v} %`" />
-        </div>
-        <div class="setting">
-          <div class="grow">
-            <div>Screen rotation</div>
-            <div class="muted small">Turn the screen to match how the device is mounted</div>
-          </div>
-          <div class="seg" role="radiogroup" aria-label="Screen rotation">
-            <button
-              v-for="r in ROTATIONS"
-              :key="r"
-              type="button"
-              role="radio"
-              class="st"
-              :class="{ on: dev.rotation === r }"
-              :aria-checked="dev.rotation === r"
-              @click="dev.rotation = r"
-            >
-              <Icon v-if="dev.rotation === r" name="check" :size="18" />
-              {{ r }}°
-            </button>
-          </div>
-        </div>
-        <div class="setting col">
-          <div class="form-row">
-            <NumField v-model="dev.dimAfter" label="Dim after" suffix="s" :min="0" :help="`Idle time before dimming to 20 %: ${seconds(dev.dimAfter)}`" />
-            <NumField v-model="dev.sleepAfter" label="Screen off after" suffix="s" :min="0" :help="`Idle time before the screen turns off: ${seconds(dev.sleepAfter)}`" />
-          </div>
-          <p class="muted small" style="margin: 0">0 means never.</p>
-        </div>
-        <div class="setting">
-          <div class="grow">
-            <div>Follow the PC</div>
-            <div class="muted small">Turn the screen off when the PC shuts down or sleeps, and back on when it starts</div>
-          </div>
-          <M3Switch v-model="dev.followPc" label="Follow the PC" />
-        </div>
+        <FirmwareCard />
 
-        <div class="card-head" style="margin-top: 12px"><h2>Input</h2></div>
-        <div class="setting col">
-          <div class="row-head">
-            <span>Long press</span>
-            <span class="muted">{{ dev.longPressMs }} ms</span>
+        <section class="card">
+          <div class="card-head"><h2>Screen saver</h2></div>
+          <div class="setting">
+            <div class="grow">
+              <div>Mode</div>
+              <div class="muted small">
+                {{ dev.screensaver === 'off' ? 'The screen dims when idle' : dev.screensaver === 'clock' ? 'A clock when idle, instead of dimming' : 'Your photos, dimmed, when idle, instead of dimming' }}
+              </div>
+            </div>
+            <div class="seg" role="radiogroup" aria-label="Screen saver">
+              <button
+                v-for="m in SAVERS"
+                :key="m.id"
+                type="button"
+                role="radio"
+                class="st"
+                :class="{ on: dev.screensaver === m.id }"
+                :aria-checked="dev.screensaver === m.id"
+                @click="dev.screensaver = m.id"
+              >
+                <Icon v-if="dev.screensaver === m.id" name="check" :size="18" />
+                {{ m.label }}
+              </button>
+            </div>
           </div>
-          <M3Slider v-model="dev.longPressMs" label="Long press" :min="200" :max="1500" :step="25" :format="(v) => `${v} ms`" />
-          <p class="muted small" style="margin: 0">How long a button is held before its long-press action runs.</p>
-        </div>
-        <div class="setting">
-          <div class="grow">
-            <div>Double tap on the edge</div>
-            <div class="muted small">Two quick taps near the left or right edge of the screen. "Change page" jumps to the previous / next page instantly.</div>
+          <div v-if="dev.screensaver !== 'off'" class="setting col">
+            <div class="row-head">
+              <span>Start after</span>
+              <span class="muted">{{ seconds(saverAfter) }}</span>
+            </div>
+            <M3Slider v-model="saverAfter" label="Start after" :min="10" :max="SAVER_MAX" :step="10" :format="seconds" />
+            <p v-if="dev.screensaverAfter > SAVER_MAX" class="muted small" style="margin: 0">
+              The config sets {{ seconds(dev.screensaverAfter) }}; moving the slider replaces it.
+            </p>
           </div>
-          <div class="seg" role="radiogroup" aria-label="Double tap on the edge">
-            <button
-              v-for="g in EDGE_TAPS"
-              :key="g.id"
-              type="button"
-              role="radio"
-              class="st"
-              :class="{ on: dev.edgeDoubleTap === g.id }"
-              :aria-checked="dev.edgeDoubleTap === g.id"
-              @click="dev.edgeDoubleTap = g.id"
-            >
-              <Icon v-if="dev.edgeDoubleTap === g.id" name="check" :size="18" />
-              {{ g.label }}
-            </button>
+          <div v-if="dev.screensaver === 'photos'" class="setting col">
+            <div class="row-head">
+              <span>Photos</span>
+              <span class="muted small">{{ dev.screensaverImages.length }} / {{ LIMITS.images }}</span>
+            </div>
+            <ImageList
+              :bind="photos"
+              owner="The screen saver"
+              title="Drop photos here"
+              hint="Still pictures only, cropped to fill the round screen. They cross-fade one after another."
+            />
+            <p v-if="photoIssue" class="tf-help err" style="margin: 0">{{ photoIssue }}</p>
           </div>
-        </div>
-        <div class="setting">
-          <div class="grow">
-            <div>Keyboard layout</div>
-            <div class="muted small">The layout set on this PC, so typed text and shortcuts come out right.</div>
+        </section>
+      </div>
+
+      <div class="right">
+        <section class="card">
+          <div class="card-head"><h2>Screen</h2></div>
+          <div class="setting col">
+            <div class="row-head">
+              <span>Brightness</span>
+              <span class="muted">{{ dev.brightness }} %</span>
+            </div>
+            <M3Slider v-model="dev.brightness" label="Brightness" :min="5" :max="100" :step="5" :format="(v) => `${v} %`" />
           </div>
-          <div class="seg" role="radiogroup" aria-label="Keyboard layout">
-            <button
-              v-for="l in LAYOUTS"
-              :key="l.id"
-              type="button"
-              role="radio"
-              class="st"
-              :class="{ on: dev.keyboardLayout === l.id }"
-              :aria-checked="dev.keyboardLayout === l.id"
-              v-tip="l.label"
-              @click="dev.keyboardLayout = l.id"
-            >
-              <Icon v-if="dev.keyboardLayout === l.id" name="check" :size="18" />
-              {{ l.hint.toUpperCase() }}
-            </button>
+          <div class="setting">
+            <div class="grow">
+              <div>Screen rotation</div>
+              <div class="muted small">Turn the screen to match how the device is mounted</div>
+            </div>
+            <div class="seg" role="radiogroup" aria-label="Screen rotation">
+              <button
+                v-for="r in ROTATIONS"
+                :key="r"
+                type="button"
+                role="radio"
+                class="st"
+                :class="{ on: dev.rotation === r }"
+                :aria-checked="dev.rotation === r"
+                @click="dev.rotation = r"
+              >
+                <Icon v-if="dev.rotation === r" name="check" :size="18" />
+                {{ r }}°
+              </button>
+            </div>
           </div>
-        </div>
-      </section>
+          <div class="setting col">
+            <div class="form-row">
+              <NumField v-model="dev.dimAfter" label="Dim after" suffix="s" :min="0" :help="`Idle time before dimming to 20 %: ${seconds(dev.dimAfter)}`" />
+              <NumField v-model="dev.sleepAfter" label="Screen off after" suffix="s" :min="0" :help="`Idle time before the screen turns off: ${seconds(dev.sleepAfter)}`" />
+            </div>
+            <p class="muted small" style="margin: 0">0 means never.</p>
+          </div>
+          <div class="setting">
+            <div class="grow">
+              <div>Follow the PC</div>
+              <div class="muted small">Turn the screen off when the PC shuts down or sleeps, and back on when it starts</div>
+            </div>
+            <M3Switch v-model="dev.followPc" label="Follow the PC" />
+          </div>
+          <div class="setting">
+            <div class="grow">
+              <div>Mic in use indicator</div>
+              <div class="muted small">A red ring around the screen while an app uses your microphone</div>
+            </div>
+            <M3Switch v-model="dev.micIndicator" label="Mic in use indicator" />
+          </div>
+          <div class="setting">
+            <div class="grow">
+              <div>Notification panel</div>
+              <div class="muted small">Pull up from the bottom edge of the device to see your notifications</div>
+            </div>
+            <M3Switch v-model="dev.notifications" label="Notification panel" />
+          </div>
+          <div class="setting">
+            <div class="grow">
+              <div>Show new notifications</div>
+              <div class="muted small">New notifications from the PC pop up briefly on the screen</div>
+            </div>
+            <M3Switch v-model="dev.notifToast" label="Show new notifications" />
+          </div>
+
+          <div class="card-head" style="margin-top: 12px"><h2>Input</h2></div>
+          <div class="setting col">
+            <div class="row-head">
+              <span>Long press</span>
+              <span class="muted">{{ dev.longPressMs }} ms</span>
+            </div>
+            <M3Slider v-model="dev.longPressMs" label="Long press" :min="200" :max="1500" :step="25" :format="(v) => `${v} ms`" />
+            <p class="muted small" style="margin: 0">How long a button is held before its long-press action runs.</p>
+          </div>
+          <div class="setting">
+            <div class="grow">
+              <div>Double tap on the edge</div>
+              <div class="muted small">Two quick taps near the left or right edge of the screen. "Change page" jumps to the previous / next page instantly.</div>
+            </div>
+            <div class="seg" role="radiogroup" aria-label="Double tap on the edge">
+              <button
+                v-for="g in EDGE_TAPS"
+                :key="g.id"
+                type="button"
+                role="radio"
+                class="st"
+                :class="{ on: dev.edgeDoubleTap === g.id }"
+                :aria-checked="dev.edgeDoubleTap === g.id"
+                @click="dev.edgeDoubleTap = g.id"
+              >
+                <Icon v-if="dev.edgeDoubleTap === g.id" name="check" :size="18" />
+                {{ g.label }}
+              </button>
+            </div>
+          </div>
+          <div class="setting">
+            <div class="grow">
+              <div>Keyboard layout</div>
+              <div class="muted small">The layout set on this PC, so typed text and shortcuts come out right.</div>
+            </div>
+            <div class="seg" role="radiogroup" aria-label="Keyboard layout">
+              <button
+                v-for="l in LAYOUTS"
+                :key="l.id"
+                type="button"
+                role="radio"
+                class="st"
+                :class="{ on: dev.keyboardLayout === l.id }"
+                :aria-checked="dev.keyboardLayout === l.id"
+                v-tip="l.label"
+                @click="dev.keyboardLayout = l.id"
+              >
+                <Icon v-if="dev.keyboardLayout === l.id" name="check" :size="18" />
+                {{ l.hint.toUpperCase() }}
+              </button>
+            </div>
+          </div>
+        </section>
+        <DiscordCard />
+      </div>
     </div>
   </div>
 </template>
@@ -227,6 +337,13 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+.left,
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 .state {
   display: flex;

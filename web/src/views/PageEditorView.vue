@@ -14,10 +14,11 @@ import ShapeLoader from '@/components/ShapeLoader.vue'
 import ShapePicker from '@/components/ShapePicker.vue'
 import M3Slider from '@/components/M3Slider.vue'
 import ImagePageEditor from '@/components/ImagePageEditor.vue'
+import ClockPageEditor from '@/components/ClockPageEditor.vue'
+import TimerPageEditor from '@/components/TimerPageEditor.vue'
 import { api } from '@/lib/api'
 import { DIAL_SOURCES, LIMITS, TOUCHPAD_DEFAULTS, MEDIA_BUTTONS, MEDIA_SHAPE_DEFAULTS, STAT_ITEMS, newButton, nextButtonId, pageTypeInfo } from '@/lib/model'
-import { config, daemonUp, dirty, findProfile, issuesUnder, profileIndex } from '@/lib/store'
-import { devicePalette } from '@/lib/theme'
+import { config, daemonUp, dirty, findProfile, issuesUnder, live, profileIndex, profilePalette } from '@/lib/store'
 import { lockScroll, unlockScroll } from '@/lib/scrollLock'
 import type { Action, Button, ButtonShape, DialPage, DialSource, MediaButton, Page, StatItem } from '@/lib/types'
 import { run } from '@/lib/ui'
@@ -27,7 +28,8 @@ const props = defineProps<{ pid: string; page: string }>()
 const profile = computed(() => findProfile(props.pid))
 const pageIdx = computed(() => profile.value?.pages.findIndex((p) => p.id === props.page) ?? -1)
 const page = computed<Page | undefined>(() => profile.value?.pages[pageIdx.value])
-const palette = computed(() => devicePalette(config.value!.theme.seed, config.value!.theme.mode))
+// The profile's own color when it has one
+const palette = computed(() => profilePalette(profile.value))
 const pagePath = computed(() => `profiles[${profileIndex(props.pid)}].pages[${pageIdx.value}]`)
 const problems = computed(() => issuesUnder(pagePath.value))
 
@@ -287,7 +289,9 @@ function show() {
               {{ page.buttons.length }} / {{ LIMITS.buttons }} on the ring. Click a button to edit it. Its label shows in the middle, as after a press.{{ page.center ? '' : ' Without a center button the page title is shown there.' }}
             </p>
           </template>
-          <p class="muted small hint">Drawn with the device palette ({{ config!.theme.mode }}), with sample values.</p>
+          <p class="muted small hint">
+            Drawn with the {{ profile.seed ? 'profile color' : 'device palette' }} ({{ config!.theme.mode }}), with sample values.
+          </p>
         </div>
       </section>
 
@@ -327,6 +331,37 @@ function show() {
             <p v-else-if="page.type === 'image'" class="muted small" style="margin: 0">
               Fills the screen with a picture. Several pictures cross-fade as a slideshow; a GIF plays on its own.
             </p>
+
+            <p v-else-if="page.type === 'clock'" class="muted small" style="margin: 0">
+              The time in large, from the PC clock. Optional weather and world clocks below it.
+            </p>
+
+            <p v-else-if="page.type === 'timer'" class="muted small" style="margin: 0">
+              A countdown: turn the bezel ring to set the minutes, tap the center to start.
+            </p>
+
+            <p v-else-if="page.type === 'mixer'" class="muted small" style="margin: 0">
+              The output devices as chips (tap one to switch), then one volume slider per app playing sound. Tap an app's icon to mute it. Nothing to set up.
+            </p>
+
+            <p v-else-if="page.type === 'windows'" class="muted small" style="margin: 0">
+              The open windows as icons on a ring, most recent first (up to 8). Tap one to bring it to the front. Needs the GNOME extension. Nothing to set up.
+            </p>
+
+            <p v-else-if="page.type === 'clipboard'" class="muted small" style="margin: 0">
+              The last 10 texts you copied on the PC, as a scrolling list. Tap one to paste it into the focused app. Nothing to set up.
+            </p>
+
+            <div v-else-if="page.type === 'discord'" class="form" style="gap: 8px">
+              <p class="muted small" style="margin: 0">
+                Your current Discord voice channel: members around the ring (a green ring while they talk, a badge when muted), big mute and deafen buttons, and leave.
+                Shows "Not in a voice channel" otherwise. Nothing to set up on the page.
+              </p>
+              <p v-if="!live.status?.discord?.connected" class="warn-line small">
+                <Icon name="link_off" :size="16" />
+                <span>Discord isn't connected yet. <RouterLink to="/device#discord">Set it up on the Device page</RouterLink></span>
+              </p>
+            </div>
 
             <p v-else-if="page.type === 'media'" class="muted small" style="margin: 0">
               Shows the current player (MPRIS) with previous, play / pause and next, and the volume on the edge arc.
@@ -379,6 +414,8 @@ function show() {
         </div>
 
         <ImagePageEditor v-if="page.type === 'image'" :key="`${pid}/${page.id}`" :page="page" />
+        <ClockPageEditor v-if="page.type === 'clock'" :key="`${pid}/${page.id}`" :page="page" />
+        <TimerPageEditor v-if="page.type === 'timer'" :key="`${pid}/${page.id}`" :page="page" />
 
         <div v-if="page.type === 'media'" class="card">
           <div class="card-head"><h2>Button shapes</h2></div>
@@ -540,6 +577,16 @@ function show() {
 .row-head {
   display: flex;
   justify-content: space-between;
+}
+.warn-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--on-surface);
+}
+.warn-line a {
+  color: var(--primary);
 }
 .gestures {
   display: grid;

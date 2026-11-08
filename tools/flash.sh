@@ -18,8 +18,12 @@ dl_port() {
 port=$(dl_port || true)
 if [[ -z $port ]]; then
   echo "asking roundbar to reboot into download mode…"
-  roundbar bootloader 2>/dev/null || true
-  for _ in $(seq 1 100); do port=$(dl_port || true); [[ -n $port ]] && break; sleep 0.05; done
+  # Repeat the request for a few seconds: the daemon may still be (re)connecting.
+  for _ in $(seq 1 8); do
+    roundbar bootloader 2>/dev/null || true
+    for _ in $(seq 1 30); do port=$(dl_port || true); [[ -n $port ]] && break 2; sleep 0.05; done
+    sleep 1
+  done
 fi
 if [[ -z $port ]]; then
   echo "waiting for the board: unplug it and plug it back in (Ctrl-C to give up)…"

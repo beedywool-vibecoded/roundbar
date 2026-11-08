@@ -93,3 +93,10 @@ export function useAssets(ids: () => readonly string[]) {
     failed: (id: string) => entries.get(id)?.error ?? false,
   }
 }
+
+// Where an image list editor (ImageList) reads and writes its asset ids. Made by the owner
+// around one object, so an upload that ends after the editor closed still lands there.
+export interface ImageBinding {
+  get(): string[]
+  set(ids: string[]): void
+}

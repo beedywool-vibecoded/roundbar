@@ -1,21 +1,23 @@
 // Labels, defaults, id generation and validation for the config (docs/spec.md section 1).
 import { comboError } from './keys'
 import { BUTTON_SHAPES, type ButtonShape } from './shapes'
-import { DEFAULT_SEED, devicePalette } from './theme'
-import type {
-  Action,
-  ActionType,
-  Button,
-  ColorRole,
-  Config,
-  DialSource,
-  MediaSettings,
-  Page,
-  PageType,
-  MediaButton,
-  Profile,
-  StatItem,
-  Step,
+import { DEFAULT_SEED, devicePalette, validHex } from './theme'
+import {
+  PALETTE_ROLES,
+  type Action,
+  type ActionType,
+  type Button,
+  type ColorRole,
+  type Config,
+  type DialSource,
+  type MediaSettings,
+  type Page,
+  type PageType,
+  type MediaButton,
+  type Profile,
+  type StatItem,
+  type Step,
+  type ThemeMode,
 } from './types'
 
 export const ID_RE = /^[a-z0-9-]{1,24}$/
@@ -28,7 +30,42 @@ export const LIMITS = {
   delay: 5000,
   stats: 4,
   images: 20,
+  zones: 3,
+  zoneLabel: 16,
+  timerPresets: 4,
+  timerLabel: 24,
 } as const
+
+export const CLOCK_DEFAULTS = { style: 'analog', weather: true } as const
+export const TIMER_DEFAULTS = { minutes: [5, 15, 25] as readonly number[], minMinutes: 1, maxMinutes: 180 } as const
+export const SCREENSAVER_DEFAULTS = { after: 60, minAfter: 10, maxAfter: 3600 } as const
+
+// ---- time zones (IANA names, as the browser knows them) ----
+let zoneList: string[] | null = null
+export function timeZones(): string[] {
+  if (!zoneList) {
+    const fn = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf
+    zoneList = fn ? fn('timeZone') : []
+    if (!zoneList.includes('UTC')) zoneList = [...zoneList, 'UTC']
+  }
+  return zoneList
+}
+let zoneSet: Set<string> | null = null
+export function validTimeZone(tz: string): boolean {
+  zoneSet ??= new Set(timeZones())
+  if (zoneSet.size > 1) return zoneSet.has(tz)
+  // No list in this browser: ask the formatter
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: tz })
+    return tz.includes('/') || tz === 'UTC'
+  } catch {
+    return false
+  }
+}
+// "America/Argentina/Buenos_Aires" → "Buenos Aires"
+export function zoneCity(tz: string): string {
+  return (tz.split('/').pop() ?? tz).replace(/_/g, ' ')
+}
 
 export const TOUCHPAD_DEFAULTS = { speed: 5 } as const
 export const IMAGE_DEFAULTS = { interval: 8, fit: 'cover' } as const
@@ -40,6 +77,12 @@ export const PAGE_TYPES: { value: PageType; label: string; icon: string; hint: s
   { value: 'media', label: 'Media', icon: 'music_note', hint: 'Now playing, transport controls and volume on the edge' },
   { value: 'stats', label: 'Stats', icon: 'speed', hint: 'Up to 4 gauges: CPU, GPU, memory and temperatures' },
   { value: 'dial', label: 'Dial', icon: 'tune', hint: 'One big arc you drag along the edge: volume, mic, brightness or custom' },
+  { value: 'clock', label: 'Clock', icon: 'schedule', hint: 'Time, weather and world clocks' },
+  { value: 'timer', label: 'Timer', icon: 'timer', hint: 'Countdown and Pomodoro' },
+  { value: 'mixer', label: 'Volume mixer', icon: 'graphic_eq', hint: 'Per-app volume and output device' },
+  { value: 'windows', label: 'Windows', icon: 'select_window', hint: 'Switch between open windows' },
+  { value: 'clipboard', label: 'Clipboard', icon: 'content_paste', hint: 'Paste from your recent copies' },
+  { value: 'discord', label: 'Discord voice', icon: 'headset_mic', hint: "Your voice channel: who's talking, mute and deafen" },
   { value: 'image', label: 'Image', icon: 'image', hint: 'A picture, a GIF, or a slideshow of pictures' },
   {
     value: 'touchpad',
@@ -203,6 +246,18 @@ export function newPage(type: PageType, taken: string[]): Page {
       return { id, type, title: 'System', items: ['cpu', 'ram', 'gpu', 'cpuTemp'] }
     case 'dial':
       return { id, type, title: 'Volume', icon: 'volume_up', label: 'Volume', source: 'volume' }
+    case 'clock':
+      return { id, type, title: 'Clock' }
+    case 'timer':
+      return { id, type, title: 'Timer' }
+    case 'mixer':
+      return { id, type, title: 'Mixer' }
+    case 'windows':
+      return { id, type, title: 'Windows' }
+    case 'clipboard':
+      return { id, type, title: 'Clipboard' }
+    case 'discord':
+      return { id, type, title: 'Discord' }
     case 'image':
       return { id, type, title: 'Image', images: [] }
     case 'touchpad':
@@ -225,7 +280,17 @@ export function starterConfig(): Config {
     version: 1,
     theme: { seed: DEFAULT_SEED, mode: 'dark', palette: devicePalette(DEFAULT_SEED, 'dark') },
     media: { coverBackground: true, coverColors: true, ...MEDIA_DEFAULTS },
-    device: { brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr', followPc: true, edgeDoubleTap: 'page' },
+    device: {
+      brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr',
+      followPc: true,
+      edgeDoubleTap: 'page',
+      micIndicator: true,
+      screensaver: 'off',
+      screensaverAfter: SCREENSAVER_DEFAULTS.after,
+      screensaverImages: [],
+      notifications: true,
+      notifToast: true,
+    },
     profiles: [
       {
         id: 'default',
@@ -284,10 +349,19 @@ export function normalize(raw: unknown): Config {
   if (!(ROTATIONS as readonly unknown[]).includes(cfg.device.rotation)) cfg.device.rotation = 0
   if (typeof cfg.device.followPc !== 'boolean') cfg.device.followPc = true
   if (!['page', 'quickSettings', 'screenOff', 'off'].includes(cfg.device.edgeDoubleTap)) cfg.device.edgeDoubleTap = 'page'
+  if (typeof cfg.device.micIndicator !== 'boolean') cfg.device.micIndicator = true
+  if (typeof cfg.device.notifications !== 'boolean') cfg.device.notifications = true
+  if (typeof cfg.device.notifToast !== 'boolean') cfg.device.notifToast = true
+  if (!['off', 'clock', 'photos'].includes(cfg.device.screensaver)) cfg.device.screensaver = 'off'
+  if (typeof cfg.device.screensaverAfter !== 'number' || !Number.isFinite(cfg.device.screensaverAfter))
+    cfg.device.screensaverAfter = SCREENSAVER_DEFAULTS.after
+  cfg.device.screensaverImages = Array.isArray(cfg.device.screensaverImages) ? cfg.device.screensaverImages.filter((x) => typeof x === 'string') : []
+  if (cfg.weather != null && (typeof cfg.weather !== 'object' || Array.isArray(cfg.weather))) delete cfg.weather
   for (const p of cfg.profiles) {
     p.match ??= []
     p.pages ??= []
     p.name ??= p.id
+    syncProfilePalette(p, cfg.theme.mode)
     for (const pg of p.pages) {
       if (pg.type === 'radial') pg.buttons ??= []
       if (pg.type === 'stats') pg.items ??= []
@@ -299,6 +373,12 @@ export function normalize(raw: unknown): Config {
   // The fallback is listed first
   else if (d > 0) cfg.profiles.unshift(...cfg.profiles.splice(d, 1))
   return cfg
+}
+
+// A profile with its own seed carries the palette for the current mode; without one, none.
+export function syncProfilePalette(p: Profile, mode: ThemeMode) {
+  if (p.seed === undefined) delete p.palette
+  else if (validHex(p.seed)) p.palette = devicePalette(p.seed, mode)
 }
 
 // ---- validation ----
@@ -409,6 +489,38 @@ function checkPage(pg: Page, pages: Page[], icons: Set<string>, path: string, ou
         if (!pg.onUp && !pg.onDown) out.push({ path, message: 'A custom dial needs an action for up or down' })
       }
       break
+    case 'clock':
+      if (pg.style != null && pg.style !== 'analog' && pg.style !== 'digital')
+        out.push({ path: `${path}.style`, message: 'Clock style must be analog or digital' })
+      if (pg.weather != null && typeof pg.weather !== 'boolean') out.push({ path: `${path}.weather`, message: 'Weather must be on or off' })
+      if (pg.zones != null) {
+        if (!Array.isArray(pg.zones)) {
+          out.push({ path: `${path}.zones`, message: 'World clocks must be a list' })
+          break
+        }
+        if (pg.zones.length > LIMITS.zones) out.push({ path: `${path}.zones`, message: `At most ${LIMITS.zones} world clocks` })
+        pg.zones.forEach((z, i) => {
+          const zp = `${path}.zones[${i}]`
+          if (!z || typeof z.tz !== 'string' || !validTimeZone(z.tz)) out.push({ path: `${zp}.tz`, message: `Unknown time zone "${z?.tz ?? ''}"` })
+          if (typeof z?.label !== 'string' || !z.label.trim()) out.push({ path: `${zp}.label`, message: 'World clock label is empty' })
+          else if (z.label.length > LIMITS.zoneLabel) out.push({ path: `${zp}.label`, message: `Label is longer than ${LIMITS.zoneLabel} characters` })
+        })
+      }
+      break
+    case 'timer':
+      if (pg.minutes != null) {
+        if (!Array.isArray(pg.minutes) || pg.minutes.length < 1 || pg.minutes.length > LIMITS.timerPresets)
+          out.push({ path: `${path}.minutes`, message: `Pick 1 to ${LIMITS.timerPresets} presets` })
+        else
+          pg.minutes.forEach((m, i) => {
+            if (!Number.isInteger(m) || m < TIMER_DEFAULTS.minMinutes || m > TIMER_DEFAULTS.maxMinutes)
+              out.push({ path: `${path}.minutes[${i}]`, message: `Presets are ${TIMER_DEFAULTS.minMinutes} to ${TIMER_DEFAULTS.maxMinutes} minutes` })
+          })
+      }
+      if (pg.pomodoro != null && typeof pg.pomodoro !== 'boolean') out.push({ path: `${path}.pomodoro`, message: 'Pomodoro must be on or off' })
+      if (pg.label != null && (typeof pg.label !== 'string' || pg.label.length > LIMITS.timerLabel))
+        out.push({ path: `${path}.label`, message: `Label is longer than ${LIMITS.timerLabel} characters` })
+      break
     case 'image':
       if (pg.images.length < 1) out.push({ path: `${path}.images`, message: 'Add an image' })
       if (pg.images.length > LIMITS.images) out.push({ path: `${path}.images`, message: `At most ${LIMITS.images} images` })
@@ -419,6 +531,11 @@ function checkPage(pg: Page, pages: Page[], icons: Set<string>, path: string, ou
       if (pg.interval != null && !(typeof pg.interval === 'number' && pg.interval >= 2 && pg.interval <= 3600))
         out.push({ path: `${path}.interval`, message: 'Slideshow interval must be 2 to 3600 s' })
       if (pg.fit != null && pg.fit !== 'cover' && pg.fit !== 'contain') out.push({ path: `${path}.fit`, message: 'Fit must be cover or contain' })
+      break
+    case 'mixer':
+    case 'windows':
+    case 'clipboard':
+    case 'discord':
       break
     case 'touchpad':
       if (pg.speed != null && !(Number.isInteger(pg.speed) && pg.speed >= 1 && pg.speed <= 10))
@@ -438,6 +555,26 @@ export function validate(c: Config, icons: Set<string>): Issue[] {
   if (!inRange(c.media.blur)) out.push({ path: 'media.blur', message: 'Blur must be 0 to 100' })
   if (!inRange(c.media.coverOpacity)) out.push({ path: 'media.coverOpacity', message: 'Album art opacity must be 0 to 100' })
   if (!/^#[0-9a-f]{6}$/i.test(c.theme.seed)) out.push({ path: 'theme.seed', message: 'Seed must be a #RRGGBB color' })
+  if (typeof d.micIndicator !== 'boolean') out.push({ path: 'device.micIndicator', message: 'Mic indicator must be on or off' })
+  if (typeof d.notifications !== 'boolean') out.push({ path: 'device.notifications', message: 'Notification panel must be on or off' })
+  if (typeof d.notifToast !== 'boolean') out.push({ path: 'device.notifToast', message: 'New notifications must be on or off' })
+  if (!['off', 'clock', 'photos'].includes(d.screensaver)) out.push({ path: 'device.screensaver', message: 'Screen saver must be off, clock or photos' })
+  if (!(Number.isInteger(d.screensaverAfter) && d.screensaverAfter >= SCREENSAVER_DEFAULTS.minAfter && d.screensaverAfter <= SCREENSAVER_DEFAULTS.maxAfter))
+    out.push({ path: 'device.screensaverAfter', message: `Screen saver delay must be ${SCREENSAVER_DEFAULTS.minAfter} to ${SCREENSAVER_DEFAULTS.maxAfter} s` })
+  if (d.screensaverImages.length > LIMITS.images) out.push({ path: 'device.screensaverImages', message: `At most ${LIMITS.images} screen saver photos` })
+  d.screensaverImages.forEach((id, i) => {
+    if (!ASSET_ID_RE.test(id)) out.push({ path: `device.screensaverImages[${i}]`, message: `Unknown image "${id}"` })
+    else if (isGif(id)) out.push({ path: `device.screensaverImages[${i}]`, message: 'The screen saver shows still pictures only, not GIFs' })
+  })
+  if (d.screensaver === 'photos' && !d.screensaverImages.length)
+    out.push({ path: 'device.screensaverImages', message: 'Add a photo for the screen saver, or pick another mode' })
+  const w = c.weather
+  if (w) {
+    if (typeof w.city !== 'string' || !w.city.trim()) out.push({ path: 'weather.city', message: 'Weather city is empty' })
+    if (!(typeof w.lat === 'number' && w.lat >= -90 && w.lat <= 90)) out.push({ path: 'weather.lat', message: 'Latitude must be -90 to 90' })
+    if (!(typeof w.lon === 'number' && w.lon >= -180 && w.lon <= 180)) out.push({ path: 'weather.lon', message: 'Longitude must be -180 to 180' })
+    if (w.units !== 'metric' && w.units !== 'imperial') out.push({ path: 'weather.units', message: 'Units must be metric or imperial' })
+  }
 
   if (!c.profiles.some((p) => p.id === 'default')) out.push({ path: 'profiles', message: 'The default profile is missing' })
   const pids = new Set<string>()
@@ -447,6 +584,13 @@ export function validate(c: Config, icons: Set<string>): Issue[] {
     if (pids.has(p.id)) out.push({ path: `${path}.id`, message: `Profile id "${p.id}" is used twice` })
     pids.add(p.id)
     if (!p.name.trim()) out.push({ path: `${path}.name`, message: 'Profile name is empty' })
+    if (p.seed !== undefined && !validHex(p.seed)) out.push({ path: `${path}.seed`, message: 'Profile color must be a #RRGGBB color' })
+    if (p.palette !== undefined) {
+      if (!p.palette || typeof p.palette !== 'object') out.push({ path: `${path}.palette`, message: 'Profile palette must be an object' })
+      else
+        for (const r of PALETTE_ROLES)
+          if (typeof p.palette[r] !== 'string' || !validHex(p.palette[r])) out.push({ path: `${path}.palette.${r}`, message: `Palette role ${r} must be a #RRGGBB color` })
+    }
     p.match.forEach((m, j) => {
       if (m !== m.toLowerCase() || !m.trim()) out.push({ path: `${path}.match[${j}]`, message: 'Window classes are lowercase' })
     })

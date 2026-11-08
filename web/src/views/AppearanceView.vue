@@ -1,31 +1,28 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import RoundPreview from '@/components/RoundPreview.vue'
 import M3Switch from '@/components/M3Switch.vue'
 import M3Slider from '@/components/M3Slider.vue'
-import { SEEDS, devicePalette, validHex } from '@/lib/theme'
+import SeedPicker from '@/components/SeedPicker.vue'
+import WeatherCard from '@/components/WeatherCard.vue'
+import { devicePalette } from '@/lib/theme'
 import { config } from '@/lib/store'
+import { pageTypeInfo } from '@/lib/model'
 import { PALETTE_ROLES, type Page, type ThemeMode } from '@/lib/types'
 
 const theme = computed(() => config.value!.theme)
 const media = computed(() => config.value!.media)
 const palette = computed(() => devicePalette(theme.value.seed, theme.value.mode))
-const isPreset = computed(() => SEEDS.some((s) => s.hex.toLowerCase() === theme.value.seed.toLowerCase()))
 
-// Custom color: typed hex, applied once valid
-const hex = ref(theme.value.seed)
-watch(
-  () => theme.value.seed,
-  (s) => (hex.value = s),
-)
-watch(hex, (h) => {
-  const v = h.startsWith('#') ? h : `#${h}`
-  if (validHex(v) && v.toLowerCase() !== theme.value.seed.toLowerCase()) theme.value.seed = v.toUpperCase()
+// Linked from the clock page editor: /appearance#weather
+const route = useRoute()
+onMounted(async () => {
+  if (route.hash !== '#weather') return
+  await nextTick()
+  setTimeout(() => document.getElementById('weather')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250)
 })
-function onPicker(e: Event) {
-  theme.value.seed = (e.target as HTMLInputElement).value.toUpperCase()
-}
 
 const blurText = (v: number) => (v === 0 ? 'Sharp' : `${v}`)
 
@@ -38,7 +35,7 @@ const MODES: { id: ThemeMode; label: string; icon: string }[] = [
 const samples = computed<Page[]>(() => {
   const all = config.value!.profiles.flatMap((p) => p.pages)
   const out: Page[] = []
-  for (const t of ['radial', 'media', 'stats', 'dial'] as const) {
+  for (const t of ['radial', 'media', 'stats', 'dial', 'clock', 'timer'] as const) {
     const p = all.find((x) => x.type === t)
     if (p) out.push(p)
   }
@@ -53,115 +50,93 @@ const shown = computed(() => samples.value[Math.min(sample.value, samples.value.
     <div class="page-title"><h1>Appearance</h1></div>
 
     <div class="cols">
-      <section class="card">
-        <div class="card-head"><h2>Device theme</h2></div>
-        <div class="setting col">
-          <div>
-            <div>Seed color</div>
-            <div class="muted small">The device palette is generated from it with Material You's tonal spot scheme. This configurator follows it too.</div>
-          </div>
-          <div class="seeds" role="radiogroup" aria-label="Seed color">
-            <button
-              v-for="s in SEEDS"
-              :key="s.hex"
-              type="button"
-              role="radio"
-              class="seed"
-              :class="{ on: theme.seed.toLowerCase() === s.hex.toLowerCase() }"
-              :aria-checked="theme.seed.toLowerCase() === s.hex.toLowerCase()"
-              :aria-label="s.name"
-              v-tip="s.name"
-              :style="{ background: s.hex }"
-              @click="theme.seed = s.hex"
-            />
-            <label class="seed custom" :class="{ on: !isPreset }" v-tip="'Custom color'" :style="!isPreset ? { background: theme.seed } : undefined">
-              <Icon v-if="isPreset" name="palette" :size="20" />
-              <input type="color" class="sr-only" :value="theme.seed" aria-label="Custom color" @input="onPicker" />
-            </label>
-          </div>
-          <label class="tf hex" :class="{ invalid: !validHex(hex.startsWith('#') ? hex : `#${hex}`) }">
-            <span class="lbl">Hex</span>
-            <span class="in">
-              <span class="sw" :style="{ background: theme.seed }" />
-              <input v-model="hex" maxlength="7" spellcheck="false" style="font-family: var(--mono)" />
-            </span>
-          </label>
-        </div>
-        <div class="setting">
-          <div class="grow">
-            <div>Mode</div>
-            <div class="muted small">For the device only. This page follows your system's dark or light setting.</div>
-          </div>
-          <div class="seg" role="radiogroup" aria-label="Device mode">
-            <button
-              v-for="m in MODES"
-              :key="m.id"
-              type="button"
-              role="radio"
-              class="st"
-              :class="{ on: theme.mode === m.id }"
-              :aria-checked="theme.mode === m.id"
-              @click="theme.mode = m.id"
-            >
-              <Icon :name="m.icon" :size="18" /> {{ m.label }}
-            </button>
-          </div>
-        </div>
-        <div class="setting col">
-          <div>
-            <div>Palette sent to the device</div>
-            <div class="muted small">Computed again on every save.</div>
-          </div>
-          <div class="roles">
-            <div v-for="r in PALETTE_ROLES" :key="r" class="role">
-              <span class="sw" :style="{ background: palette[r] }" />
-              <span class="small ellipsis">{{ r }}</span>
-              <code class="plain small muted">{{ palette[r] }}</code>
-            </div>
-          </div>
-        </div>
-        <div class="card-head" style="margin-top: 16px"><h2>Now playing</h2></div>
-        <div class="setting">
-          <div class="grow">
-            <div>Album art background</div>
-            <div class="muted small">A blurred copy of the cover behind media pages</div>
-          </div>
-          <M3Switch v-model="media.coverBackground" label="Album art background" />
-        </div>
-        <template v-if="media.coverBackground">
+      <div class="left">
+        <section class="card">
+          <div class="card-head"><h2>Device theme</h2></div>
           <div class="setting col">
-            <div class="row-head">
-              <span>Blur</span>
-              <span class="muted">{{ blurText(media.blur) }}</span>
+            <div>
+              <div>Seed color</div>
+              <div class="muted small">The device palette is generated from it with Material You's tonal spot scheme. This configurator follows it too.</div>
             </div>
-            <M3Slider v-model="media.blur" label="Blur" :min="0" :max="100" :step="5" :format="blurText" />
+            <SeedPicker v-model="theme.seed" label="Seed color" />
+          </div>
+          <div class="setting">
+            <div class="grow">
+              <div>Mode</div>
+              <div class="muted small">For the device only. This page follows your system's dark or light setting. Profile colors follow this mode too.</div>
+            </div>
+            <div class="seg" role="radiogroup" aria-label="Device mode">
+              <button
+                v-for="m in MODES"
+                :key="m.id"
+                type="button"
+                role="radio"
+                class="st"
+                :class="{ on: theme.mode === m.id }"
+                :aria-checked="theme.mode === m.id"
+                @click="theme.mode = m.id"
+              >
+                <Icon :name="m.icon" :size="18" /> {{ m.label }}
+              </button>
+            </div>
           </div>
           <div class="setting col">
-            <div class="row-head">
-              <span>Album art opacity</span>
-              <span class="muted">{{ media.coverOpacity }} %</span>
+            <div>
+              <div>Palette sent to the device</div>
+              <div class="muted small">Computed again on every save.</div>
             </div>
-            <M3Slider v-model="media.coverOpacity" label="Album art opacity" :min="0" :max="100" :step="5" :format="(v) => `${v} %`" />
-            <p class="muted small" style="margin: 0">How much of the cover shows through the dimmed layer behind the text.</p>
+            <div class="roles">
+              <div v-for="r in PALETTE_ROLES" :key="r" class="role">
+                <span class="sw" :style="{ background: palette[r] }" />
+                <span class="small ellipsis">{{ r }}</span>
+                <code class="plain small muted">{{ palette[r] }}</code>
+              </div>
+            </div>
           </div>
-        </template>
-        <div class="setting">
-          <div class="grow">
-            <div>Colors from album art</div>
-            <div class="muted small">Media pages take a palette from the cover; other pages keep the theme</div>
+          <div class="card-head" style="margin-top: 16px"><h2>Now playing</h2></div>
+          <div class="setting">
+            <div class="grow">
+              <div>Album art background</div>
+              <div class="muted small">A blurred copy of the cover behind media pages</div>
+            </div>
+            <M3Switch v-model="media.coverBackground" label="Album art background" />
           </div>
-          <M3Switch v-model="media.coverColors" label="Colors from album art" />
-        </div>
-      </section>
+          <template v-if="media.coverBackground">
+            <div class="setting col">
+              <div class="row-head">
+                <span>Blur</span>
+                <span class="muted">{{ blurText(media.blur) }}</span>
+              </div>
+              <M3Slider v-model="media.blur" label="Blur" :min="0" :max="100" :step="5" :format="blurText" />
+            </div>
+            <div class="setting col">
+              <div class="row-head">
+                <span>Album art opacity</span>
+                <span class="muted">{{ media.coverOpacity }} %</span>
+              </div>
+              <M3Slider v-model="media.coverOpacity" label="Album art opacity" :min="0" :max="100" :step="5" :format="(v) => `${v} %`" />
+              <p class="muted small" style="margin: 0">How much of the cover shows through the dimmed layer behind the text.</p>
+            </div>
+          </template>
+          <div class="setting">
+            <div class="grow">
+              <div>Colors from album art</div>
+              <div class="muted small">Media pages take a palette from the cover; other pages keep the theme</div>
+            </div>
+            <M3Switch v-model="media.coverColors" label="Colors from album art" />
+          </div>
+        </section>
+        <WeatherCard />
+      </div>
 
       <section class="card preview-card">
         <div class="card-head"><h2>Preview</h2></div>
         <div class="preview-wrap">
           <RoundPreview v-if="shown" :page="shown" :palette="palette" />
         </div>
-        <div v-if="samples.length > 1" class="seg" role="tablist" aria-label="Sample page">
-          <button v-for="(p, i) in samples" :key="i" type="button" role="tab" class="st" :class="{ on: sample === i }" :aria-selected="sample === i" @click="sample = i">
-            {{ p.type === 'radial' ? 'Buttons' : p.type[0]!.toUpperCase() + p.type.slice(1) }}
+        <div v-if="samples.length > 1" class="chips samples" role="tablist" aria-label="Sample page">
+          <button v-for="(p, i) in samples" :key="i" type="button" role="tab" class="fchip st" :class="{ on: sample === i }" :aria-selected="sample === i" @click="sample = i">
+            <Icon :name="sample === i ? 'check' : pageTypeInfo(p.type).icon" :size="16" /> {{ pageTypeInfo(p.type).label }}
           </button>
         </div>
       </section>
@@ -176,37 +151,14 @@ const shown = computed(() => samples.value[Math.min(sample.value, samples.value.
   gap: 16px;
   align-items: start;
 }
-.seeds {
+.left {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
-.seed {
-  width: 44px;
-  height: 44px;
-  border-radius: 22px;
-  border: none;
-  padding: 0;
-  transition: box-shadow 0.2s var(--ease);
-}
-.seed.on {
-  box-shadow:
-    0 0 0 3px var(--sc),
-    0 0 0 5px var(--on-surface);
-}
-.seed.custom {
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  background: var(--schh);
-  color: var(--on-sv);
-  border: 1px dashed var(--outline);
-}
-.seed.custom.on {
-  border: none;
-}
-.hex {
-  max-width: 220px;
+#weather {
+  scroll-margin-top: 84px;
 }
 .row-head {
   display: flex;
@@ -243,6 +195,9 @@ const shown = computed(() => samples.value[Math.min(sample.value, samples.value.
 }
 .preview-card .card-head {
   align-self: stretch;
+}
+.samples {
+  justify-content: center;
 }
 .preview-wrap {
   width: min(100%, 340px);

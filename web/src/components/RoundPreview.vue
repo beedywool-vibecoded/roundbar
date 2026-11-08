@@ -5,7 +5,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useAssets } from '@/lib/assets'
 import { buttonPath, type ButtonShape } from '@/lib/shapes'
-import { IMAGE_DEFAULTS, MEDIA_SHAPE_DEFAULTS, defaultShape, isGif } from '@/lib/model'
+import { CLOCK_DEFAULTS, IMAGE_DEFAULTS, MEDIA_SHAPE_DEFAULTS, TIMER_DEFAULTS, defaultShape, isGif } from '@/lib/model'
+import { config } from '@/lib/store'
 import type { Button, ColorRole, Page, Palette, StatItem } from '@/lib/types'
 
 const props = withDefaults(
@@ -222,6 +223,156 @@ const dial = computed(() => {
   }
 })
 
+// ---- clock: live time; weather is a static sample ----
+const now = ref(new Date())
+let clockTimer: ReturnType<typeof setInterval> | undefined
+watch(
+  () => props.page.type === 'clock',
+  (on) => {
+    clearInterval(clockTimer)
+    clockTimer = undefined
+    if (!on) return
+    now.value = new Date()
+    clockTimer = setInterval(() => (now.value = new Date()), 1000)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => clearInterval(clockTimer))
+const pad = (n: number) => String(n).padStart(2, '0')
+function zoneTime(tz: string, d: Date): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d)
+  } catch {
+    return '--:--'
+  }
+}
+const clock = computed(() => {
+  const pg = props.page
+  if (pg.type !== 'clock') return null
+  const d = now.value
+  const h = d.getHours()
+  const m = d.getMinutes()
+  const sec = d.getSeconds()
+  const w = config.value?.weather
+  const weather = (pg.weather ?? CLOCK_DEFAULTS.weather) && w ? (w.units === 'imperial' ? '54°' : '12°') : ''
+  const zones = (pg.zones ?? []).slice(0, 3).map((z) => `${z.label} ${zoneTime(z.tz, d)}`)
+  const analog = (pg.style ?? CLOCK_DEFAULTS.style) === 'analog'
+  // Rows stack upwards from the bottom: weather lowest, world clocks above it. On the
+  // analog face they sit inside the hour ticks.
+  const base = analog ? 98 : 128
+  const rows: { y: number; text: string }[] = []
+  let y = base
+  if (weather) y -= 24
+  for (let i = zones.length - 1; i >= 0; i--) {
+    rows.unshift({ y, text: zones[i]! })
+    y -= 20
+  }
+  const hourAngle = ((h % 12) + m / 60) * 30 - 90
+  const minAngle = (m + sec / 60) * 6 - 90
+  const ticks = Array.from({ length: 12 }, (_, i) => {
+    const big = i % 3 === 0
+    const [x1, y1] = at(big ? 124 : 130, i * 30 - 90)
+    const [x2, y2] = at(140, i * 30 - 90)
+    return { x1, y1, x2, y2, big }
+  })
+  const lifted = rows.length + (weather ? 1 : 0)
+  return {
+    analog,
+    base,
+    time: `${pad(h)}:${pad(m)}`,
+    date: d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+    // The digital time moves up to leave room for the rows
+    timeY: lifted > 2 ? -44 : lifted ? -26 : -12,
+    hour: at(70, hourAngle),
+    minute: at(108, minAngle),
+    second: at(124, sec * 6 - 90),
+    ticks,
+    weather,
+    rows,
+  }
+})
+
+// ---- timer: full ring at 70 %, sample remaining time ----
+const timer = computed(() => {
+  const pg = props.page
+  if (pg.type !== 'timer') return null
+  const presets = (pg.minutes ?? TIMER_DEFAULTS.minutes).slice(0, 4).map((m) => `${m} min`)
+  const gap = 8
+  const widths = presets.map((t) => measure(t, 14, false) + 24)
+  const total = widths.reduce((a, b) => a + b, 0) + gap * Math.max(0, presets.length - 1)
+  let x = -total / 2
+  const chips = presets.map((text, i) => {
+    const c = { text, x, w: widths[i]!, cx: x + widths[i]! / 2 }
+    x += widths[i]! + gap
+    return c
+  })
+  return {
+    track: `M0 ${-BEZEL_R} A${BEZEL_R} ${BEZEL_R} 0 1 1 0 ${BEZEL_R} A${BEZEL_R} ${BEZEL_R} 0 1 1 0 ${-BEZEL_R}`,
+    ind: arcPath(BEZEL_R, 270, 270 + 360 * 0.7),
+    label: ellipsize(pg.label || (pg.pomodoro ? 'Focus' : ''), 16, false, 220),
+    pomodoro: pg.pomodoro === true,
+    chips,
+  }
+})
+
+// ---- mixer, windows, clipboard: sample content, drawn like the device lists ----
+const MIXER_APPS = [
+  { name: 'Spotify', icon: 'music_note', vol: 72 },
+  { name: 'Firefox', icon: 'public', vol: 45 },
+  { name: 'Discord', icon: 'headset_mic', vol: 88 },
+]
+const mixer = computed(() => {
+  if (props.page.type !== 'mixer') return null
+  const x0 = -78
+  const x1 = 128
+  const rows = MIXER_APPS.map((a, i) => {
+    const y = -46 + i * 64
+    const hx = x0 + ((x1 - x0) * a.vol) / 100
+    return { ...a, y, x0, x1, hx }
+  })
+  const chips = [
+    { text: 'Speakers', on: true },
+    { text: 'Headset', on: false },
+  ].map((c) => ({ ...c, w: measure(c.text, 14, false) + (c.on ? 44 : 28) }))
+  const total = chips.reduce((a, c) => a + c.w, 0) + 8
+  let x = -total / 2
+  return {
+    rows,
+    chips: chips.map((c) => {
+      const out = { ...c, x }
+      x += c.w + 8
+      return out
+    }),
+  }
+})
+const WINDOW_ICONS = ['public', 'terminal', 'folder', 'code', 'chat', 'music_note']
+const windows = computed(() => {
+  if (props.page.type !== 'windows') return null
+  return WINDOW_ICONS.map((icon, i) => {
+    const [x, y] = at(116, 270 + i * 60)
+    return { icon, x, y, on: i === 0 }
+  })
+})
+const CLIPS = [
+  { text: 'Meeting moved to 15:30', when: 'Just now' },
+  { text: 'https://open-meteo.com/en/docs', when: '2 min ago' },
+  { text: 'git commit -m "fix layout"', when: '10 min ago' },
+]
+const clipboard = computed(() => {
+  if (props.page.type !== 'clipboard') return null
+  return CLIPS.map((c, i) => ({ text: ellipsize(c.text, 16, false, 220), when: c.when, y: -112 + i * 76 }))
+})
+
+// ---- discord: sample voice channel ----
+const discord = computed(() => {
+  if (props.page.type !== 'discord') return null
+  // Five members spread over the top of the ring, clear of the buttons
+  return [-150, -120, -90, -60, -30].map((deg, i) => {
+    const [x, y] = at(132, deg)
+    return { x, y, speaking: i === 1, muted: i === 3 }
+  })
+})
+
 // ---- image: full screen, cover or contain on the surface color ----
 const imagePage = computed(() => (props.page.type === 'image' ? props.page : null))
 const sliding = computed(() => {
@@ -381,6 +532,118 @@ const dots = computed(() => {
         <text class="txt" y="62" font-size="16" :fill="p.onSurfaceVariant">{{ dial.label }}</text>
       </template>
 
+      <!-- Clock -->
+      <template v-else-if="clock">
+        <template v-if="clock.analog">
+          <circle r="150" :fill="p.primaryContainer" fill-opacity="0.45" />
+          <line
+            v-for="(t, i) in clock.ticks"
+            :key="i"
+            :x1="t.x1"
+            :y1="t.y1"
+            :x2="t.x2"
+            :y2="t.y2"
+            :stroke="t.big ? p.primary : p.onSurfaceVariant"
+            :stroke-width="t.big ? 6 : 4"
+            stroke-linecap="round"
+          />
+        </template>
+        <template v-else>
+          <text class="txt num" :y="clock.timeY" font-size="72" font-weight="700" :fill="p.onSurface">{{ clock.time }}</text>
+          <text class="txt" :y="clock.timeY + 52" font-size="16" :fill="p.onSurfaceVariant">{{ clock.date }}</text>
+        </template>
+        <text v-for="r in clock.rows" :key="r.text" class="txt num" :y="r.y" font-size="14" :fill="p.onSurfaceVariant">{{ r.text }}</text>
+        <text v-if="clock.weather" class="txt" :y="clock.base" font-size="16" :fill="p.onSurface">
+          <tspan class="sym-inline" font-size="20" :fill="p.tertiary">partly_cloudy_day</tspan><tspan dx="6">{{ clock.weather }}</tspan>
+        </text>
+        <template v-if="clock.analog">
+          <line x1="0" y1="0" :x2="clock.hour[0]" :y2="clock.hour[1]" :stroke="p.primary" stroke-width="12" stroke-linecap="round" />
+          <line x1="0" y1="0" :x2="clock.minute[0]" :y2="clock.minute[1]" :stroke="p.onSurface" stroke-width="8" stroke-linecap="round" />
+          <circle r="7" :fill="p.onSurface" />
+          <circle :cx="clock.second[0]" :cy="clock.second[1]" r="6" :fill="p.tertiary" />
+        </template>
+      </template>
+
+      <!-- Timer -->
+      <template v-else-if="timer">
+        <path :d="timer.track" fill="none" :stroke="p.surfaceContainerHighest" stroke-width="14" />
+        <path :d="timer.ind" fill="none" :stroke="p.primary" stroke-width="14" stroke-linecap="round" />
+        <text v-if="timer.pomodoro" class="txt" y="-62" font-size="14" font-weight="700" :fill="p.tertiary">POMODORO 1/4</text>
+        <text class="txt num" y="-14" font-size="56" font-weight="700" :fill="p.onSurface">17:32</text>
+        <text v-if="timer.label" class="txt" y="30" font-size="16" :fill="p.onSurfaceVariant">{{ timer.label }}</text>
+        <g v-for="c in timer.chips" :key="c.text">
+          <rect :x="c.x" y="80" :width="c.w" height="30" rx="15" :fill="p.secondaryContainer" />
+          <text class="txt" :x="c.cx" y="95" font-size="14" :fill="p.onSecondaryContainer">{{ c.text }}</text>
+        </g>
+      </template>
+
+      <!-- Volume mixer -->
+      <template v-else-if="mixer">
+        <g v-for="c in mixer.chips" :key="c.text">
+          <rect
+            :x="c.x"
+            y="-132"
+            :width="c.w"
+            height="32"
+            rx="10"
+            :fill="c.on ? p.secondaryContainer : 'none'"
+            :stroke="c.on ? 'none' : p.outlineVariant"
+            stroke-width="1.5"
+          />
+          <text v-if="c.on" class="sym" :x="c.x + 20" y="-116" font-size="18" :fill="p.onSecondaryContainer">check</text>
+          <text class="txt" :x="c.on ? c.x + 20 + (c.w - 20) / 2 - 2 : c.x + c.w / 2" y="-116" font-size="14" :fill="c.on ? p.onSecondaryContainer : p.onSurfaceVariant">
+            {{ c.text }}
+          </text>
+        </g>
+        <g v-for="r in mixer.rows" :key="r.name">
+          <circle cx="-112" :cy="r.y" r="22" :fill="p.surfaceContainerHighest" />
+          <text class="sym" x="-112" :y="r.y" font-size="22" :fill="p.onSurface">{{ r.icon }}</text>
+          <text class="txt start" :x="r.x0" :y="r.y - 14" font-size="14" :fill="p.onSurface">{{ r.name }}</text>
+          <!-- M3 expressive slider: thick active track, a gap, the bar handle, the inactive track -->
+          <line :x1="r.x0 + 6" :y1="r.y + 10" :x2="r.hx - 8" :y2="r.y + 10" :stroke="p.primary" stroke-width="12" stroke-linecap="round" />
+          <line :x1="r.hx + 8" :y1="r.y + 10" :x2="r.x1 - 6" :y2="r.y + 10" :stroke="p.secondaryContainer" stroke-width="12" stroke-linecap="round" />
+          <line :x1="r.hx" :y1="r.y - 2" :x2="r.hx" :y2="r.y + 22" :stroke="p.primary" stroke-width="4" stroke-linecap="round" />
+        </g>
+      </template>
+
+      <!-- Windows -->
+      <template v-else-if="windows">
+        <g v-for="w in windows" :key="w.icon">
+          <circle :cx="w.x" :cy="w.y" r="36" :fill="w.on ? p.primaryContainer : p.surfaceContainerHighest" />
+          <text class="sym" :x="w.x" :y="w.y" font-size="32" :fill="w.on ? p.onPrimaryContainer : p.onSurface">{{ w.icon }}</text>
+        </g>
+        <text class="txt" y="0" font-size="22" font-weight="700" :fill="p.onSurface">Firefox</text>
+      </template>
+
+      <!-- Clipboard -->
+      <template v-else-if="clipboard">
+        <g v-for="(c, i) in clipboard" :key="i">
+          <rect x="-132" :y="c.y" width="264" height="64" rx="20" :fill="i === 0 ? p.secondaryContainer : p.surfaceContainerHigh" />
+          <text class="txt start" x="-112" :y="c.y + 24" font-size="16" :fill="i === 0 ? p.onSecondaryContainer : p.onSurface">{{ c.text }}</text>
+          <text class="txt start" x="-112" :y="c.y + 46" font-size="12" :fill="i === 0 ? p.onSecondaryContainer : p.onSurfaceVariant">{{ c.when }}</text>
+        </g>
+      </template>
+
+      <!-- Discord voice -->
+      <template v-else-if="discord">
+        <g v-for="(m, i) in discord" :key="i">
+          <circle v-if="m.speaking" :cx="m.x" :cy="m.y" r="30" fill="none" stroke="#23A55A" stroke-width="4" />
+          <circle :cx="m.x" :cy="m.y" r="28" :fill="p.surfaceContainerHighest" />
+          <text class="sym" :x="m.x" :y="m.y" font-size="30" :fill="p.onSurfaceVariant">person</text>
+          <g v-if="m.muted">
+            <circle :cx="m.x + 20" :cy="m.y + 20" r="11" :fill="p.errorContainer" :stroke="p.surface" stroke-width="2" />
+            <text class="sym" :x="m.x + 20" :y="m.y + 20" font-size="14" :fill="p.onErrorContainer">mic_off</text>
+          </g>
+        </g>
+        <text class="txt" y="-64" font-size="16" :fill="p.onSurfaceVariant">General</text>
+        <circle cx="-44" cy="6" r="38" :fill="p.surfaceContainerHighest" />
+        <text class="sym" x="-44" y="6" font-size="34" :fill="p.onSurface">mic</text>
+        <circle cx="44" cy="6" r="38" :fill="p.surfaceContainerHighest" />
+        <text class="sym" x="44" y="6" font-size="34" :fill="p.onSurface">headphones</text>
+        <circle cx="0" cy="78" r="24" :fill="p.error" />
+        <text class="sym" x="0" y="78" font-size="24" :fill="p.surface">call_end</text>
+      </template>
+
       <!-- Touchpad -->
       <template v-else-if="touchpad">
         <circle r="161" fill="none" :stroke="p.surfaceContainerHigh" stroke-width="22" />
@@ -438,6 +701,17 @@ const dots = computed(() => {
   font-variation-settings: 'FILL' 1;
   text-anchor: middle;
   dominant-baseline: central;
+}
+.txt.start {
+  text-anchor: start;
+}
+.sym-inline {
+  font-family: 'Material Symbols Rounded';
+  font-feature-settings: 'liga';
+  font-variation-settings: 'FILL' 1;
+}
+.num {
+  font-variant-numeric: tabular-nums;
 }
 .sym.outline {
   font-variation-settings: 'FILL' 0;

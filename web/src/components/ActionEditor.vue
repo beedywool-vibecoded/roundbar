@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Edits one Action of any type in the spec, with a Test button that runs it for real.
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import Icon from './Icon.vue'
 import M3Select from './M3Select.vue'
 import TextField from './TextField.vue'
@@ -8,9 +8,10 @@ import KeyRecorder from './KeyRecorder.vue'
 import ShapeLoader from './ShapeLoader.vue'
 import { api } from '@/lib/api'
 import { ACTION_TYPES, LIMITS, MEDIA_CMDS, MIC_CMDS, checkAction, defaultAction, validText, type Issue } from '@/lib/model'
-import { daemonUp } from '@/lib/store'
+import { comboFromEvent, formatCombo, heldMods, modifierOf, type Modifier } from '@/lib/keys'
+import { config, daemonUp } from '@/lib/store'
 import type { Action, ActionType, MediaCmd, MicCmd, Page, Step } from '@/lib/types'
-import { run } from '@/lib/ui'
+import { run, toast } from '@/lib/ui'
 
 const model = defineModel<Action>({ required: true })
 const props = defineProps<{ pages: Page[] }>()
@@ -85,6 +86,87 @@ function setDelay(i: number, v: string) {
 const MAX_TEXT: number = LIMITS.text
 const MAX_DELAY: number = LIMITS.delay
 const MAX_STEPS: number = LIMITS.steps
+
+// ---- macro recorder: key presses become `keys` steps, pauses become `delay` steps ----
+const GAP_MS = 150
+const IDLE_MS = 10_000
+const recording = ref(false)
+const recorded = ref(0)
+let before: Step[] = []
+let last: number | null = null
+let lone: Modifier | null = null
+let idle: ReturnType<typeof setTimeout> | undefined
+
+function armIdle() {
+  clearTimeout(idle)
+  idle = setTimeout(stopRecording, IDLE_MS)
+}
+function record(keys: string) {
+  const now = performance.now()
+  const add: Step[] = []
+  const room = MAX_STEPS - steps.value.length
+  if (room <= 0) return stopRecording()
+  if (last !== null && room >= 2) {
+    const gap = now - last
+    if (gap > GAP_MS) add.push({ delay: Math.min(MAX_DELAY, Math.round(gap / 50) * 50) })
+  }
+  add.push({ keys })
+  last = now
+  recorded.value += add.length
+  const next = [...steps.value, ...add]
+  setSteps(next)
+  if (next.length >= MAX_STEPS) {
+    toast(`A macro has at most ${MAX_STEPS} steps: recording stopped`)
+    stopRecording()
+  } else armIdle()
+}
+function onRecKey(e: KeyboardEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.repeat) return
+  if (e.key === 'Escape') return stopRecording()
+  const m = modifierOf(e)
+  if (m) {
+    // Counts only if released without another key
+    lone = heldMods(e).length === 1 ? m : null
+    return
+  }
+  lone = null
+  const c = comboFromEvent(e, config.value?.device.keyboardLayout ?? 'us')
+  if (c) record(formatCombo(c))
+}
+function onRecKeyUp(e: KeyboardEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  if (lone && modifierOf(e) === lone && !heldMods(e).length) record(lone)
+  lone = null
+}
+function startRecording() {
+  if (recording.value || steps.value.length >= MAX_STEPS) return
+  before = [...steps.value]
+  recorded.value = 0
+  last = null
+  lone = null
+  recording.value = true
+  ;(document.activeElement as HTMLElement | null)?.blur()
+  window.addEventListener('keydown', onRecKey, true)
+  window.addEventListener('keyup', onRecKeyUp, true)
+  window.addEventListener('blur', stopRecording)
+  armIdle()
+}
+function stopRecording() {
+  if (!recording.value) return
+  recording.value = false
+  clearTimeout(idle)
+  window.removeEventListener('keydown', onRecKey, true)
+  window.removeEventListener('keyup', onRecKeyUp, true)
+  window.removeEventListener('blur', stopRecording)
+  const n = recorded.value
+  if (!n) return
+  const restore = before
+  toast(`Recorded ${n} step${n > 1 ? 's' : ''}`, false, { label: 'Undo', run: () => setSteps(restore) })
+}
+onBeforeUnmount(stopRecording)
 
 const testing = ref(false)
 function test() {
@@ -197,8 +279,25 @@ function test() {
         </li>
       </ol>
       <p v-else class="muted small" style="margin: 0">No steps yet. Key and text steps are typed by the device, commands run on the PC.</p>
+      <div v-if="recording" class="rec-bar" role="status">
+        <span class="rec-dot" aria-hidden="true" />
+        <span class="grow">
+          <span class="rec-title">Recording · {{ recorded }} step{{ recorded === 1 ? '' : 's' }}</span>
+          <span class="muted small">Press keys and combos; pauses become delays. Esc or 10 s without a key stops.</span>
+        </span>
+        <button class="btn btn-filled st stop" type="button" @click="stopRecording"><Icon name="stop" :size="18" fill /> Stop</button>
+      </div>
       <div class="add-steps">
         <span class="muted small">{{ steps.length }} / {{ MAX_STEPS }}</span>
+        <button
+          class="fchip st rec-chip"
+          type="button"
+          :disabled="recording || steps.length >= MAX_STEPS"
+          v-tip="'Record key presses as steps, added after the current ones'"
+          @click="startRecording"
+        >
+          <Icon name="radio_button_checked" :size="16" /> Record
+        </button>
         <button
           v-for="k in STEP_KINDS"
           :key="k.value"
@@ -288,6 +387,58 @@ function test() {
   width: 32px;
   height: 32px;
   border: none;
+}
+.rec-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  border-radius: 16px;
+  background: var(--ec);
+  color: var(--on-ec);
+}
+.rec-bar .muted {
+  display: block;
+  color: inherit;
+  opacity: 0.8;
+}
+.rec-title {
+  display: block;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.rec-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--error);
+  flex-shrink: 0;
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+@keyframes rec-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--error) 60%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px transparent;
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot {
+    animation: none;
+  }
+}
+.stop {
+  height: 36px;
+  background: var(--error);
+  color: var(--on-error);
+}
+.rec-chip {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 50%, transparent);
 }
 .add-steps {
   display: flex;

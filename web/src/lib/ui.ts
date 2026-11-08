@@ -2,11 +2,18 @@
 import { reactive } from 'vue'
 import { ApiError } from './api'
 
-export const snackbar = reactive({ text: '', error: false, id: 0 })
+export interface SnackAction {
+  label: string
+  run: () => void
+}
 
-export function toast(text: string, error = false) {
+export const snackbar = reactive<{ text: string; error: boolean; id: number; action: SnackAction | null }>({ text: '', error: false, id: 0, action: null })
+
+// `action` adds a button (Undo and the like) next to Dismiss.
+export function toast(text: string, error = false, action: SnackAction | null = null) {
   snackbar.text = text
   snackbar.error = error
+  snackbar.action = action
   snackbar.id++
 }
 

@@ -9,14 +9,21 @@ watch(
   () => {
     visible.value = true
     clearTimeout(timer)
-    timer = setTimeout(() => (visible.value = false), snackbar.error ? 7000 : 4000)
+    timer = setTimeout(() => (visible.value = false), snackbar.error || snackbar.action ? 7000 : 4000)
   },
 )
+function act() {
+  const a = snackbar.action
+  snackbar.action = null
+  visible.value = false
+  a?.run()
+}
 </script>
 
 <template>
   <div class="snackbar" :class="{ visible, error: snackbar.error }" role="status" aria-live="polite">
     <span class="grow">{{ snackbar.text }}</span>
+    <button v-if="snackbar.action" class="btn btn-text st act" type="button" @click="act">{{ snackbar.action.label }}</button>
     <button class="btn btn-text st" type="button" @click="visible = false">Dismiss</button>
   </div>
 </template>
@@ -53,6 +60,14 @@ watch(
   color: var(--on-ec);
 }
 .snackbar .btn-text {
+  color: inherit;
+}
+.snackbar .act {
+  /* inverse primary: readable on the inverted surface in both modes */
+  color: var(--pc);
+  font-weight: 600;
+}
+.snackbar.error .act {
   color: inherit;
 }
 @media (max-width: 760px) {

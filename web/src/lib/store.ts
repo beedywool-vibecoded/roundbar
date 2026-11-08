@@ -2,9 +2,9 @@
 // daemon status. Edits stay local until Save.
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { ApiError, api, streamStatus } from './api'
-import { normalize, starterConfig, validate, type Issue } from './model'
-import { devicePalette, seed } from './theme'
-import type { Config, Profile, Status } from './types'
+import { normalize, starterConfig, syncProfilePalette, validate, type Issue } from './model'
+import { devicePalette, seed, validHex } from './theme'
+import type { Config, Palette, Profile, Status } from './types'
 import { toast } from './ui'
 
 export const config = ref<Config | null>(null)
@@ -76,6 +76,7 @@ export async function save(): Promise<boolean> {
   }
   // The device only reads the palette: recompute it from the seed and mode every time.
   c.theme.palette = devicePalette(c.theme.seed, c.theme.mode)
+  for (const p of c.profiles) syncProfilePalette(p, c.theme.mode)
   saving.value = true
   try {
     const sent = JSON.stringify(c)
@@ -101,6 +102,20 @@ watch(
   () => config.value?.theme.seed,
   (s) => s && (seed.value = s),
 )
+
+// Profile palettes always match the device mode.
+watch(
+  () => config.value?.theme.mode,
+  (mode) => {
+    if (mode) for (const p of config.value!.profiles) syncProfilePalette(p, mode)
+  },
+)
+
+// The palette a profile's pages are drawn with: its own color, else the theme's.
+export function profilePalette(p: Profile | undefined): Palette {
+  const t = config.value!.theme
+  return devicePalette(p?.seed && validHex(p.seed) ? p.seed : t.seed, t.mode)
+}
 
 let stopStream: (() => void) | undefined
 export function startLive() {

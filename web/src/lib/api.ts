@@ -1,7 +1,7 @@
 // Client for the configurator API (docs/spec.md section 4). Every call carries the
 // bearer token from the URL the configurator was opened with.
 import { mockMode, token } from './token'
-import type { Action, AssetInfo, Config, Status } from './types'
+import type { Action, AssetInfo, Config, FirmwareInfo, FlashEvent, Status } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -91,12 +91,27 @@ export const api = {
   run: (action: Action) => request<unknown>('POST', '/api/run', { action }),
   // The raw file, converted by the server for the device
   uploadAsset: (file: Blob) => request<AssetInfo>('POST', '/api/assets', file),
+  firmware: () => request<FirmwareInfo>('GET', '/api/firmware'),
+  // Builds and flashes; progress arrives as `flash` events (onFlash)
+  updateFirmware: () => request<unknown>('POST', '/api/firmware/update'),
+  // Stored by the daemon in ~/.config/roundbar/discord.json, never in the config
+  connectDiscord: (clientId: string, clientSecret: string) => request<unknown>('POST', '/api/discord', { clientId, clientSecret }),
   // The converted file, for thumbnails and previews
   asset: async (id: string): Promise<Blob> => {
     const path = `/api/assets/${encodeURIComponent(id)}`
     if (mockMode) return (await (await mockHandler())('GET', path)) as Blob
     return (await send('GET', path)).blob()
   },
+}
+
+// `flash` events from the same stream, for whoever is showing the update log.
+const flashListeners = new Set<(e: FlashEvent) => void>()
+export function onFlash(fn: (e: FlashEvent) => void): () => void {
+  flashListeners.add(fn)
+  return () => flashListeners.delete(fn)
+}
+export function emitFlash(e: FlashEvent) {
+  flashListeners.forEach((fn) => fn(e))
 }
 
 // Status over server-sent events. The open stream is also what keeps `roundbar config`
@@ -128,6 +143,13 @@ export function streamStatus(on: { status: (s: Status) => void; connected: (up: 
       }
     }
     es.addEventListener('status', handle as EventListener)
+    es.addEventListener('flash', ((e: MessageEvent) => {
+      try {
+        emitFlash(JSON.parse(e.data) as FlashEvent)
+      } catch {
+        // ignore a malformed event
+      }
+    }) as EventListener)
     es.onmessage = handle
     es.onerror = () => {
       on.connected(false)

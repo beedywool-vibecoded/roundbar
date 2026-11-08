@@ -52,6 +52,28 @@ export interface DeviceSettings {
   followPc: boolean
   /** Double tap near the left/right edge. Missing = "page" */
   edgeDoubleTap: EdgeDoubleTap
+  /** Red ring while an app records the microphone. Missing = true */
+  micIndicator: boolean
+  /** Replaces the dim step after screensaverAfter seconds idle. Missing = "off" */
+  screensaver: Screensaver
+  /** Seconds, 10..3600. Missing = 60 */
+  screensaverAfter: number
+  /** Asset ids for "photos", stills only, up to 20 */
+  screensaverImages: string[]
+  /** Pull up from the bottom edge for the notification panel. Missing = true */
+  notifications: boolean
+  /** Show new notifications briefly. Missing = true */
+  notifToast: boolean
+}
+
+export type Screensaver = 'off' | 'clock' | 'photos'
+
+export type WeatherUnits = 'metric' | 'imperial'
+export interface Weather {
+  city: string
+  lat: number
+  lon: number
+  units: WeatherUnits
 }
 
 export type EdgeDoubleTap = 'page' | 'quickSettings' | 'screenOff' | 'off'
@@ -132,13 +154,64 @@ export interface TouchpadPage extends PageBase {
   /** Pointer speed 1..10; missing = TOUCHPAD_DEFAULTS.speed */
   speed?: number
 }
-export type Page = RadialPage | MediaPage | StatsPage | DialPage | ImagePage | TouchpadPage
+export type ClockStyle = 'analog' | 'digital'
+export interface ClockZone {
+  label: string
+  /** IANA time zone, e.g. "Asia/Tokyo" */
+  tz: string
+}
+export interface ClockPage extends PageBase {
+  type: 'clock'
+  /** Missing = analog */
+  style?: ClockStyle
+  /** Missing = true; needs the top-level weather */
+  weather?: boolean
+  /** World clocks, 0..3 */
+  zones?: ClockZone[]
+}
+export interface TimerPage extends PageBase {
+  type: 'timer'
+  /** Presets in minutes, 1..4 values of 1..180; missing = TIMER_DEFAULTS.minutes */
+  minutes?: number[]
+  /** 25 min work / 5 min break cycles */
+  pomodoro?: boolean
+  label?: string
+}
+/** Pages without options: the daemon sends their content live */
+export interface MixerPage extends PageBase {
+  type: 'mixer'
+}
+export interface WindowsPage extends PageBase {
+  type: 'windows'
+}
+export interface ClipboardPage extends PageBase {
+  type: 'clipboard'
+}
+export interface DiscordPage extends PageBase {
+  type: 'discord'
+}
+export type Page =
+  | RadialPage
+  | MediaPage
+  | StatsPage
+  | DialPage
+  | ClockPage
+  | TimerPage
+  | MixerPage
+  | WindowsPage
+  | ClipboardPage
+  | DiscordPage
+  | ImagePage
+  | TouchpadPage
 export type PageType = Page['type']
 
 export interface Profile {
   id: string
   name: string
   match: string[]
+  /** Own seed color; the configurator writes `palette` from it for theme.mode */
+  seed?: string
+  palette?: Palette
   pages: Page[]
 }
 
@@ -155,6 +228,8 @@ export interface Config {
   version: 1
   theme: Theme
   media: MediaSettings
+  /** Location for clock pages; missing = no weather */
+  weather?: Weather
   device: DeviceSettings
   profiles: Profile[]
 }
@@ -190,4 +265,28 @@ export interface Status {
   recentApps?: App[]
   view?: View | null
   extension?: boolean
+  /** Discord RPC session of the daemon */
+  discord?: DiscordStatus
 }
+
+export interface DiscordStatus {
+  connected: boolean
+  user?: string
+  /** "" or missing: not in a voice channel */
+  channel?: string
+  error?: string
+}
+
+// GET /api/firmware: can this machine build and flash, and which version is built
+export interface FirmwareInfo {
+  repo: string
+  repoOk: boolean
+  /** ESP-IDF export script, "" when not found */
+  idf: string
+  /** Version of the last build, "" when none */
+  built: string
+  running: boolean
+}
+
+// SSE `flash` events during a firmware update
+export type FlashEvent = { line: string } | { done: true; ok: boolean }

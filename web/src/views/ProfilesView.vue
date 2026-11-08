@@ -6,14 +6,12 @@ import M3Dialog from '@/components/M3Dialog.vue'
 import RoundPreview from '@/components/RoundPreview.vue'
 import TextField from '@/components/TextField.vue'
 import { ID_RE, duplicateProfile, newPage, slug, uniqueId } from '@/lib/model'
-import { config, focusKeys, isNew, issuesUnder, live } from '@/lib/store'
-import { devicePalette } from '@/lib/theme'
+import { config, focusKeys, isNew, issuesUnder, live, profilePalette } from '@/lib/store'
 import type { Profile } from '@/lib/types'
 import { confirm } from '@/lib/ui'
 
 const router = useRouter()
 const profiles = computed(() => config.value!.profiles)
-const palette = computed(() => devicePalette(config.value!.theme.seed, config.value!.theme.mode))
 const focused = computed(() => focusKeys())
 const activeId = computed(() => live.status?.profile ?? live.status?.view?.profile ?? '')
 
@@ -101,7 +99,7 @@ function create() {
       <article v-for="(p, i) in profiles" :key="p.id" class="card prof" :class="{ bad: issuesUnder(`profiles[${i}]`).length }">
         <RouterLink :to="`/profiles/${p.id}`" class="main st" :aria-label="`Edit ${p.name}`">
           <div class="thumb">
-            <RoundPreview v-if="p.pages[0]" :page="p.pages[0]" :palette="palette" :page-count="p.pages.length" thumb />
+            <RoundPreview v-if="p.pages[0]" :page="p.pages[0]" :palette="profilePalette(p)" :page-count="p.pages.length" thumb />
           </div>
           <div class="grow info">
             <div class="name-row">

@@ -9,6 +9,8 @@ defineProps<{
   help?: string
   mono?: boolean
   multiline?: boolean
+  /** Input type, e.g. "password"; default text */
+  type?: string
 }>()
 </script>
 
@@ -22,7 +24,7 @@ defineProps<{
       <span class="in">
         <slot name="leading" />
         <textarea v-if="multiline" v-model="model" rows="2" :placeholder="placeholder" :style="mono ? { fontFamily: 'var(--mono)', fontSize: '14px' } : undefined" spellcheck="false" />
-        <input v-else v-model="model" :placeholder="placeholder" :style="mono ? { fontFamily: 'var(--mono)', fontSize: '14px' } : undefined" spellcheck="false" autocomplete="off" />
+        <input v-else v-model="model" :type="type ?? 'text'" :placeholder="placeholder" :style="mono ? { fontFamily: 'var(--mono)', fontSize: '14px' } : undefined" spellcheck="false" autocomplete="off" />
         <slot name="trailing" />
       </span>
     </label>
