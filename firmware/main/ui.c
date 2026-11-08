@@ -2320,6 +2320,8 @@ static void np_event(lv_event_t *e)
     else if (c == LV_EVENT_CLICKED && (intptr_t)lv_event_get_user_data(e) == 1) {
         send_simple("notifClear", NULL, NULL, 0);
         np_close();
+    } else if (c == LV_EVENT_CLICKED && (intptr_t)lv_event_get_user_data(e) == 2) {
+        np_close();
     }
 }
 
@@ -2385,7 +2387,18 @@ static void np_open(void)
     lv_obj_add_flag(np, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(np, np_event, LV_EVENT_GESTURE, NULL);
     np_col = scroll_column(np, 290, LCD_H, 0);
+    lv_obj_set_style_pad_top(np_col, 64, 0);
     np_fill();
+    lv_obj_t *close = box(np); // always reachable, above the scrolling list
+    lv_obj_set_size(close, 64, 40);
+    lv_obj_align(close, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_set_style_radius(close, 20, 0);
+    lv_obj_set_style_bg_color(close, P.schh, 0);
+    lv_obj_set_style_bg_opa(close, LV_OPA_COVER, 0);
+    lv_obj_add_flag(close, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *ci = text(close, F.icon_m, P.on_surface, theme_icon("expand_more"));
+    lv_obj_center(ci);
+    lv_obj_add_event_cb(close, np_event, LV_EVENT_CLICKED, (void *)2);
     lv_obj_set_y(np, LCD_H);
     lv_anim_t a;
     lv_anim_init(&a);
@@ -2873,6 +2886,8 @@ static struct {
     uint32_t t0;
 } pull;
 static void np_open_async(void *arg) { np_open(); }
+static void np_close_async(void *arg) { np_close(); }
+static bool pull_close_np;
 static struct {
     int side;      // -1 left, 1 right, 0 none
     uint32_t when; // release time of the previous edge tap
@@ -2887,6 +2902,8 @@ static void edge_action_async(void *arg)
     if (!a) a = "page";
     arc_mode = ARC_IDLE;
     dragging = false;
+    if (np && !lv_obj_has_flag(np, LV_OBJ_FLAG_HIDDEN)) { np_close(); return; }
+    if (qs && !lv_obj_has_flag(qs, LV_OBJ_FLAG_HIDDEN)) { qs_close(); return; }
     if (!strcmp(a, "page")) goto_index(cur_page + side, false); // instant, no slide
     else if (!strcmp(a, "quickSettings")) qs_open();
     else if (!strcmp(a, "screenOff")) screen_off();
@@ -2944,12 +2961,17 @@ static void touch_read_wrap(lv_indev_t *in, lv_indev_data_t *d)
         bool awake = power == AWAKE || power == DIM;
         pull.armed = p.y < 64 && awake && panels_closed;
         pull.armed_up = p.y > LCD_H - 64 && awake && panels_closed && store_get_bool("notifications", true);
+        pull_close_np = p.y < 64 && np && !lv_obj_has_flag(np, LV_OBJ_FLAG_HIDDEN);
         return;
     }
     int32_t dy = p.y - pull.p0.y, dx = LV_ABS(p.x - pull.p0.x);
     if (pull.armed && dy > 50 && dx < dy) {
         pull.armed = false;
         lv_async_call(pull_open_async, NULL);
+    }
+    if (pull_close_np && dy > 50 && dx < dy) {
+        pull_close_np = false;
+        lv_async_call(np_close_async, NULL);
     }
     if (pull.armed_up && -dy > 50 && dx < -dy) {
         pull.armed_up = false;
