@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "assets.h"
+#include "jpeg_decoder.h"
 #include "esp_heap_caps.h"
 #include "board.h"
 #include "proto.h"
@@ -60,18 +61,14 @@ static struct {
 
 // Memory owned by a screen (image files), freed when that screen is deleted.
 typedef struct {
-    void *bufs[24];
-    lv_image_dsc_t dscs[24];
+    void *bufs[64];
+    lv_image_dsc_t dscs[64];
     int n;
 } screen_res_t;
 static screen_res_t *res; // of the screen being built / shown
 
 static struct {
     lv_obj_t *gif[MAX_PAGES];         // per page, paused when not visible
-    lv_obj_t *slide[MAX_PAGES][2];    // slideshow image pair per page
-    int slide_n[MAX_PAGES], slide_i[MAX_PAGES], slide_front[MAX_PAGES];
-    lv_image_dsc_t *slide_src[MAX_PAGES][20];
-    uint32_t slide_ms[MAX_PAGES], slide_last[MAX_PAGES];
 } media_live;
 
 static bool autoswitch_paused;
@@ -867,35 +864,48 @@ static void build_dial(lv_obj_t *tile, cJSON *pg)
 
 
 // ---- page: image (picture, GIF, slideshow) ------------------------------------------------
+//
+// JPEGs are decoded once into RGB565 with esp_jpeg (ROM TJpgDec), so drawing is a plain
+// copy. A slideshow keeps the compressed files and two decoded buffers: the one on
+// screen and the next one, decoded just before its cross-fade.
 
-static lv_image_dsc_t *load_asset(const char *name, bool gif)
+static void *res_keep(void *buf)
 {
-    if (!res || res->n >= 24) return NULL;
-    size_t len = 0;
-    uint8_t *buf = assets_load(name, &len);
-    if (!buf) return NULL;
-    lv_image_dsc_t *d = &res->dscs[res->n];
-    res->bufs[res->n++] = buf;
-    memset(d, 0, sizeof(*d));
-    d->header.magic = LV_IMAGE_HEADER_MAGIC;
-    d->header.cf = LV_COLOR_FORMAT_RAW; // the JPEG / GIF decoders read their own headers
-    d->data = buf;
-    d->data_size = len;
-    if (!gif) { // LVGL takes in-memory JPEG dimensions from the descriptor: read them from SOFn
-        for (size_t i = 2; i + 9 < len;) {
-            if (buf[i] != 0xFF) break;
-            uint8_t m = buf[i + 1];
-            uint16_t seg = (uint16_t)(buf[i + 2] << 8 | buf[i + 3]);
-            if (m >= 0xC0 && m <= 0xC3) {
-                d->header.h = buf[i + 5] << 8 | buf[i + 6];
-                d->header.w = buf[i + 7] << 8 | buf[i + 8];
-                d->header.stride = d->header.w * 3;
-                break;
-            }
-            i += 2 + seg;
-        }
+    if (!res || res->n >= 64 || !buf) {
+        free(buf);
+        return NULL;
     }
-    return d;
+    res->bufs[res->n++] = buf;
+    return buf;
+}
+
+static uint8_t *load_raw(const char *name, size_t *len)
+{
+    return res_keep(assets_load(name, len));
+}
+
+static bool decode_jpeg(const uint8_t *raw, size_t len, lv_image_dsc_t *dst, uint8_t *out, size_t cap)
+{
+    esp_jpeg_image_cfg_t cfg = {
+        .indata = (uint8_t *)raw,
+        .indata_size = len,
+        .outbuf = out,
+        .outbuf_size = cap,
+        .out_format = JPEG_IMAGE_FORMAT_RGB565,
+        .out_scale = JPEG_IMAGE_SCALE_0,
+    };
+    esp_jpeg_image_output_t img;
+    if (esp_jpeg_decode(&cfg, &img) != ESP_OK) return false;
+    memset(dst, 0, sizeof(*dst));
+    dst->header.magic = LV_IMAGE_HEADER_MAGIC;
+    dst->header.cf = LV_COLOR_FORMAT_RGB565;
+    dst->header.w = img.width;
+    dst->header.h = img.height;
+    dst->header.stride = img.width * 2;
+    dst->data = out;
+    dst->data_size = (uint32_t)img.width * img.height * 2;
+    lv_image_cache_drop(dst);
+    return true;
 }
 
 static void device_name(char *out, size_t n, const char *id, const char *fit)
@@ -905,51 +915,71 @@ static void device_name(char *out, size_t n, const char *id, const char *fit)
     snprintf(out, n, "%.*s-%s2%s", stem, id, fit && !strcmp(fit, "contain") ? "f" : "c", dot ? dot : "");
 }
 
+#define SLIDE_BUF (LCD_W * LCD_H * 2)
+
+typedef struct {
+    const uint8_t *raw[20];
+    size_t len[20];
+    int n, i, front;
+    lv_obj_t *img[2];
+    uint8_t *px[2];
+    lv_image_dsc_t dsc[2];
+    uint32_t ms, last;
+} slideshow_t;
+static slideshow_t *slides[MAX_PAGES];
+
 static void slide_fade_exec(void *o, int32_t v) { lv_obj_set_style_opa(o, (lv_opa_t)v, 0); }
 
 static void slideshow_tick(lv_timer_t *t)
 {
     if (power != AWAKE && power != DIM) return;
     int p = cur_page;
-    if (p < 0 || p >= page_count || media_live.slide_n[p] < 2) return;
+    slideshow_t *ss = p >= 0 && p < page_count ? slides[p] : NULL;
+    if (!ss || ss->n < 2) return;
     uint32_t now = lv_tick_get();
-    if (now - media_live.slide_last[p] < media_live.slide_ms[p]) return;
-    media_live.slide_last[p] = now;
-    int next = (media_live.slide_i[p] + 1) % media_live.slide_n[p];
-    lv_obj_t *back = media_live.slide[p][media_live.slide_front[p] ^ 1];
-    lv_image_set_src(back, media_live.slide_src[p][next]);
-    lv_obj_move_foreground(back);
+    if (now - ss->last < ss->ms) return;
+    ss->last = now;
+    int next = (ss->i + 1) % ss->n, back = ss->front ^ 1;
+    if (!decode_jpeg(ss->raw[next], ss->len[next], &ss->dsc[back], ss->px[back], SLIDE_BUF)) return;
+    lv_obj_t *o = ss->img[back];
+    lv_obj_set_style_opa(o, LV_OPA_TRANSP, 0);
+    lv_image_set_src(o, &ss->dsc[back]);
+    lv_obj_move_foreground(o);
     lv_anim_t a;
     lv_anim_init(&a);
-    lv_anim_set_var(&a, back);
+    lv_anim_set_var(&a, o);
     lv_anim_set_values(&a, 0, 255);
-    lv_anim_set_duration(&a, 700);
+    lv_anim_set_duration(&a, 600);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
     lv_anim_set_exec_cb(&a, slide_fade_exec);
     lv_anim_start(&a);
-    media_live.slide_i[p] = next;
-    media_live.slide_front[p] ^= 1;
+    ss->i = next;
+    ss->front = back;
 }
 
 static void build_image(lv_obj_t *tile, cJSON *pg, int page)
 {
     cJSON *imgs = cJSON_GetObjectItem(pg, "images");
     const char *fit = jstr(pg, "fit");
-    int n = 0;
-    lv_image_dsc_t *srcs[20];
+    slideshow_t *ss = res_keep(heap_caps_calloc(1, sizeof(slideshow_t), MALLOC_CAP_SPIRAM));
+    if (!ss) return;
     bool is_gif = false;
     cJSON *it;
     cJSON_ArrayForEach(it, imgs)
     {
-        if (!cJSON_IsString(it) || n >= 20) continue;
+        if (!cJSON_IsString(it) || ss->n >= 20) continue;
         char name[48];
         device_name(name, sizeof(name), it->valuestring, fit);
         is_gif = strstr(name, ".gif") != NULL;
-        lv_image_dsc_t *d = load_asset(name, is_gif);
-        if (d) srcs[n++] = d;
+        size_t len = 0;
+        const uint8_t *raw = load_raw(name, &len);
+        if (raw) {
+            ss->raw[ss->n] = raw;
+            ss->len[ss->n++] = len;
+        }
         if (is_gif) break;
     }
-    if (n == 0) { // not synced yet (or the PC never sent it)
+    if (ss->n == 0) { // not synced yet (or the PC never sent it)
         lv_obj_t *ic = text(tile, F.icon_xl, P.on_sv, theme_icon("image"));
         lv_obj_align(ic, LV_ALIGN_CENTER, 0, -20);
         lv_obj_t *l = text(tile, F.body, P.on_sv, usb_host_listening() ? "Syncing images…" : "Connect the PC to sync images");
@@ -957,28 +987,36 @@ static void build_image(lv_obj_t *tile, cJSON *pg, int page)
         return;
     }
     if (is_gif) {
+        lv_image_dsc_t *d = &res->dscs[res->n - 1];
+        memset(d, 0, sizeof(*d));
+        d->header.magic = LV_IMAGE_HEADER_MAGIC;
+        d->header.cf = LV_COLOR_FORMAT_RAW;
+        d->data = ss->raw[0];
+        d->data_size = ss->len[0];
         lv_obj_t *g = lv_gif_create(tile);
-        lv_gif_set_src(g, srcs[0]);
+        lv_gif_set_src(g, d);
         lv_obj_center(g);
         lv_obj_remove_flag(g, LV_OBJ_FLAG_CLICKABLE);
         media_live.gif[page] = g;
         if (page != cur_page) lv_gif_pause(g);
         return;
     }
-    for (int k = 0; k < 2; k++) {
+    int nbuf = ss->n > 1 ? 2 : 1;
+    for (int k = 0; k < nbuf; k++) ss->px[k] = res_keep(heap_caps_malloc(SLIDE_BUF, MALLOC_CAP_SPIRAM));
+    if (!ss->px[0] || !decode_jpeg(ss->raw[0], ss->len[0], &ss->dsc[0], ss->px[0], SLIDE_BUF)) return;
+    for (int k = 0; k < nbuf; k++) {
         lv_obj_t *im = lv_image_create(tile);
-        lv_image_set_src(im, srcs[0]);
         lv_obj_center(im);
         lv_obj_remove_flag(im, LV_OBJ_FLAG_CLICKABLE);
-        media_live.slide[page][k] = im;
+        ss->img[k] = im;
     }
-    media_live.slide_n[page] = n;
-    media_live.slide_i[page] = 0;
-    media_live.slide_front[page] = 1;
-    for (int k = 0; k < n; k++) media_live.slide_src[page][k] = srcs[k];
+    lv_image_set_src(ss->img[0], &ss->dsc[0]);
+    if (nbuf == 2) lv_obj_set_style_opa(ss->img[1], LV_OPA_TRANSP, 0);
+    ss->front = 0;
     cJSON *iv = cJSON_GetObjectItem(pg, "interval");
-    media_live.slide_ms[page] = (cJSON_IsNumber(iv) && iv->valueint >= 2 ? iv->valueint : 8) * 1000;
-    media_live.slide_last[page] = lv_tick_get();
+    ss->ms = (cJSON_IsNumber(iv) && iv->valueint >= 2 ? iv->valueint : 8) * 1000;
+    ss->last = lv_tick_get();
+    slides[page] = ss;
 }
 
 static void sync_gifs(void)
@@ -989,16 +1027,17 @@ static void sync_gifs(void)
         if (i == cur_page && power != ASLEEP && power != OFF) lv_gif_resume(g);
         else lv_gif_pause(g);
     }
-    if (cur_page >= 0 && cur_page < page_count) media_live.slide_last[cur_page] = lv_tick_get();
+    if (cur_page >= 0 && cur_page < page_count && slides[cur_page]) slides[cur_page]->last = lv_tick_get();
 }
 
 static void free_screen_res(lv_event_t *e)
 {
     screen_res_t *r = lv_event_get_user_data(e);
-    for (int i = 0; i < r->n; i++) {
-        lv_image_cache_drop(&r->dscs[i]);
-        free(r->bufs[i]);
-    }
+    // Cached entries are keyed by descriptor address; drop them all before the
+    // memory can be reused for a different picture.
+    lv_image_cache_drop(NULL);
+    lv_image_header_cache_drop(NULL);
+    for (int i = 0; i < r->n; i++) free(r->bufs[i]);
     free(r);
 }
 
@@ -1418,6 +1457,7 @@ static void build(bool animate)
     strlcpy(cur_profile, jstr(prof, "id") ?: "default", sizeof(cur_profile));
     memset(&live, 0, sizeof(live));
     memset(&media_live, 0, sizeof(media_live));
+    memset(slides, 0, sizeof(slides));
     ncustom = 0;
 
     lv_obj_t *s = lv_obj_create(NULL);
