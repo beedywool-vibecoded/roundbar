@@ -6,8 +6,8 @@ The contract between the four parts. Change it here first, then in code.
 ┌──────────────┐  USB HID kbd + consumer   ┌──────────────┐
 │   firmware   │ ────────────────────────▶ │   Linux PC   │
 │ ESP32-S3     │  USB CDC: JSON lines      │              │
-│ LVGL, 360²   │ ◀───────────────────────▶ │ roundbar     │◀── D-Bus ── GNOME extension (focus)
-└──────────────┘                           │  daemon (Go) │◀── D-Bus ── MPRIS players
+│ LVGL, 360²   │ ◀───────────────────────▶ │ roundbar     │◀── shell backend (focus, windows, see §5)
+└──────────────┘                           │  daemon (Go) │◀── D-Bus ── MPRIS players, notifications
                                            │              │◀── pulse ── PipeWire (volume, mic)
                                            │              │◀── sysfs ── /proc, hwmon, amdgpu
                                            └──────┬───────┘
@@ -151,7 +151,7 @@ Swiping down opens a quick settings panel on the device with a row of small numb
 current profile) and two tiles:
 - **Screen off**: backlight off plus panel display-off/sleep: no light at all. A double tap wakes it (single taps
   are ignored). Separate from the idle `sleepAfter`, which still wakes on a single tap.
-- Pulling up from the **bottom** edge opens the notification panel (mirrored GNOME notifications, newest first,
+- Pulling up from the **bottom** edge opens the notification panel (mirrored desktop notifications, newest first,
   scrollable): tap one to open it on the PC, swipe it sideways to dismiss, "Clear all" at the end.
 - **Auto-switch**: when off, `profile` messages from the PC are ignored and a pause badge shows at the top. Stored
   on the device, so it stays off until turned back on.
@@ -231,7 +231,11 @@ The daemon stops all periodic work when `view.awake` is false or when no device 
 
 JSON lines, request/response, used by `roundbar config` (and `roundbar status`, `roundbar flash`).
 
-- `{"op":"status"}` → `{"device":{"connected":true,"port":"/dev/ttyACM1","fw":"0.1.0","cfg":"…","inSync":true},"focus":{"id":"firefox","name":"Firefox","class":"firefox"},"profile":"browser","recentApps":[{"id":"firefox","name":"Firefox","class":"firefox"},…],"view":{"profile":"…","page":"…","kind":"radial","awake":true},"extension":true}`
+- `{"op":"status"}` → `{"device":{"connected":true,"port":"/dev/ttyACM1","fw":"0.1.0","cfg":"…","inSync":true},"focus":{"id":"firefox","name":"Firefox","class":"firefox"},"profile":"browser","recentApps":[{"id":"firefox","name":"Firefox","class":"firefox"},…],"view":{"profile":"…","page":"…","kind":"radial","awake":true},"extension":true,"desktop":{"backend":"gnome","focus":true,"windows":true,"notifications":true,"clipboard":true}}`
+  - `extension`: the focus source has reported a focused app (on GNOME: the extension runs).
+  - `desktop`: the shell backend in use (§5) and what it provides. A feature that is `false` is unsupported on
+    this desktop: its lists are always empty (`windows`, `clips`, `notifs` are sent as `[]`), so the configurator
+    can say so instead of showing a page that never fills.
 - `{"op":"show","profile":"…","page":"…"}` → `{"ok":true}`
 - `{"op":"run","action":Action}` → `{"ok":true}` (test an action from the configurator)
 - `{"op":"reload"}` → re-read config now
@@ -259,3 +263,35 @@ sent as `Authorization: Bearer <token>` on every API call.
 | POST | `/api/restore` | that zip (body, `application/zip`) → validated, assets written, config saved; `400 {error}` otherwise |
 | POST | `/api/discord` | `{clientId, clientSecret}` → stored by the daemon in `discord.json` (0600), then it connects; state in status `.discord` |
 | GET | `/api/events?t=<token>` | SSE: `status` events (same JSON as `/api/status`) whenever it changes. Token in the query because EventSource can't set headers. Also the liveness signal: the server exits 10 s after the last client is gone. |
+
+## 5. Desktop backends
+
+The daemon follows the desktop through one shell backend, picked at startup from the session environment
+(`ROUNDBAR_DESKTOP=gnome|kde|wayland|x11|none` overrides it):
+
+1. `XDG_CURRENT_DESKTOP` contains `KDE` → `kde`; contains `GNOME` (not Budgie, not GNOME Flashback) → `gnome`,
+   on Wayland and X11 alike.
+2. otherwise `WAYLAND_DISPLAY` is set, or the desktop is a Wayland-only one (Hyprland, sway, river, niri,
+   labwc, Wayfire, COSMIC) → `wayland`.
+3. otherwise `DISPLAY` is set → `x11` (XFCE, Cinnamon, MATE, i3, Openbox…).
+4. nothing set at all (service started before the session exported its variables) → `gnome`, as before.
+
+| backend | focus | windows | notifications | clipboard |
+|---|---|---|---|---|
+| `gnome` | extension `roundbar@beedy` (D-Bus `dev.roundbar.Focus`) | extension | extension | extension |
+| `kde` | KWin script, loaded through `org.kde.KWin /Scripting`, calls the daemon's `dev.roundbar.Daemon` object | KWin script; activation by a one-shot script | monitor | Klipper (`org.kde.klipper`), else Wayland data control |
+| `wayland` | `zwlr_foreign_toplevel_manager_v1` (activated state) | wlr toplevel manager (with activation), else `ext_foreign_toplevel_list_v1` (list only) | monitor | `ext_data_control_v1`, else `zwlr_data_control_v1` |
+| `x11` | `_NET_ACTIVE_WINDOW` (PropertyNotify on the root) | `_NET_CLIENT_LIST_STACKING`; activation by the `_NET_ACTIVE_WINDOW` client message | monitor | `CLIPBOARD` selection via XFixes |
+| `none` | – | – | monitor | – |
+
+- "monitor": the daemon watches `Notify` calls to `org.freedesktop.Notifications` (whichever program serves it)
+  with a D-Bus monitor connection and keeps the last 20. Open brings the sender's window forward (matched by the
+  `desktop-entry` hint or app name) and closes the notification; dismiss calls `CloseNotification`.
+- Focus values follow the GNOME extension: `id` is the lowercase desktop file id without `.desktop` when one
+  matches (by id, `StartupWMClass`, or the last part of a reverse-DNS id), else the lowercase class; `class` is
+  the lowercase WM_CLASS class / Wayland app_id (Steam games: `steam_app_<id>`); `name` the desktop entry's
+  name, else the window title. Windows are listed most recently focused first.
+- Clipboard history: text only, ≤ 10 entries of ≤ 2000 characters; selections offering
+  `x-kde-passwordManagerHint` (password managers) are never read.
+- Everything is event-driven: one socket or bus connection per active backend, nothing started for the others,
+  no polling and no helper processes.
