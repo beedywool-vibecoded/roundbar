@@ -96,7 +96,10 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
     <div class="cols">
       <div class="left">
         <section class="card status" :class="{ off: !daemonUp || !st?.device?.connected }">
-          <div class="card-head"><h2>Status</h2></div>
+          <div class="card-head">
+            <h2>Status</h2>
+            <RouterLink to="/setup" class="btn btn-text st"><Icon name="restart_alt" :size="18" /> Run setup again</RouterLink>
+          </div>
 
           <div v-if="!live.connected && st" class="state">
             <M3Shape kind="clover" :size="72" fill="var(--ec)" />
@@ -334,6 +337,9 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
 .cmd code {
   display: inline-block;
   padding: 8px 12px;
+  border: 1px solid var(--code-border);
+  border-radius: 10px;
+  background: var(--code-bg);
   font-size: 13px;
   user-select: all;
 }

@@ -342,5 +342,37 @@ export interface FirmwareRelease {
   error?: string
 }
 
+// GET/PUT /api/ui: this PC's configurator state (~/.config/roundbar/ui.json)
+export interface UIState {
+  setupDone: boolean
+}
+
+// GET /api/apps: installed apps, for ready-made profiles
+export interface InstalledApp {
+  /** what focus reports for its windows (Linux: lowercase desktop id) */
+  id: string
+  name: string
+  /** URL of its icon (needs the token), missing when it has none */
+  icon?: string
+  categories?: string[]
+  /** other names its windows may report */
+  keys?: string[]
+}
+export interface InstalledApps {
+  apps: InstalledApp[]
+  tools: { mangohud?: boolean }
+}
+
+// GET/POST /api/vesktop: the opt-in DevTools port Vesktop's live voice needs
+export interface VesktopInstall {
+  kind: 'native' | 'flatpak'
+  path: string
+  enabled: boolean
+}
+export interface VesktopInfo {
+  installs: VesktopInstall[]
+  port: number
+}
+
 // SSE `flash` events during a firmware update
 export type FlashEvent = { line: string } | { progress: { done: number; total: number } } | { done: true; ok: boolean }

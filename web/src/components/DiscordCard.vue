@@ -7,6 +7,7 @@ import Icon from './Icon.vue'
 import M3Shape from './M3Shape.vue'
 import ShapeLoader from './ShapeLoader.vue'
 import TextField from './TextField.vue'
+import VesktopToggle from './VesktopToggle.vue'
 import { api } from '@/lib/api'
 import { daemonUp, live } from '@/lib/store'
 import { toast, toastError } from '@/lib/ui'
@@ -56,9 +57,11 @@ async function connect() {
         </div>
         <div v-if="state === 'ok'" class="muted small">{{ discord!.channel ? `In ${discord!.channel}` : 'Not in a voice channel' }}</div>
         <div v-else-if="state === 'error'" class="err-text small">{{ discord!.error }}</div>
-        <div v-else class="muted small">Discord voice pages need your own Discord application. It takes two minutes:</div>
+        <div v-else class="muted small">With the official Discord app, voice pages need your own Discord application. It takes two minutes:</div>
       </div>
     </div>
+
+    <VesktopToggle class="vt" />
 
     <ol class="guide">
       <li>
@@ -96,6 +99,9 @@ async function connect() {
 <style scoped>
 #discord {
   scroll-margin-top: 84px;
+}
+.vt {
+  margin-top: 16px;
 }
 .state {
   display: flex;

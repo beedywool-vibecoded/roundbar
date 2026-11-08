@@ -1,7 +1,7 @@
 // Client for the configurator API (docs/spec.md section 4). Every call carries the
 // bearer token from the URL the configurator was opened with.
 import { mockMode, token } from './token'
-import type { Action, AssetInfo, Config, FirmwareInfo, FirmwareRelease, FlashEvent, Status } from './types'
+import type { Action, AssetInfo, Config, FirmwareInfo, FirmwareRelease, FlashEvent, InstalledApps, Status, UIState, VesktopInfo } from './types'
 
 export class ApiError extends Error {
   constructor(
@@ -101,6 +101,16 @@ export const api = {
   connectDiscord: (clientId: string, clientSecret: string) => request<unknown>('POST', '/api/discord', { clientId, clientSecret }),
   // Stored by the daemon in ~/.config/roundbar/obs.json, never in the config
   connectObs: (host: string, port: number, password: string) => request<unknown>('POST', '/api/obs', { host, port, password }),
+  // This PC's configurator state (~/.config/roundbar/ui.json); PUT merges the fields sent
+  ui: () => request<UIState>('GET', '/api/ui'),
+  saveUI: (s: Partial<UIState>) => request<UIState>('PUT', '/api/ui', s),
+  // Installs the udev rule through pkexec (a password prompt on the desktop)
+  installUdev: () => request<{ ok: boolean; already?: boolean }>('POST', '/api/udev'),
+  // Installed apps, for ready-made profiles
+  apps: () => request<InstalledApps>('GET', '/api/apps'),
+  // Vesktop's DevTools port flag (live Discord voice), opt-in
+  vesktop: () => request<VesktopInfo>('GET', '/api/vesktop'),
+  setVesktop: (enable: boolean) => request<VesktopInfo & { changed: boolean }>('POST', '/api/vesktop', { enable }),
   // A zip of config.json and every asset
   backup: async (): Promise<Blob> => {
     if (mockMode) return (await (await mockHandler())('GET', '/api/backup')) as Blob
@@ -115,6 +125,12 @@ export const api = {
     if (mockMode) return (await (await mockHandler())('GET', path)) as Blob
     return (await send('GET', path)).blob()
   },
+}
+
+// An app icon URL from /api/apps, with the token: <img> can't send the header.
+export function appIconUrl(icon: string | undefined): string {
+  if (!icon || mockMode) return ''
+  return `${icon}${icon.includes('?') ? '&' : '?'}t=${encodeURIComponent(token)}`
 }
 
 // `flash` events from the same stream, for whoever is showing the update log.

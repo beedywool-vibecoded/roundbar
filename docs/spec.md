@@ -304,7 +304,21 @@ sent as `Authorization: Bearer <token>` on every API call.
 | GET | `/api/backup` | a zip of `config.json` and every asset file (`assets/<id>`) |
 | POST | `/api/restore` | that zip (body, `application/zip`) → validated, assets written, config saved; `400 {error}` otherwise |
 | POST | `/api/discord` | `{clientId, clientSecret}` → stored by the daemon in `discord.json` (0600), then it connects; state in status `.discord` |
+| GET | `/api/ui` | `{setupDone}` from `~/.config/roundbar/ui.json` (this PC's configurator state, not part of the config); missing file = all false |
+| PUT | `/api/ui` | any of those fields → merged into `ui.json`, the whole state back |
+| POST | `/api/udev` | installs the udev rule like `roundbar udev`, through `pkexec` (the desktop's password prompt; the configurator has no terminal), then `systemctl --user try-restart roundbar`. `{ok, already?}`, or `500 {error}` (prompt refused, no pkexec) |
+| GET | `/api/apps` | installed apps for ready-made profiles: `{apps: [{id, name, icon?, categories?, keys?}], tools: {mangohud}}`. Linux: desktop entries (`Type=Application`, not `NoDisplay`/`Hidden`; user dirs override system ones); `id` is the lowercase desktop id (what focus reports), `keys` other names its windows may use (`StartupWMClass`, binary), `categories` the freedesktop ones, `icon` a URL of the endpoint below. Other platforms fill the same shape |
+| GET | `/api/apps/<id>/icon` | that app's icon file from the icon theme (PNG, SVG, XPM), `404` otherwise |
+| GET | `/api/vesktop` | `{installs: [{kind: "native"\|"flatpak", path, enabled}], port}`: Vesktop installs found and whether their `vesktop-flags.conf` has the DevTools port flag that live voice needs |
+| POST | `/api/vesktop` | `{"enable": bool}` → appends `--remote-debugging-port=<port>` (with a `# Roundbar:` comment line above it) to each found install's flags file, or removes exactly those two lines; other lines are kept, the first version of an existing file is kept as `.roundbar.bak`. No install found: the native file. `{ok, changed, installs}`. Vesktop must be restarted |
 | GET | `/api/events?t=<token>` | SSE: `status` events (same JSON as `/api/status`) whenever it changes. Token in the query because EventSource can't set headers. Also the liveness signal: the server exits 10 s after the last client is gone. |
+
+**First-run setup** (`#/setup`): the configurator opens it by itself while `ui.json` has no `setupDone`, and the Device page
+reopens it. Steps, each skipped when there is nothing to do: board (waits for it, fixes `device.error == "permission"`
+with `POST /api/udev`), firmware (release check and update as on the Device page), desktop (backend and missing
+features; GNOME extension needs one log out / in), keyboard layout, ready-made profiles for installed apps
+(`GET /api/apps`, added to the config being edited so they can be undone), integrations found (Steam, OBS, Discord /
+Vesktop, MangoHud), done (saves and sets `setupDone`). Skipping sets `setupDone` too.
 
 ## 5. Desktop backends
 
