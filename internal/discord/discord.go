@@ -64,7 +64,9 @@ type Member struct {
 }
 
 type State struct {
-	Connected bool     `json:"connected"` // RPC session authenticated
+	Connected bool     `json:"connected"`        // a source is live (RPC session or the Vencord plugin)
+	Source    string   `json:"source,omitempty"` // "rpc" | "vencord"
+	Controls  bool     `json:"controls"`         // mute/deafen can be toggled from the device (RPC only)
 	User      string   `json:"user,omitempty"`
 	Channel   string   `json:"channel,omitempty"` // "" = not in voice
 	Members   []Member `json:"members,omitempty"`
@@ -324,7 +326,7 @@ func (c *Client) session(cr *Creds) error {
 		name = auth.User.Username
 	}
 	c.mu.Lock()
-	c.state = State{Connected: true, User: name}
+	c.state = State{Connected: true, Source: "rpc", Controls: true, User: name}
 	c.mu.Unlock()
 	c.changed()
 

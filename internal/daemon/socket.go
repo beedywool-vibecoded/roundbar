@@ -75,6 +75,12 @@ func (d *Daemon) handle(c net.Conn) {
 				continue
 			}
 			_ = enc.Encode(ok)
+		case "discordState": // pushed by the Vencord plugin inside Vesktop
+			if err := d.setDiscordExt(req.Action); err != nil {
+				_ = enc.Encode(map[string]string{"error": "bad state"})
+				continue
+			}
+			_ = enc.Encode(ok)
 		case "discord": // save Discord app credentials from the configurator
 			var cr struct {
 				ClientID     string `json:"clientId"`

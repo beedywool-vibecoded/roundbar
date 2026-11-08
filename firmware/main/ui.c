@@ -2359,7 +2359,7 @@ void ui_discord(cJSON *st)
         lv_obj_t *ic = text(dc_root, F.icon_xl, P.on_sv, theme_icon("headset_mic"));
         lv_obj_align(ic, LV_ALIGN_CENTER, 0, -30);
         const char *err = jstr(st, "error");
-        lv_obj_t *l = text(dc_root, F.body, P.on_sv, err && err[0] ? err : "Set up Discord in the configurator");
+        lv_obj_t *l = text(dc_root, F.body, P.on_sv, err && err[0] ? err : "Open Discord (Vesktop needs the Roundbar plugin)");
         lv_obj_set_width(l, 220);
         lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
         lv_obj_align(l, LV_ALIGN_CENTER, 0, 34);
@@ -2396,6 +2396,19 @@ void ui_discord(cJSON *st)
             lv_obj_set_style_transform_scale(bi, 160, 0);
             lv_obj_center(bi);
         }
+    }
+    bool controls = cJSON_IsTrue(cJSON_GetObjectItem(st, "controls"));
+    if (!controls) { // Vencord plugin: live members only, your keybinds handle mute/deafen
+        lv_obj_t *ch = text(dc_root, F.title, P.on_surface, channel && channel[0] ? channel : "Not in voice");
+        lv_obj_set_width(ch, 170);
+        lv_label_set_long_mode(ch, LV_LABEL_LONG_DOT);
+        lv_obj_align(ch, LV_ALIGN_CENTER, 0, -12);
+        if (channel && channel[0]) {
+            lv_obj_t *cnt = text(dc_root, F.body, P.on_sv, "");
+            lv_label_set_text_fmt(cnt, "%d in voice%s", cJSON_GetArraySize(members), mute || deaf ? "  ·  you're muted" : "");
+            lv_obj_align(cnt, LV_ALIGN_CENTER, 0, 20);
+        }
+        return;
     }
     lv_obj_t *ch = text(dc_root, F.body, P.on_sv, channel && channel[0] ? channel : "Not in a voice channel");
     lv_obj_set_width(ch, 170);
