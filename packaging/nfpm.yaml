@@ -1,0 +1,34 @@
+# .deb and .rpm packages, built by the release job:
+#   VERSION=0.2.0 GOARCH=amd64 nfpm package -f packaging/nfpm.yaml -p deb -t dist/
+# Paths are relative to the repository root; the binary comes from dist/.
+name: roundbar
+arch: ${GOARCH}
+platform: linux
+version: ${VERSION}
+section: utils
+priority: optional
+maintainer: beedywool-vibecoded <beedywool-vibecoded@users.noreply.github.com>
+description: |
+  Daemon, configurator and GNOME extension for the Roundbar, a round
+  ESP32-S3 USB macro controller.
+homepage: https://github.com/beedywool-vibecoded/roundbar
+license: MIT
+contents:
+  - src: dist/roundbar-linux-${GOARCH}
+    dst: /usr/bin/roundbar
+    file_info:
+      mode: 0755
+  - src: deploy/70-roundbar.rules
+    dst: /usr/lib/udev/rules.d/70-roundbar.rules
+  - src: deploy/roundbar.service
+    dst: /usr/lib/systemd/user/roundbar.service
+  - src: deploy/roundbar.desktop
+    dst: /usr/share/applications/roundbar.desktop
+  - src: gnome-extension/roundbar@beedy/extension.js
+    dst: /usr/share/gnome-shell/extensions/roundbar@beedy/extension.js
+  - src: gnome-extension/roundbar@beedy/metadata.json
+    dst: /usr/share/gnome-shell/extensions/roundbar@beedy/metadata.json
+  - src: LICENSE
+    dst: /usr/share/doc/roundbar/copyright
+scripts:
+  postinstall: packaging/postinstall.sh
