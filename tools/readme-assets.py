@@ -102,7 +102,7 @@ def banner(theme, shot):
     img = webp_b64(shot, 440)
     cx, cy = 770, 172
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="340" viewBox="0 0 1000 340" role="img">
-<title>Roundbar | Un écran rond qui suit l'app au premier plan</title>
+<title>Roundbar | A round screen that follows the app you're using</title>
 {STYLE}
 <defs>
   <clipPath id="card"><rect width="1000" height="340" rx="36"/></clipPath>
@@ -125,10 +125,10 @@ def banner(theme, shot):
 </g>
 <g class="fade">
   <rect x="48" y="52" width="212" height="32" rx="8" fill="none" stroke="{c['outline']}"/>
-  <text x="62" y="73" font-size="14" font-weight="500" fill="{c['muted']}">ESP32-S3 · écran rond 1,8"</text>
+  <text x="62" y="73" font-size="14" font-weight="500" fill="{c['muted']}">ESP32-S3 · 1.8" round screen</text>
   <text x="44" y="166" font-size="72" font-weight="500" letter-spacing="-1.5" fill="{c['text']}">Roundbar</text>
-  <text x="48" y="212" font-size="21" fill="{c['muted']}">Un écran rond qui suit l'app au premier plan</text>
-  {chips(c, 48, 250, [('Material You', c['pc'], c['on_pc']), ('ESP32-S3', c['secc'], c['on_secc']), ('GNOME', c['tc'], c['on_tc'])])}
+  <text x="48" y="212" font-size="21" fill="{c['muted']}">A round screen that follows the app you're using</text>
+  {chips(c, 48, 250, [('Material You', c['pc'], c['on_pc']), ('ESP32-S3', c['secc'], c['on_secc']), ('Linux · Windows', c['tc'], c['on_tc'])])}
 </g>
 </svg>
 """
@@ -169,12 +169,12 @@ def footer(theme):
 
 
 SECTIONS = [
-    ("preview", "01", "Aperçu", "cookie"),
-    ("features", "02", "Fonctionnalités", "clover"),
-    ("install", "03", "Installation", "sunny"),
-    ("firmware", "04", "Firmware et carte", "flower"),
+    ("preview", "01", "Preview", "cookie"),
+    ("features", "02", "Features", "clover"),
+    ("install", "03", "Install", "sunny"),
+    ("firmware", "04", "Firmware & board", "flower"),
     ("stack", "05", "Stack", "cookie"),
-    ("dev", "06", "Développement", "clover"),
+    ("dev", "06", "Development", "clover"),
 ]
 
 

@@ -1,7 +1,7 @@
 <div align="center">
 
-<img src=".github/assets/banner-light.svg#gh-light-mode-only" alt="Roundbar | Un écran rond qui suit l'app au premier plan" width="100%">
-<img src=".github/assets/banner-dark.svg#gh-dark-mode-only" alt="Roundbar | Un écran rond qui suit l'app au premier plan" width="100%">
+<img src=".github/assets/banner-light.svg#gh-light-mode-only" alt="Roundbar | A round screen that follows the app you're using" width="100%">
+<img src=".github/assets/banner-dark.svg#gh-dark-mode-only" alt="Roundbar | A round screen that follows the app you're using" width="100%">
 
 <br>
 <br>
@@ -11,348 +11,343 @@
 <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-4F378B?style=for-the-badge&logo=go&logoColor=D0BCFF" alt="Go"></a>
 <a href="https://vuejs.org"><img src="https://img.shields.io/badge/Vue_3-4F378B?style=for-the-badge&logo=vuedotjs&logoColor=D0BCFF" alt="Vue 3"></a>
 <a href="https://m3.material.io"><img src="https://img.shields.io/badge/Material_You-4F378B?style=for-the-badge&logo=materialdesign&logoColor=D0BCFF" alt="Material You"></a>
-<a href="https://www.gnome.org"><img src="https://img.shields.io/badge/GNOME_Shell-4F378B?style=for-the-badge&logo=gnome&logoColor=D0BCFF" alt="GNOME Shell"></a>
 
-<img src="https://img.shields.io/badge/carte-ESP32--S3_360%C3%97360-4A4458?style=flat-square&logo=espressif&logoColor=white" alt="ESP32-S3 360×360">
-<img src="https://img.shields.io/badge/bureau-GNOME_Wayland-633B48?style=flat-square&logo=linux&logoColor=white" alt="GNOME Wayland">
-<img src="https://img.shields.io/badge/aussi-KDE_%C2%B7_Hyprland_%C2%B7_sway_%C2%B7_X11-4A4458?style=flat-square&logo=linux&logoColor=white" alt="Aussi KDE, Hyprland, sway, X11">
-<img src="https://img.shields.io/badge/USB-clavier_%2B_souris-4F378B?style=flat-square" alt="Clavier et souris USB">
-<img src="https://img.shields.io/badge/daemon-~0%25_CPU_%C2%B7_15_Mo-4A4458?style=flat-square" alt="Daemon ~0 % CPU, 15 Mo">
-<img src="https://img.shields.io/badge/binaire-1_fichier-633B48?style=flat-square" alt="Un seul binaire">
+<img src="https://img.shields.io/badge/board-ESP32--S3_360%C3%97360-4A4458?style=flat-square&logo=espressif&logoColor=white" alt="ESP32-S3 360×360">
+<img src="https://img.shields.io/badge/Linux-GNOME_%C2%B7_KDE_%C2%B7_Wayland_%C2%B7_X11-633B48?style=flat-square&logo=linux&logoColor=white" alt="Linux: GNOME, KDE, Wayland, X11">
+<img src="https://img.shields.io/badge/Windows-10_%C2%B7_11-4A4458?style=flat-square&logo=windows&logoColor=white" alt="Windows 10 and 11">
+<img src="https://img.shields.io/badge/USB-keyboard_%2B_mouse-4F378B?style=flat-square" alt="USB keyboard and mouse">
+<img src="https://img.shields.io/badge/daemon-~0%25_CPU_%C2%B7_15_MB-4A4458?style=flat-square" alt="Daemon ~0 % CPU, 15 MB">
 <img src="https://github.com/beedywool-vibecoded/roundbar/actions/workflows/ci.yml/badge.svg" alt="CI">
-<img src="https://img.shields.io/badge/licence-MIT-4F378B?style=flat-square" alt="Licence MIT">
+<img src="https://img.shields.io/badge/license-MIT-4F378B?style=flat-square" alt="MIT license">
 
 <br>
 <br>
 
 <b>
-<a href="#preview">Aperçu</a> ·
-<a href="#features">Fonctionnalités</a> ·
-<a href="#install">Installation</a> ·
-<a href="#firmware">Firmware et carte</a> ·
+<a href="#preview">Preview</a> ·
+<a href="#features">Features</a> ·
+<a href="#install">Install</a> ·
+<a href="#firmware">Firmware & board</a> ·
 <a href="#stack">Stack</a> ·
-<a href="#dev">Développement</a>
+<a href="#dev">Development</a>
 </b>
 
 </div>
 
 <br>
 
-> **Roundbar** est un contrôleur tactile rond à fabriquer soi-même, dans l'esprit du Flexbar : une
-> **Guition JC3636W518C** (ESP32-S3, écran IPS tactile rond de 1,8" en 360×360) branchée en USB.
-> Ses pages **changent toutes seules selon l'app au premier plan** sur un PC Linux (GNOME, KDE Plasma, Hyprland, sway et les autres compositeurs wlroots, ou X11) :
-> raccourcis, lecture en cours, jauges système, molettes, minuteur, mixeur et bien d'autres, en
-> **Material 3 Expressive**. La carte se présente comme un **clavier et une souris USB**, donc les
-> raccourcis marchent même sans le logiciel côté PC. Tout se règle dans un **configurateur web** avec
-> un aperçu rond en direct.
+> **Roundbar** is a do-it-yourself round touch controller in the spirit of the Flexbar: a
+> **Guition JC3636W518C** (ESP32-S3, 1.8" 360×360 round IPS touchscreen) on a USB cable. Its pages
+> **change on their own with the app you're using**: shortcuts, now playing, system gauges, dials, timer,
+> volume mixer and many more, in **Material 3 Expressive**. It works on Linux (GNOME, KDE Plasma, Hyprland,
+> sway and other Wayland desktops, X11) and Windows. The board shows up as a **USB keyboard and mouse**, so
+> shortcuts work even without the PC app, and **your setup lives on the board**: plug it into another PC and
+> it brings everything along. Everything is set up in a **web configurator** with a live round preview.
 
 <br>
 
 <a name="preview"></a>
-<img src=".github/assets/section-preview-light.svg#gh-light-mode-only" alt="01 | Aperçu" width="100%">
-<img src=".github/assets/section-preview-dark.svg#gh-dark-mode-only" alt="01 | Aperçu" width="100%">
+<img src=".github/assets/section-preview-light.svg#gh-light-mode-only" alt="01 | Preview" width="100%">
+<img src=".github/assets/section-preview-dark.svg#gh-dark-mode-only" alt="01 | Preview" width="100%">
 
 <table>
 <tr>
-<th width="25%">Lecture en cours</th>
-<th width="25%">Raccourcis</th>
-<th width="25%">Navigateur</th>
-<th width="25%">Éditeur de code</th>
+<th width="25%">Now playing</th>
+<th width="25%">Shortcuts</th>
+<th width="25%">Browser</th>
+<th width="25%">Code editor</th>
 </tr>
 <tr>
-<td><img src=".github/assets/screens/device-media.webp" alt="Lecture en cours : pochette floutée en fond, précédent, lecture, suivant, volume sur l'arc du bord"></td>
-<td><img src=".github/assets/screens/device-shortcuts.webp" alt="Page de raccourcis : huit boutons en anneau et un bouton central, formes Material 3 Expressive"></td>
-<td><img src=".github/assets/screens/device-browser.webp" alt="Page du navigateur : onglets, historique, recherche, recharger"></td>
-<td><img src=".github/assets/screens/device-code.webp" alt="Page de l'éditeur de code : terminal, enregistrer, rechercher, débogueur"></td>
+<td><img src=".github/assets/screens/device-media.webp" alt="Now playing: blurred cover behind, previous, play, next, volume on the edge arc"></td>
+<td><img src=".github/assets/screens/device-shortcuts.webp" alt="Shortcut page: eight buttons on a ring and one in the middle, Material 3 Expressive shapes"></td>
+<td><img src=".github/assets/screens/device-browser.webp" alt="Browser page: tabs, history, search, reload"></td>
+<td><img src=".github/assets/screens/device-code.webp" alt="Code editor page: terminal, save, search, debugger"></td>
 </tr>
 <tr>
-<th>Chat vocal</th>
-<th>Système</th>
-<th>Horloge et météo</th>
-<th>Minuteur</th>
+<th>Voice chat</th>
+<th>System</th>
+<th>Clock and weather</th>
+<th>Timer</th>
 </tr>
 <tr>
-<td><img src=".github/assets/screens/device-voice.webp" alt="Page d'une app de chat vocal : micro, casque, caméra"></td>
-<td><img src=".github/assets/screens/device-stats.webp" alt="Jauges CPU, GPU, RAM et température du CPU"></td>
-<td><img src=".github/assets/screens/device-clock.webp" alt="Heure, date, météo et une horloge mondiale"></td>
-<td><img src=".github/assets/screens/device-timer.webp" alt="Minuteur de 25 minutes avec préréglages 5, 15 et 25"></td>
+<td><img src=".github/assets/screens/device-voice.webp" alt="Voice chat app page: mic, headset, camera"></td>
+<td><img src=".github/assets/screens/device-stats.webp" alt="CPU, GPU, RAM and CPU temperature gauges"></td>
+<td><img src=".github/assets/screens/device-clock.webp" alt="Time, date, weather and a world clock"></td>
+<td><img src=".github/assets/screens/device-timer.webp" alt="25-minute timer with 5, 15 and 25 presets"></td>
 </tr>
 <tr>
-<th>Mixeur</th>
-<th>Fenêtres</th>
-<th>Molette de volume</th>
+<th>Mixer</th>
+<th>Windows</th>
+<th>Volume dial</th>
 <th></th>
 </tr>
 <tr>
-<td><img src=".github/assets/screens/device-mixer.webp" alt="Mixeur : une ligne de volume par app qui joue du son"></td>
-<td><img src=".github/assets/screens/device-windows.webp" alt="Sélecteur de fenêtres : icônes des fenêtres ouvertes en anneau"></td>
-<td><img src=".github/assets/screens/device-dial.webp" alt="Molette de volume sur l'arc du bord"></td>
+<td><img src=".github/assets/screens/device-mixer.webp" alt="Mixer: one volume row per app playing sound"></td>
+<td><img src=".github/assets/screens/device-windows.webp" alt="Window switcher: open windows' icons on a ring"></td>
+<td><img src=".github/assets/screens/device-dial.webp" alt="Volume dial on the edge arc"></td>
 <td></td>
 </tr>
 </table>
 
 <div align="center">
-<sub>Captures prises sur la vraie carte avec <code>roundbar screenshot out.png</code></sub>
+<sub>Screenshots taken on the real board with <code>roundbar screenshot out.png</code></sub>
 </div>
 
 <br>
 
 <table>
 <tr>
-<th>Profils, thème sombre</th>
-<th>Profils, thème clair</th>
+<th>Profiles, dark theme</th>
+<th>Profiles, light theme</th>
 </tr>
 <tr>
-<td><img src=".github/assets/screens/configurator-profiles-dark.webp" alt="Configurateur : liste des profils par app"></td>
-<td><img src=".github/assets/screens/configurator-profiles-light.webp" alt="La même vue en thème clair"></td>
+<td><img src=".github/assets/screens/configurator-profiles-dark.webp" alt="Configurator: list of per-app profiles"></td>
+<td><img src=".github/assets/screens/configurator-profiles-light.webp" alt="The same view in the light theme"></td>
 </tr>
 <tr>
-<th>Éditeur de page avec l'aperçu rond en direct</th>
-<th>Le même éditeur en thème clair</th>
+<th>Page editor with the live round preview</th>
+<th>The same editor, light theme</th>
 </tr>
 <tr>
-<td><img src=".github/assets/screens/configurator-editor-dark.webp" alt="Éditeur de page : boutons, formes, actions et aperçu rond dessiné comme sur la carte"></td>
-<td><img src=".github/assets/screens/configurator-editor-light.webp" alt="L'éditeur de page en thème clair"></td>
+<td><img src=".github/assets/screens/configurator-editor-dark.webp" alt="Page editor: buttons, shapes, actions and a round preview drawn like the board"></td>
+<td><img src=".github/assets/screens/configurator-editor-light.webp" alt="The page editor in the light theme"></td>
 </tr>
 <tr>
-<th>Apparence : couleur de base Material You</th>
-<th>Apparence en thème clair</th>
+<th>Appearance: Material You base color</th>
+<th>Appearance, light theme</th>
 </tr>
 <tr>
-<td><img src=".github/assets/screens/configurator-appearance-dark.webp" alt="Apparence : couleur de base, palette envoyée à la carte, aperçu rond"></td>
-<td><img src=".github/assets/screens/configurator-appearance-light.webp" alt="Les réglages d'apparence en thème clair"></td>
+<td><img src=".github/assets/screens/configurator-appearance-dark.webp" alt="Appearance: base color, palette sent to the board, round preview"></td>
+<td><img src=".github/assets/screens/configurator-appearance-light.webp" alt="Appearance settings in the light theme"></td>
 </tr>
 <tr>
-<th>Appareil : état, écran, mise à jour du firmware</th>
-<th>Appareil en thème clair</th>
+<th>Device: status, screen, firmware updates</th>
+<th>Device, light theme</th>
 </tr>
 <tr>
-<td><img src=".github/assets/screens/configurator-device-dark.webp" alt="Réglages de l'appareil : luminosité, veille, rotation, mise à jour du firmware"></td>
-<td><img src=".github/assets/screens/configurator-device-light.webp" alt="Les réglages de l'appareil en thème clair"></td>
+<td><img src=".github/assets/screens/configurator-device-dark.webp" alt="Device settings: brightness, sleep, rotation, firmware update"></td>
+<td><img src=".github/assets/screens/configurator-device-light.webp" alt="Device settings in the light theme"></td>
 </tr>
 </table>
 
 <br>
 
 <a name="features"></a>
-<img src=".github/assets/section-features-light.svg#gh-light-mode-only" alt="02 | Fonctionnalités" width="100%">
-<img src=".github/assets/section-features-dark.svg#gh-dark-mode-only" alt="02 | Fonctionnalités" width="100%">
+<img src=".github/assets/section-features-light.svg#gh-light-mode-only" alt="02 | Features" width="100%">
+<img src=".github/assets/section-features-dark.svg#gh-dark-mode-only" alt="02 | Features" width="100%">
 
 <table>
 <tr>
 <td width="33%" valign="top">
 
-### Profils par app
-Chaque app a son **profil** et ses pages, avec des **jokers** (`steam_app_*` pour tous les jeux Steam). La carte bascule **dès que le focus change**, et
-retient la **dernière page vue** de chaque profil. La bascule automatique se met en pause depuis
-les réglages rapides, avec un badge en haut de l'écran. Chaque profil peut avoir **sa propre couleur**.
+### Per-app profiles
+Every app gets its **profile** and pages, with **wildcards** (`steam_app_*` for every Steam game). The board
+switches **as soon as the focus changes** and remembers the **last page** of each profile. Auto-switching can be
+paused from quick settings. Each profile can have **its own color**.
 
 </td>
 <td width="33%" valign="top">
 
-### Pages de raccourcis
-Jusqu'à **8 boutons en anneau** et un bouton central, chacun avec sa forme **M3 Expressive**
-(circle, square, cookie, clover, sunny, flower, burst) et une action au **tap** et à
-l'**appui long**. Actions : touches (**AZERTY ou QWERTY**), texte, touches multimédia, saut de page,
-commande shell, ouverture d'une app ou d'une URL, micro coupé, et **macros** avec un enregistreur
-dans le configurateur.
+### Shortcut pages
+Up to **8 buttons on a ring** plus a center button, each with its **M3 Expressive** shape (circle, square,
+cookie, clover, sunny, flower, burst) and an action on **tap** and **long press**: keys, text, media keys, go to
+page, shell command, open an app or URL, mic mute, and **macros** with a recorder in the configurator.
 
 </td>
 <td width="33%" valign="top">
 
-### Lecture en cours
-Le lecteur MPRIS actif avec titre, artiste, **pochette floutée en fond** et des **couleurs tirées de
-la pochette**. Précédent, lecture et suivant au centre, **volume sur l'arc du bord**.
+### Now playing
+The active media player with title, artist, **blurred cover behind** and **colors taken from the cover**.
+Previous, play and next in the middle, **volume on the edge arc**.
 
 </td>
 </tr>
 <tr>
 <td valign="top">
 
-### Système et molettes
-Jauges **CPU, GPU, VRAM, RAM et températures** (AMD via sysfs, NVIDIA via `nvidia-smi`, Intel via
-fdinfo), relevées seulement quand une page de stats est à l'écran. Molettes de **volume**, de **micro**, de **luminosité** ou **personnalisées**,
-qu'on tourne en glissant le long du bord.
+### System and dials
+**CPU, GPU, VRAM, RAM and temperature** gauges (AMD, NVIDIA and Intel), sampled only while a stats page is on
+screen. **Volume**, **mic**, **brightness** or **custom** dials, turned by sliding along the edge.
 
 </td>
 <td valign="top">
 
-### Horloge, minuteur, mixeur
-Horloge analogique ou numérique avec la **météo** (Open-Meteo) et jusqu'à **3 horloges mondiales**.
-**Minuteur** réglé à l'anneau, avec un mode **pomodoro**. **Mixeur** de volume par app,
-**sélecteur de fenêtres** et **historique du presse-papiers** (les copies des gestionnaires de mots de
-passe sont ignorées).
+### Clock, timer, mixer
+Analog or digital clock with the **weather** (Open-Meteo) and up to **3 world clocks**. A **timer** set on the
+ring, with a **Pomodoro** mode. Per-app **volume mixer**, **window switcher** and **clipboard history**
+(password-manager copies are skipped).
 
 </td>
 <td valign="top">
 
-### Encore plus de pages
-**Images** : diaporama de photos ou GIF animé. **Touchpad** : la carte devient une souris USB (tap et
-appui long pour cliquer, glisser-déposer, anneau de défilement). **Discord** : ton salon vocal en direct
-(membres, qui parle, qui est coupé) depuis Vesktop, via son port de débogage local, sans modifier
-Vesktop ni Vencord ; ou via le RPC du client officiel, avec couper le micro, le son, quitter.
-**OBS** : bouton d'enregistrement avec sa durée, badge **LIVE** et scènes en anneau, via le WebSocket
-d'OBS (marche même quand OBS n'est pas au premier plan). **Jeu** : le jeu Steam en cours avec son
-illustration floutée, le temps de session et deux boutons : l'overlay Steam et une capture Steam.
-**MangoHud** : FPS, moyenne et 1 % low, graphe des temps de frame, CPU et GPU sur les arcs du bord,
-puissance et VRAM ; le log de MangoHud n'est activé que pendant que la page est affichée.
+### Games and streaming
+**Game**: the Steam game you're playing with its blurred art, session time, and buttons for the Steam overlay,
+a screenshot and closing the game (asks first). **MangoHud**: FPS, average and 1% low, frame-time graph, CPU and
+GPU on the edge arcs. **OBS**: record button with its timer, LIVE label and your scenes on a ring.
+**Discord**: your voice channel live (who's in, who's talking, who's muted), with mute, deafen and leave.
 
 </td>
 </tr>
 <tr>
 <td valign="top">
 
-### Gestes et panneaux
-On tire vers le bas pour les **réglages rapides** : sauts de page, **écran vraiment éteint** (réveil par
-double tap) et pause de la bascule automatique. On tire vers le haut pour les **notifications** du bureau.
-Les pages **tournent en boucle**, et un **double tap sur le bord** change de page, ouvre les réglages rapides ou éteint l'écran, au choix.
+### More pages
+**Images**: a photo slideshow or an animated GIF. **Touchpad**: the board becomes a USB mouse (tap and long press
+to click, drag and drop, scroll ring).
 
 </td>
 <td valign="top">
 
-### Suit le PC
-L'écran s'éteint quand le PC s'éteint ou se met en veille et se rallume à son retour. **Rotation** de
-l'écran au choix. Texte **japonais, chinois et coréen** et **emoji en couleur**, grâce à un pack de
-glyphes de 9 Mo construit depuis les polices Noto du système.
+### Gestures and panels
+Pull down for **quick settings**: page shortcuts, **screen off** (double tap to wake) and pausing auto-switching.
+Pull up for your **notifications**. Pages **wrap around**, and a **double tap on the edge** changes page, opens
+quick settings or turns the screen off, your choice.
 
 </td>
 <td valign="top">
 
-### Léger et autonome
-Le daemon réagit aux événements, sans scrutation : **~0 % de CPU et ~15 Mo de RAM** au repos.
-La carte garde sa config en flash et se présente comme un **clavier et une souris USB** : les
-raccourcis marchent même sans le logiciel côté PC. Elle tape selon la **disposition clavier du PC**,
-détectée automatiquement (GNOME, KDE, X11, sway…) et suivie quand on en change : US, US international,
-UK, AZERTY français et belge, QWERTZ allemand et suisse, suisse romand, espagnol, italien, suédois,
-finnois, norvégien et danois, accents par touches mortes et caractères AltGr compris.
+### Follows the PC
+The screen turns off when the PC shuts down or sleeps and back on when it returns. **Screen rotation**,
+**Japanese, Chinese and Korean** text and **color emoji**. The board types with **your PC's keyboard layout**,
+detected automatically: US, US international, UK, French, Belgian, German, Swiss, Spanish, Italian and Nordic.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### Your setup travels with it
+The board keeps your setup. Plug it into a new PC and that PC takes it from the board; edit it anywhere and it
+follows. Shortcuts work even on a PC without the app.
+
+</td>
+<td valign="top">
+
+### Light and self-contained
+The PC app reacts to events instead of polling: **~0% CPU and ~15 MB RAM** when idle. Integrations (OBS,
+Discord, MangoHud) only connect while their page is on screen.
+
+</td>
+<td valign="top">
+
+### The configurator
+A live round preview drawn **like the board**, a **Material You** base color, copy and paste pages between
+profiles, **undo / redo**, a **backup** zip you restore in one click, ready-made **presets**, **firmware updates**
+in one click and a **setup wizard** the first time.
 
 </td>
 </tr>
 </table>
 
-**Le configurateur.** Un aperçu rond en direct, dessiné avec **la même mise en page que la carte**, une
-couleur de base **Material You**, le copier-coller de pages d'un profil à l'autre, un bouton de
-**mise à jour du firmware** avec son log en direct, **annuler / rétablir** (Ctrl+Z, Ctrl+Maj+Z), une
-**sauvegarde** en zip (config et images) qu'on restaure en un clic, un préréglage **OBS** prêt à
-l'emploi, et des captures de l'écran de la carte avec `roundbar screenshot out.png`.
-
 <br>
 
 <a name="install"></a>
-<img src=".github/assets/section-install-light.svg#gh-light-mode-only" alt="03 | Installation" width="100%">
-<img src=".github/assets/section-install-dark.svg#gh-dark-mode-only" alt="03 | Installation" width="100%">
+<img src=".github/assets/section-install-light.svg#gh-light-mode-only" alt="03 | Install" width="100%">
+<img src=".github/assets/section-install-dark.svg#gh-dark-mode-only" alt="03 | Install" width="100%">
 
-**Sans outils de développement**, en deux temps :
+No developer tools needed. The **[step-by-step guide](docs/guide.md)** walks through every step and has a
+troubleshooting section.
 
-1. **Firmware** : ouvre l'[installateur web](https://beedywool-vibecoded.github.io/roundbar/) dans Chrome ou Edge,
-   branche la carte et clique sur *Install Roundbar*. Si la carte n'apparaît pas, maintiens **BOOT** en la branchant.
-2. **Logiciel PC** (Linux, idéalement GNOME en Wayland), dans un terminal :
+**1. You need** a Guition **JC3636W518C** (ESP32-S3, 1.8" round screen, the version **with touch**) and a USB-C
+cable that carries data.
+
+**2. Put Roundbar on the board.** Open the **[web installer](https://beedywool-vibecoded.github.io/roundbar/)** in
+Chrome or Edge, plug in the board and click *Install Roundbar*. If the board doesn't show up, hold its **BOOT**
+button while plugging it in. Later updates happen from the app, in one click.
+
+**3. Install the PC app.**
+
+<table>
+<tr>
+<th width="50%" align="left">Linux</th>
+<th width="50%" align="left">Windows 10 / 11</th>
+</tr>
+<tr>
+<td valign="top">
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/beedywool-vibecoded/roundbar/master/install.sh | sh
 ```
 
-Le script télécharge le binaire de la dernière release dans `~/.local/bin`, vérifie son SHA-256, propose
-d'installer la règle udev (ton mot de passe une fois : c'est elle qui évite le « permission denied » sur
-`/dev/ttyACM0`), puis lance `roundbar install`. Désinstallation : `roundbar uninstall` (tes réglages dans
-`~/.config/roundbar` restent). Sur Arch : paquet AUR `roundbar-bin` (`packaging/aur/PKGBUILD`) ; chaque release
-fournit aussi des `.deb` et `.rpm`.
+It installs the app in `~/.local/bin`, checks its checksum, asks once for your password to let you use the
+board's USB port, and starts the background service. Arch: AUR package `roundbar-bin`. Every release also has
+`.deb` and `.rpm` packages.
 
-Les **mises à jour du firmware** se font ensuite depuis le configurateur (page *Device*, carte *Firmware*) ou avec
-`roundbar firmware update` : la carte redémarre seule en mode téléchargement, seules les parties modifiées sont
-réécrites (le pack de polices de 9 Mo seulement s'il a changé), sans Python ni esptool. Le flasheur intégré n'a
-pas encore été validé sur une vraie carte.
+</td>
+<td valign="top">
 
-**Depuis les sources**, il faut Go, Node et npm :
+Download **`roundbar-setup-windows-amd64.exe`** from the
+[latest release](https://github.com/beedywool-vibecoded/roundbar/releases/latest) and run it. No admin rights
+needed. Roundbar starts with Windows and sits in the tray: click it to open the configurator.
 
-```sh
-make install
-```
+</td>
+</tr>
+</table>
 
-| Étape | Ce que fait `make install` |
-| --- | --- |
-| 1 | Compile le configurateur (Vue 3) et le binaire Go qui l'embarque |
-| 2 | Installe `~/.local/bin/roundbar` |
-| 3 | Installe et démarre le service systemd utilisateur `roundbar daemon` |
-| 4 | Installe le lanceur d'app et, sous GNOME, l'extension `roundbar@beedy` |
+**4. Follow the setup wizard.** The configurator opens with a short wizard: it finds the board, updates its
+firmware if needed, checks your keyboard layout, offers ready-made profiles for the apps you have installed and
+sets up Steam, OBS, Discord and MangoHud if it finds them. Open it again any time with `roundbar config` or from
+your app menu.
 
-Sous GNOME, déconnecte-toi puis reconnecte-toi **une fois** pour qu'il charge l'extension. Ouvre ensuite
-**Roundbar** depuis la grille d'apps, ou lance `roundbar config`.
+**Desktops.** Roundbar picks how to follow your desktop by itself (`roundbar status` shows which):
 
-<a name="bureaux"></a>
-**Bureaux.** Le daemon choisit tout seul comment suivre le bureau (`roundbar status` affiche lequel) :
-
-| Bureau | App au premier plan | Fenêtres | Notifications | Presse-papiers |
+| Desktop | Active app | Windows | Notifications | Clipboard |
 | --- | --- | --- | --- | --- |
-| GNOME (Wayland ou X11) | extension | oui | oui | oui |
-| KDE Plasma 6 (et 5) | script KWin chargé par le daemon | oui | oui | Klipper |
-| Hyprland, sway, river, niri, labwc, Wayfire… | `wlr-foreign-toplevel` | oui | oui | `data-control` |
-| Autres compositeurs Wayland | – | liste seule si `ext-foreign-toplevel-list` | oui | si `data-control` |
-| XFCE, Cinnamon, MATE, i3… (X11) | EWMH | oui | oui | oui |
+| GNOME (Wayland or X11) | built-in extension (log out and back in once) | yes | yes | yes |
+| KDE Plasma 6 (and 5) | KWin script loaded by Roundbar | yes | yes | Klipper |
+| Hyprland, sway, river, niri, labwc, Wayfire… | `wlr-foreign-toplevel` | yes | yes | `data-control` |
+| Other Wayland compositors | – | list only, with `ext-foreign-toplevel-list` | yes | with `data-control` |
+| XFCE, Cinnamon, MATE, i3… (X11) | EWMH | yes | yes | yes |
+| Windows 10 / 11 | yes | yes | – (Windows doesn't allow it) | yes |
 
-Les jeux Steam apparaissent partout comme `steam_app_<id>`. `ROUNDBAR_DESKTOP=gnome|kde|wayland|x11` force un choix.
+**Commands**
 
-| Commande | Rôle |
+| Command | What it does |
 | --- | --- |
-| `roundbar config` | Ouvre le configurateur dans le navigateur (`--no-open` pour seulement afficher l'URL) |
-| `roundbar status` | État du daemon et de la carte |
-| `roundbar screenshot out.png` | Enregistre ce qu'affiche la carte en PNG |
-| `roundbar bootloader` | Redémarre la carte en mode téléchargement USB, pour la flasher |
-| `roundbar daemon` | Le pont entre la carte et le bureau (lancé par le service systemd) |
-| `roundbar firmware check` / `update` | Compare le firmware de la carte à la dernière release / l'installe |
-| `roundbar install` | Installe la règle udev (demande), le service, l'extension GNOME et le lanceur |
-| `roundbar udev` | Installe seulement la règle udev |
-| `roundbar uninstall` | Enlève ce qu'a installé `roundbar install` et le binaire de `~/.local/bin` |
+| `roundbar config` | Opens the configurator in your browser (`--no-open` only prints the URL) |
+| `roundbar status` | Daemon, board and desktop status |
+| `roundbar firmware check` / `update` | Compares the board's firmware with the latest release / installs it |
+| `roundbar screenshot out.png` | Saves what the board shows as a PNG |
+| `roundbar install` / `uninstall` | Sets up or removes the service, launcher, desktop integration and USB permission |
+| `roundbar udev` | Only adds the USB permission rule (Linux) |
+| `roundbar bootloader` | Reboots the board into USB download mode, for flashing |
+| `roundbar daemon` | The bridge between the board and the desktop (run by the service) |
 
 <br>
 
 <a name="firmware"></a>
-<img src=".github/assets/section-firmware-light.svg#gh-light-mode-only" alt="04 | Firmware et carte" width="100%">
-<img src=".github/assets/section-firmware-dark.svg#gh-dark-mode-only" alt="04 | Firmware et carte" width="100%">
+<img src=".github/assets/section-firmware-light.svg#gh-light-mode-only" alt="04 | Firmware & board" width="100%">
+<img src=".github/assets/section-firmware-dark.svg#gh-dark-mode-only" alt="04 | Firmware & board" width="100%">
 
-Le firmware demande **ESP-IDF v6**, installé dans `~/esp/esp-idf-v6.0.3` :
+You only need this to build the firmware yourself. It needs **ESP-IDF v6**:
 
 ```sh
 . ~/esp/esp-idf-v6.0.3/export.sh
-```
-
-Pour accéder au port série sans root, installe la règle udev (`roundbar udev` fait la même chose) :
-
-```sh
-sudo cp deploy/70-roundbar.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger -s tty
-```
-
-Puis compile et flashe :
-
-```sh
 make flash
 ```
 
-`make flash` (ou `tools/flash.sh`) redémarre la carte **en mode téléchargement tout seul**, sans
-toucher au bouton BOOT, et n'écrit le pack de polices que **s'il a changé**. Si la carte ne fait pas
-encore tourner Roundbar : maintiens BOOT en la branchant. Depuis un checkout, la carte *Firmware* du
-configurateur propose aussi *Build from source*, qui compile et flashe de la même façon.
-
-Une release (tag `v*`) publie les binaires, `.deb`/`.rpm`, chaque partie du firmware, l'image fusionnée
-`roundbar-full.bin`, le manifeste `firmware.json` et `SHA256SUMS`, puis met à jour l'installateur web
-(détails dans `docs/spec.md` §5). Pour GitHub Pages, la source doit être réglée sur *GitHub Actions*.
+`make flash` (or `tools/flash.sh`) reboots the board **into download mode by itself**, without touching BOOT,
+and only writes the 9 MB font pack **when it changed**. From a source checkout, the configurator's *Firmware* card
+also offers *Build from source*. A release (tag `v*`) publishes the binaries, packages, Windows installer, every
+firmware part, the merged `roundbar-full.bin`, the `firmware.json` manifest and `SHA256SUMS`, then updates the web
+installer (details in `docs/spec.md` §6; GitHub Pages must use *GitHub Actions* as its source).
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-**Carte**
+**Board**
 - Guition **JC3636W518C**, ESP32-S3
-- Écran IPS rond **1,8"**, 360×360, tactile
-- **16 Mo** de flash, **8 Mo** de PSRAM
-- USB : clavier et souris HID, plus un lien série CDC (lignes JSON)
+- **1.8"** round IPS touchscreen, 360×360
+- **16 MB** flash, **8 MB** PSRAM
+- USB: HID keyboard and mouse plus a CDC serial link (JSON lines)
 
 </td>
 <td width="50%" valign="top">
 
-**Broches**
-- LCD QSPI : SCK **9**, D0–D3 **11–14**, CS **10**, RST **47**, rétroéclairage **15**
-- Tactile I²C (CST816) : SDA **7**, SCL **8**, INT **41**, RST **40**
+**Pins**
+- LCD QSPI: SCK **9**, D0–D3 **11–14**, CS **10**, RST **47**, backlight **15**
+- Touch I²C (CST816): SDA **7**, SCL **8**, INT **41**, RST **40**
 
 </td>
 </tr>
@@ -366,45 +361,47 @@ Une release (tag `v*`) publie les binaires, `.deb`/`.rpm`, chaque partie du firm
 
 <table>
 <tr>
-<th align="left">Dossier</th>
-<th align="left">Contenu</th>
+<th align="left">Folder</th>
+<th align="left">What's in it</th>
 </tr>
-<tr><td><code>docs/spec.md</code></td><td>Le contrat entre toutes les parties : config, protocole série, socket du daemon, API du configurateur.</td></tr>
-<tr><td><code>firmware/</code></td><td>ESP-IDF 6 + LVGL 9.3 en C : pages Material 3 Expressive sur l'écran rond, clavier et souris USB, lien série CDC.</td></tr>
-<tr><td><code>cmd/roundbar</code></td><td>Point d'entrée : <code>daemon</code>, <code>config</code>, <code>status</code>, <code>screenshot</code>, <code>bootloader</code>, <code>install</code>.</td></tr>
-<tr><td><code>internal/config</code></td><td>Lecture, validation et surveillance (inotify) de <code>~/.config/roundbar/config.json</code>.</td></tr>
-<tr><td><code>internal/daemon</code></td><td>Le pont événementiel entre la carte et le bureau.</td></tr>
-<tr><td><code>internal/device</code></td><td>Connexion USB CDC et messages JSON avec la carte.</td></tr>
-<tr><td><code>internal/desktop</code></td><td>Focus, fenêtres, notifications et presse-papiers selon le bureau (extension GNOME, script KWin, protocoles Wayland, X11), MPRIS.</td></tr>
-<tr><td><code>internal/audio</code></td><td>Volume, micro et mixeur par app (PipeWire).</td></tr>
-<tr><td><code>internal/stats</code></td><td>CPU, RAM, GPU et températures lus dans <code>/proc</code>, hwmon, amdgpu, le fdinfo DRM (Intel i915/xe) et un <code>nvidia-smi</code> lancé seulement pendant l'affichage d'une jauge GPU.</td></tr>
-<tr><td><code>internal/cover</code></td><td>Pochettes : fond flouté et palette tirée de l'image.</td></tr>
-<tr><td><code>internal/assets</code></td><td>Images des pages image, rendues au format de la carte.</td></tr>
-<tr><td><code>internal/icons</code></td><td>Icônes des apps envoyées à la carte.</td></tr>
-<tr><td><code>internal/discord</code></td><td>Salon vocal en direct : Vesktop par le protocole DevTools local (<code>~/.config/vesktop-flags.conf</code>), ou le RPC du Discord officiel.</td></tr>
-<tr><td><code>internal/configui</code></td><td>Serveur HTTP du configurateur sur 127.0.0.1, qui s'arrête après la fermeture du dernier onglet.</td></tr>
-<tr><td><code>internal/ipc</code></td><td>Socket du daemon (<code>$XDG_RUNTIME_DIR/roundbar.sock</code>).</td></tr>
-<tr><td><code>web/</code></td><td>Configurateur Vue 3, Material 3 Expressive, palette Material You générée depuis une couleur de base, embarqué dans le binaire.</td></tr>
-<tr><td><code>gnome-extension/</code></td><td><code>roundbar@beedy</code> : publie le focus, les fenêtres, les notifications et le presse-papiers sur D-Bus, par signaux uniquement, sans scrutation. Sous GNOME Wayland, c'est le seul moyen de connaître la fenêtre active.</td></tr>
-<tr><td><code>internal/keymap</code></td><td>Dispositions clavier : caractère → touches HID (touches mortes, AltGr), détection de la disposition active du PC.</td></tr>
-<tr><td><code>shared/icons.json</code></td><td>Le sous-ensemble de Material Symbols Rounded intégré au firmware.</td></tr>
-<tr><td><code>shared/keymaps.json</code></td><td>Les dispositions clavier, source unique de la table du firmware, de la validation et du configurateur. Ajouter une disposition : <code>tools/keymap-from-xkb.py</code>, coller l'entrée, puis <code>go run ./tools/gen-keymaps</code>.</td></tr>
-<tr><td><code>tools/</code></td><td><code>flash.sh</code>, <code>fontpack</code> (pack de glyphes CJK et emoji), <code>gen-icons.py</code>, <code>gen-keymaps</code>, <code>keymap-from-xkb.py</code>, <code>readme-assets.py</code>.</td></tr>
-<tr><td><code>deploy/</code></td><td>Règle udev <code>70-roundbar.rules</code>.</td></tr>
+<tr><td><code>docs/spec.md</code></td><td>The contract between all parts: config, serial protocol, daemon socket, configurator API, desktop backends, releases.</td></tr>
+<tr><td><code>docs/guide.md</code></td><td>The step-by-step install guide and troubleshooting.</td></tr>
+<tr><td><code>firmware/</code></td><td>ESP-IDF 6 + LVGL 9.3 in C: Material 3 Expressive pages on the round screen, USB keyboard and mouse, CDC serial link.</td></tr>
+<tr><td><code>cmd/roundbar</code></td><td>Entry point: <code>daemon</code>, <code>config</code>, <code>status</code>, <code>firmware</code>, <code>screenshot</code>, <code>install</code>…</td></tr>
+<tr><td><code>internal/config</code></td><td>Reads, validates and watches <code>config.json</code>.</td></tr>
+<tr><td><code>internal/daemon</code></td><td>The event-driven bridge between the board and the desktop, including the config sync with the board.</td></tr>
+<tr><td><code>internal/device</code></td><td>USB CDC connection and JSON messages with the board.</td></tr>
+<tr><td><code>internal/desktop</code></td><td>Focus, windows, notifications and clipboard per desktop (GNOME extension, KWin script, Wayland protocols, X11, Windows), MPRIS.</td></tr>
+<tr><td><code>internal/audio</code></td><td>Volume, mic and per-app mixer.</td></tr>
+<tr><td><code>internal/stats</code></td><td>CPU, RAM, GPU and temperatures (amdgpu, Intel fdinfo, <code>nvidia-smi</code> only while a GPU gauge is shown).</td></tr>
+<tr><td><code>internal/espflash</code>, <code>internal/fwupdate</code></td><td>The built-in ESP32-S3 flasher and firmware updates from GitHub releases.</td></tr>
+<tr><td><code>internal/keymap</code></td><td>Keyboard layouts: character → HID keys (dead keys, AltGr), detection of the PC's active layout.</td></tr>
+<tr><td><code>internal/cover</code>, <code>internal/assets</code>, <code>internal/icons</code></td><td>Cover art, image pages and app icons, rendered for the board.</td></tr>
+<tr><td><code>internal/discord</code>, <code>internal/obs</code>, <code>internal/steam</code>, <code>internal/mangohud</code></td><td>Integrations, each connected only while its page is shown.</td></tr>
+<tr><td><code>internal/configui</code></td><td>The configurator's HTTP server on 127.0.0.1.</td></tr>
+<tr><td><code>web/</code></td><td>The Vue 3 configurator, Material 3 Expressive, embedded in the binary.</td></tr>
+<tr><td><code>gnome-extension/</code></td><td><code>roundbar@beedy</code>: publishes focus, windows, notifications and clipboard on D-Bus, signals only. On GNOME Wayland it's the only way to know the active window.</td></tr>
+<tr><td><code>shared/</code></td><td><code>icons.json</code> (the Material Symbols subset in the firmware) and <code>keymaps.json</code> (keyboard layouts; add one with <code>tools/keymap-from-xkb.py</code>, then <code>go run ./tools/gen-keymaps</code>).</td></tr>
+<tr><td><code>site/</code></td><td>The web installer page (ESP Web Tools), deployed to GitHub Pages.</td></tr>
+<tr><td><code>packaging/</code>, <code>install.sh</code></td><td>AUR, <code>.deb</code>/<code>.rpm</code> (nfpm), the Windows installer and the Linux install script.</td></tr>
+<tr><td><code>tools/</code></td><td><code>flash.sh</code>, <code>fontpack</code> (CJK and emoji glyph pack), <code>fwrelease</code>, <code>gen-icons.py</code>, <code>gen-keymaps</code>, <code>readme-assets.py</code>.</td></tr>
 </table>
 
 <br>
 
 <a name="dev"></a>
-<img src=".github/assets/section-dev-light.svg#gh-light-mode-only" alt="06 | Développement" width="100%">
-<img src=".github/assets/section-dev-dark.svg#gh-dark-mode-only" alt="06 | Développement" width="100%">
+<img src=".github/assets/section-dev-light.svg#gh-light-mode-only" alt="06 | Development" width="100%">
+<img src=".github/assets/section-dev-dark.svg#gh-dark-mode-only" alt="06 | Development" width="100%">
+
+Needs Go, Node and npm (and ESP-IDF v6 for the firmware):
 
 ```sh
-make                                              # configurateur + binaire Go dans bin/roundbar
+make                                              # configurator + Go binary in bin/roundbar
+make install                                      # installs it for your user
 make test                                         # go test ./...
-make firmware                                     # idf.py build, ESP-IDF chargé
-make flash                                        # compile et flashe la carte
-go run ./tools/fontpack -out firmware/build/fonts.bin   # reconstruit le pack de glyphes
+make firmware                                     # idf.py build, with ESP-IDF loaded
+make flash                                        # builds and flashes the board
+go run ./tools/fontpack -out firmware/build/fonts.bin   # rebuilds the glyph pack
 ```
 
 <details>
@@ -412,26 +409,22 @@ go run ./tools/fontpack -out firmware/build/fonts.bin   # reconstruit le pack de
 
 <br>
 
-- `docs/spec.md` se modifie **en premier**, puis le code de chaque partie.
-- La config vit dans `~/.config/roundbar/config.json`. Le configurateur l'écrit, le daemon la surveille et
-  la pousse à la carte, qui en garde une copie en flash.
-- Le pack de glyphes est construit depuis Noto Sans CJK et Noto Color Emoji installés sur le système.
-  `FORCE_FONTS=1 make flash` le réécrit même s'il n'a pas changé.
-- Les captures de la carte se prennent avec `roundbar screenshot out.png`.
-
-Les visuels de ce README se régénèrent avec `python3 tools/readme-assets.py`.
-
-La CI GitHub Actions vérifie le Go (`gofmt`, `vet`, tests avec `-race`), le configurateur et le firmware
-(conteneur `espressif/idf:v6.0.3`). Un tag `v*` publie une release avec le binaire (amd64, arm64) et le
-firmware avec son pack de glyphes.
+- Change `docs/spec.md` **first**, then the code of each part.
+- The config lives in `~/.config/roundbar/config.json` (`%APPDATA%\roundbar` on Windows). The configurator writes
+  it, the daemon watches it and syncs it with the board, which keeps a copy in flash.
+- The glyph pack is built from the system's Noto Sans CJK and Noto Color Emoji. `FORCE_FONTS=1 make flash`
+  rewrites it even when unchanged.
+- The README visuals are regenerated with `python3 tools/readme-assets.py`.
+- CI checks Go (`gofmt`, `vet`, tests with `-race`), the configurator and the firmware (in the
+  `espressif/idf:v6.0.3` container).
 
 </details>
 
 <br>
 
-**Licence.** Code sous [licence MIT](LICENSE). Polices embarquées : Google Sans Flex (SIL OFL 1.1) et
-Material Symbols (Apache 2.0). La séquence d'initialisation de l'écran ST77916 vient de la config ESPHome
-communautaire [clowrey/esphome-guition-360x360-jc3636w518](https://github.com/clowrey/esphome-guition-360x360-jc3636w518).
+**License.** Code under the [MIT license](LICENSE). Bundled fonts: Google Sans Flex (SIL OFL 1.1) and Material
+Symbols (Apache 2.0). The ST77916 screen init sequence comes from the community ESPHome config
+[clowrey/esphome-guition-360x360-jc3636w518](https://github.com/clowrey/esphome-guition-360x360-jc3636w518).
 
 <br>
 

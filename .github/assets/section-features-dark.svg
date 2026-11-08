@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="100" viewBox="0 0 1000 100" role="img">
-<title>Fonctionnalités</title>
+<title>Features</title>
 <style>
   text { font-family: 'Google Sans Flex','Google Sans','Roboto Flex',Roboto,'Segoe UI',system-ui,sans-serif; }
   .spin { transform-box: fill-box; transform-origin: center; animation: spin 48s linear infinite; }
@@ -13,7 +13,7 @@
 <g transform="translate(0 28)">
 <path class="spin" d="M71.1,36.0 L70.9,38.3 L70.1,40.5 L69.0,42.6 L67.4,44.4 L65.7,46.1 L63.7,47.5 L61.7,48.7 L59.8,49.7 L57.9,50.7 L56.3,51.6 L54.9,52.5 L53.6,53.6 L52.5,54.9 L51.6,56.3 L50.7,57.9 L49.7,59.8 L48.7,61.7 L47.5,63.7 L46.1,65.7 L44.4,67.4 L42.6,69.0 L40.5,70.1 L38.3,70.9 L36.0,71.1 L33.7,70.9 L31.5,70.1 L29.4,69.0 L27.6,67.4 L25.9,65.7 L24.5,63.7 L23.3,61.7 L22.3,59.8 L21.3,57.9 L20.4,56.3 L19.5,54.9 L18.4,53.6 L17.1,52.5 L15.7,51.6 L14.1,50.7 L12.2,49.7 L10.3,48.7 L8.3,47.5 L6.3,46.1 L4.6,44.4 L3.0,42.6 L1.9,40.5 L1.1,38.3 L0.9,36.0 L1.1,33.7 L1.9,31.5 L3.0,29.4 L4.6,27.6 L6.3,25.9 L8.3,24.5 L10.3,23.3 L12.2,22.3 L14.1,21.3 L15.7,20.4 L17.1,19.5 L18.4,18.4 L19.5,17.1 L20.4,15.7 L21.3,14.1 L22.3,12.2 L23.3,10.3 L24.5,8.3 L25.9,6.3 L27.6,4.6 L29.4,3.0 L31.5,1.9 L33.7,1.1 L36.0,0.9 L38.3,1.1 L40.5,1.9 L42.6,3.0 L44.4,4.6 L46.1,6.3 L47.5,8.3 L48.7,10.3 L49.7,12.2 L50.7,14.1 L51.6,15.7 L52.5,17.1 L53.6,18.4 L54.9,19.5 L56.3,20.4 L57.9,21.3 L59.8,22.3 L61.7,23.3 L63.7,24.5 L65.7,25.9 L67.4,27.6 L69.0,29.4 L70.1,31.5 L70.9,33.7 Z" fill="#4F378B"/>
 <text x="36" y="42" font-size="16" font-weight="600" text-anchor="middle" fill="#EADDFF">02</text>
-<text x="84" y="46" font-size="30" font-weight="500" fill="#E6E0E9">Fonctionnalités</text>
-<rect x="370" y="35" width="630" height="2" rx="1" fill="#49454F"/>
+<text x="84" y="46" font-size="30" font-weight="500" fill="#E6E0E9">Features</text>
+<rect x="248" y="35" width="752" height="2" rx="1" fill="#49454F"/>
 </g>
 </svg>

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="340" viewBox="0 0 1000 340" role="img">
-<title>Roundbar | Un écran rond qui suit l'app au premier plan</title>
+<title>Roundbar | A round screen that follows the app you're using</title>
 <style>
   text { font-family: 'Google Sans Flex','Google Sans','Roboto Flex',Roboto,'Segoe UI',system-ui,sans-serif; }
   .spin { transform-box: fill-box; transform-origin: center; animation: spin 48s linear infinite; }
@@ -31,9 +31,9 @@
 </g>
 <g class="fade">
   <rect x="48" y="52" width="212" height="32" rx="8" fill="none" stroke="#938F99"/>
-  <text x="62" y="73" font-size="14" font-weight="500" fill="#CAC4D0">ESP32-S3 · écran rond 1,8"</text>
+  <text x="62" y="73" font-size="14" font-weight="500" fill="#CAC4D0">ESP32-S3 · 1.8" round screen</text>
   <text x="44" y="166" font-size="72" font-weight="500" letter-spacing="-1.5" fill="#E6E0E9">Roundbar</text>
-  <text x="48" y="212" font-size="21" fill="#CAC4D0">Un écran rond qui suit l'app au premier plan</text>
-  <rect x="48.0" y="250" width="135" height="40" rx="20" fill="#4F378B"/><text x="116" y="275" font-size="15" font-weight="500" text-anchor="middle" fill="#EADDFF">Material You</text><rect x="191.0" y="250" width="106" height="40" rx="20" fill="#4A4458"/><text x="244" y="275" font-size="15" font-weight="500" text-anchor="middle" fill="#E8DEF8">ESP32-S3</text><rect x="305.4" y="250" width="84" height="40" rx="20" fill="#633B48"/><text x="347" y="275" font-size="15" font-weight="500" text-anchor="middle" fill="#FFD8E4">GNOME</text>
+  <text x="48" y="212" font-size="21" fill="#CAC4D0">A round screen that follows the app you're using</text>
+  <rect x="48.0" y="250" width="135" height="40" rx="20" fill="#4F378B"/><text x="116" y="275" font-size="15" font-weight="500" text-anchor="middle" fill="#EADDFF">Material You</text><rect x="191.0" y="250" width="106" height="40" rx="20" fill="#4A4458"/><text x="244" y="275" font-size="15" font-weight="500" text-anchor="middle" fill="#E8DEF8">ESP32-S3</text><rect x="305.4" y="250" width="161" height="40" rx="20" fill="#633B48"/><text x="386" y="275" font-size="15" font-weight="500" text-anchor="middle" fill="#FFD8E4">Linux · Windows</text>
 </g>
 </svg>
