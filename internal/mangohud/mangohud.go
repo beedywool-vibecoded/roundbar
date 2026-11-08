@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,6 +34,9 @@ const (
 	graphLen    = 60
 	bucketMs    = 250.0 // one graph point: the slowest frame in 250 ms
 )
+
+// Supported: MangoHud (and its control socket) exists on Linux only.
+const Supported = runtime.GOOS == "linux"
 
 func ConfPath() string {
 	base := os.Getenv("XDG_CONFIG_HOME")

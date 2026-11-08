@@ -17,6 +17,8 @@ type Env struct {
 	Run      func(name string, args ...string) ([]byte, error)
 	// KDEIndex returns the active entry of kxkbrc's LayoutList (D-Bus org.kde.keyboard), if known.
 	KDEIndex func() (int, bool)
+	// KLID returns Windows' layout (KLID) of the focused window, if known.
+	KLID func() (string, bool)
 }
 
 // SystemEnv reads the real environment. Commands get a short timeout; Detect only
@@ -40,16 +42,24 @@ func SystemEnv() Env {
 // Detected is the PC's active layout: a keymap id and where it came from.
 type Detected struct {
 	ID     string `json:"detected"`
-	Source string `json:"source"` // gnome, kde, env, x11, localectl
+	Source string `json:"source"` // gnome, kde, env, x11, localectl, windows
 }
 
 var gnomeSource = regexp.MustCompile(`\('(\w+)',\s*'([^']*)'\)`)
 
-// Detect finds the active keyboard layout, trying in order: GNOME input sources
+// Detect finds the active keyboard layout, trying in order: the focused
+// window's layout on Windows, GNOME input sources
 // (most recently used first), KDE's kxkbrc, XKB_DEFAULT_LAYOUT (wlroots compositors),
 // setxkbmap on X11, and the system default from localed's files. It returns an empty
 // ID when nothing maps to a layout we have.
 func Detect(env Env) Detected {
+	if env.KLID != nil {
+		if k, ok := env.KLID(); ok {
+			if id := FromKLID(k); id != "" {
+				return Detected{id, "windows"}
+			}
+		}
+	}
 	desktop := strings.ToUpper(env.Getenv("XDG_CURRENT_DESKTOP"))
 	try := func(source, layout, variant string) (Detected, bool) {
 		id := FromXKB(first(layout), first(variant))

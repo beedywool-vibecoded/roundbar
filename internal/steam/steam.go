@@ -4,14 +4,12 @@ package steam
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
-	"time"
+	"sync"
 )
 
 var appRe = regexp.MustCompile(`^steam_app_(\d+)$`)
@@ -24,16 +22,6 @@ func AppID(class string) string {
 	return ""
 }
 
-func root() string {
-	home, _ := os.UserHomeDir()
-	for _, p := range []string{".local/share/Steam", ".steam/steam", ".var/app/com.valvesoftware.Steam/.local/share/Steam"} {
-		if _, err := os.Stat(filepath.Join(home, p, "steamapps")); err == nil {
-			return filepath.Join(home, p)
-		}
-	}
-	return filepath.Join(home, ".local/share/Steam")
-}
-
 var pathRe = regexp.MustCompile(`"path"\s+"([^"]+)"`)
 var nameRe = regexp.MustCompile(`"name"\s+"([^"]+)"`)
 
@@ -44,8 +32,8 @@ func libraries() []string {
 	raw, err := os.ReadFile(filepath.Join(r, "steamapps", "libraryfolders.vdf"))
 	if err == nil {
 		for _, m := range pathRe.FindAllStringSubmatch(string(raw), -1) {
-			if m[1] != r {
-				libs = append(libs, m[1])
+			if p := vdfUnescape(m[1]); !samePath(p, r) {
+				libs = append(libs, p)
 			}
 		}
 	}
@@ -60,7 +48,7 @@ func Name(appid string) string {
 			continue
 		}
 		if m := nameRe.FindStringSubmatch(string(raw)); m != nil {
-			return m[1]
+			return vdfUnescape(m[1])
 		}
 	}
 	return ""
@@ -85,13 +73,9 @@ func Art(appid string) string {
 	return ""
 }
 
-// GamePIDs lists our processes Steam launched for appid: Steam puts
-// SteamAppId/SteamGameId in the environment of everything it starts for a game
-// (native or Proton), and nothing else carries it.
-func GamePIDs(appid string) []int {
-	return gamePIDs("/proc", appid)
-}
-
+// gamePIDs lists our processes under proc (a procfs) that Steam launched for
+// appid: Steam puts SteamAppId/SteamGameId in the environment of everything
+// it starts for a game (native or Proton), and nothing else carries it.
 func gamePIDs(proc, appid string) []int {
 	if appid == "" || appid == "0" {
 		return nil
@@ -118,25 +102,116 @@ func gamePIDs(proc, appid string) []int {
 	return out
 }
 
-// Close ends a game: SIGTERM to its processes, SIGKILL to what's left after 6 s.
-func Close(appid string) (int, error) {
-	pids := GamePIDs(appid)
-	if len(pids) == 0 {
-		return 0, fmt.Errorf("no running processes for app %s", appid)
+// samePath compares library paths, ignoring case and separators on Windows-style paths.
+func samePath(a, b string) bool {
+	if a == b {
+		return true
 	}
-	for _, p := range pids {
-		_ = syscall.Kill(p, syscall.SIGTERM)
+	norm := func(s string) string { return strings.TrimRight(strings.ToLower(strings.ReplaceAll(s, `\`, "/")), "/") }
+	return strings.Contains(a+b, `\`) && norm(a) == norm(b)
+}
+
+// vdfUnescape undoes VDF string escapes (Windows paths come as "D:\\SteamLibrary").
+func vdfUnescape(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
 	}
-	go func() {
-		for i := 0; i < 20; i++ {
-			time.Sleep(300 * time.Millisecond)
-			if len(GamePIDs(appid)) == 0 {
-				return
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			i++
+			switch s[i] {
+			case 'n':
+				b.WriteByte('\n')
+			case 't':
+				b.WriteByte('\t')
+			default:
+				b.WriteByte(s[i])
 			}
+			continue
 		}
-		for _, p := range GamePIDs(appid) {
-			_ = syscall.Kill(p, syscall.SIGKILL)
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+var installRe = regexp.MustCompile(`"installdir"\s+"([^"]+)"`)
+var appidRe = regexp.MustCompile(`"appid"\s+"(\d+)"`)
+
+// SplitGamePath splits an executable path inside a Steam library into the
+// library folder and the game's install directory name:
+// D:\SteamLibrary\steamapps\common\Hades\x64\Hades.exe -> D:\SteamLibrary, Hades.
+// Both separators are accepted; "steamapps\common" matches in any case.
+func SplitGamePath(exe string) (lib, installDir string, ok bool) {
+	p := strings.ReplaceAll(exe, `\`, "/")
+	const mid = "/steamapps/common/"
+	i := strings.Index(strings.ToLower(p), mid)
+	if i <= 0 {
+		return "", "", false
+	}
+	dir, _, found := strings.Cut(p[i+len(mid):], "/")
+	if !found || dir == "" {
+		return "", "", false
+	}
+	return exe[:i], dir, true
+}
+
+// manifestApp reads an appmanifest's app id and install directory.
+func manifestApp(raw []byte) (appid, installDir string) {
+	if m := appidRe.FindSubmatch(raw); m != nil {
+		appid = string(m[1])
+	}
+	if m := installRe.FindSubmatch(raw); m != nil {
+		installDir = vdfUnescape(string(m[1]))
+	}
+	return
+}
+
+// AppForInstallDir finds the app whose manifest in lib names installDir (case-insensitive).
+func AppForInstallDir(lib, installDir string) string {
+	files, _ := filepath.Glob(filepath.Join(lib, "steamapps", "appmanifest_*.acf"))
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			continue
 		}
-	}()
-	return len(pids), nil
+		if id, dir := manifestApp(raw); id != "" && strings.EqualFold(dir, installDir) {
+			return id
+		}
+	}
+	return ""
+}
+
+var exeApps sync.Map // exe path -> app id ("" = not a Steam game)
+
+// AppForExe is the Steam app an executable belongs to, by where it lives
+// (steamapps/common/<installdir> of a library whose manifest names that
+// directory), or "". Windows has no steam_app_<id> window classes, so this is
+// how games are recognized there. Cached per path.
+func AppForExe(exe string) string {
+	if v, ok := exeApps.Load(exe); ok {
+		return v.(string)
+	}
+	id := ""
+	if lib, dir, ok := SplitGamePath(exe); ok {
+		id = AppForInstallDir(lib, dir)
+	}
+	if id != "" || !strings.Contains(strings.ToLower(exe), "steamapps") {
+		exeApps.Store(exe, id) // a game whose manifest is missing may get one later: retry those
+	}
+	return id
+}
+
+// InstallPath is the folder a game is installed in ("" if no manifest names it).
+func InstallPath(appid string) string {
+	for _, lib := range libraries() {
+		raw, err := os.ReadFile(filepath.Join(lib, "steamapps", "appmanifest_"+appid+".acf"))
+		if err != nil {
+			continue
+		}
+		if _, dir := manifestApp(raw); dir != "" {
+			return filepath.Join(lib, "steamapps", "common", dir)
+		}
+	}
+	return ""
 }

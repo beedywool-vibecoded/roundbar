@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os/exec"
 	"time"
 
 	"github.com/beedywool-vibecoded/roundbar/internal/config"
@@ -170,8 +169,5 @@ func (d *Daemon) timerDone(label, phase string) {
 	if label == "" {
 		label = "Roundbar"
 	}
-	spawn("notify-send", "-a", "Roundbar", "-i", "alarm-symbolic", "-u", "critical", title, label)
-	if p, err := exec.LookPath("canberra-gtk-play"); err == nil {
-		spawn(p, "-i", "complete", "-d", "Roundbar timer")
-	}
+	notifyUser(title, label)
 }

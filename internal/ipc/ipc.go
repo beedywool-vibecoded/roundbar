@@ -9,10 +9,18 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
+// SocketPath is $XDG_RUNTIME_DIR/roundbar.sock; on Windows (AF_UNIX works
+// there since Windows 10 1803) %LOCALAPPDATA%\roundbar\roundbar.sock.
 func SocketPath() string {
+	if runtime.GOOS == "windows" {
+		dir := filepath.Join(os.Getenv("LOCALAPPDATA"), "roundbar")
+		_ = os.MkdirAll(dir, 0o700)
+		return filepath.Join(dir, "roundbar.sock")
+	}
 	dir := os.Getenv("XDG_RUNTIME_DIR")
 	if dir == "" {
 		dir = filepath.Join(os.TempDir(), "roundbar-"+os.Getenv("USER"))

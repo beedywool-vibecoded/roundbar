@@ -1,3 +1,5 @@
+//go:build linux
+
 package desktop
 
 import "github.com/godbus/dbus/v5"

@@ -15,6 +15,7 @@ func (d *Daemon) detectLayout(force bool) {
 	env := keymap.SystemEnv()
 	if d.desk != nil {
 		env.KDEIndex = d.desk.KDELayoutIndex
+		env.KLID = d.desk.KLID
 	}
 	det := keymap.Detect(env)
 	d.mu.Lock()

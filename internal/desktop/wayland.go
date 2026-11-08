@@ -1,3 +1,5 @@
+//go:build linux
+
 package desktop
 
 import (
@@ -13,7 +15,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"golang.org/x/sys/unix"
 )
@@ -53,8 +54,6 @@ type toplevel struct {
 
 const (
 	wlrStateActivated = 2
-	maxClips          = 10
-	maxClipLen        = 2000
 	secretHint        = "x-kde-passwordManagerHint"
 )
 
@@ -452,25 +451,6 @@ func (b *wayland) pushClip(text string) bool {
 	var ok bool
 	b.clips, ok = pushHistory(b.clips, text)
 	return ok
-}
-
-// pushHistory puts text first in a clipboard history (≤ 10, each ≤ 2000 chars).
-func pushHistory(list []string, text string) ([]string, bool) {
-	text = strings.ToValidUTF8(text, "")
-	if utf8.RuneCountInString(text) > maxClipLen {
-		text = string([]rune(text)[:maxClipLen])
-	}
-	if strings.TrimSpace(text) == "" {
-		return list, false
-	}
-	if len(list) > 0 && list[0] == text {
-		return list, false
-	}
-	out := append([]string{text}, slices.DeleteFunc(slices.Clone(list), func(s string) bool { return s == text })...)
-	if len(out) > maxClips {
-		out = out[:maxClips]
-	}
-	return out, true
 }
 
 func (b *wayland) Clipboard() ([]string, error) {

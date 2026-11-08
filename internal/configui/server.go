@@ -14,7 +14,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -87,12 +86,7 @@ func Run(open bool) error {
 	mux.Handle("/", spa())
 
 	if open {
-		go func() {
-			c := exec.Command("xdg-open", url)
-			if err := c.Start(); err == nil {
-				go c.Wait()
-			}
-		}()
+		go openBrowser(url)
 	}
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	return srv.Serve(l)
