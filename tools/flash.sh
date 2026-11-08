@@ -2,6 +2,14 @@
 # Flash the firmware. Finds the ESP32-S3 download port whether the board runs
 # roundbar (asked to reboot into the ROM USB download mode) or anything else.
 set -euo pipefail
+
+# Load ESP-IDF if this shell hasn't (esptool lives in its Python env).
+if ! python -c "import esptool" 2>/dev/null; then
+  export_sh=$(ls -d "$HOME"/esp/esp-idf-*/export.sh 2>/dev/null | sort -V | tail -1)
+  [[ -n $export_sh ]] || { echo "ESP-IDF not found (expected ~/esp/esp-idf-*/export.sh)" >&2; exit 1; }
+  set +u; . "$export_sh" >/dev/null; set -u
+fi
+
 cd "$(dirname "$0")/../firmware/build"
 
 # Never flash a stale image (e.g. after a failed build).

@@ -1349,16 +1349,14 @@ static void qs_build(void)
     lv_obj_add_event_cb(qs, qs_event, LV_EVENT_GESTURE, (void *)0);
 
     lv_obj_t *title = text(qs, F.body, P.on_sv, "Quick settings");
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 46);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 84);
 
-    // tiny page shortcuts
-    lv_obj_t *row = box(qs);
-    lv_obj_set_size(row, LV_SIZE_CONTENT, 30);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(row, 6, 0);
-    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 76);
+    // tiny page shortcuts along the top edge
     for (int i = 0; i < page_count; i++) {
-        lv_obj_t *b = box(row);
+        const float r = 145, step = 36.0f / r; // 36 px apart on the arc
+        float a = 3 * (float)M_PI / 2 + (i - (page_count - 1) / 2.0f) * step;
+        lv_obj_t *b = box(qs);
+        lv_obj_align(b, LV_ALIGN_CENTER, (int32_t)lroundf(r * cosf(a)), (int32_t)lroundf(r * sinf(a)));
         lv_obj_set_size(b, 30, 30);
         lv_obj_set_style_radius(b, 15, 0);
         bool cur = i == cur_page;
@@ -2449,8 +2447,28 @@ void ui_discord(cJSON *st)
 
 static void dot_width_exec(void *o, int32_t v) { lv_obj_set_width(o, v); }
 
+#define DOT_R 169 // the dots sit on this circle, centered at 6 o'clock
+
+// Places the dots along the bottom edge, spaced by arc length for the target
+// widths (the active one is a pill), each turned to follow the curve.
+static void layout_dots(void)
+{
+    const float gap = 6, r = DOT_R;
+    float total = gap * (page_count - 1);
+    for (int i = 0; i < page_count; i++) total += i == cur_page ? 18 : 6;
+    float s0 = -total / 2;
+    for (int i = 0; i < page_count; i++) {
+        float w = i == cur_page ? 18 : 6;
+        float a = (float)M_PI / 2 - (s0 + w / 2) / r; // left to right along the bottom
+        lv_obj_align(dots[i], LV_ALIGN_CENTER, (int32_t)lroundf(r * cosf(a)), (int32_t)lroundf(r * sinf(a)));
+        lv_obj_set_style_transform_rotation(dots[i], (int32_t)lroundf((a - (float)M_PI / 2) * 1800 / (float)M_PI), 0);
+        s0 += w + gap;
+    }
+}
+
 static void update_dots(void)
 {
+    layout_dots();
     for (int i = 0; i < page_count; i++) {
         bool on = i == cur_page;
         lv_obj_set_style_bg_color(dots[i], on ? P.primary : P.outline_v, 0);
@@ -2556,17 +2574,19 @@ static void build(bool animate)
     }
 
     // page dots along the bottom gap of the bezel
+    // page dots along the bottom edge of the round screen
     dots_box = box(s);
-    lv_obj_set_size(dots_box, LV_SIZE_CONTENT, 6);
-    lv_obj_set_flex_flow(dots_box, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(dots_box, 6, 0);
-    lv_obj_align(dots_box, LV_ALIGN_BOTTOM_MID, 0, -8);
+    lv_obj_set_size(dots_box, LCD_W, LCD_H);
+    lv_obj_center(dots_box);
     lv_obj_remove_flag(dots_box, LV_OBJ_FLAG_CLICKABLE);
     for (int i = 0; i < page_count; i++) {
         dots[i] = box(dots_box);
         lv_obj_set_size(dots[i], 6, 6);
         lv_obj_set_style_radius(dots[i], 3, 0);
         lv_obj_set_style_bg_opa(dots[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_transform_pivot_x(dots[i], lv_pct(50), 0);
+        lv_obj_set_style_transform_pivot_y(dots[i], lv_pct(50), 0);
+        lv_obj_remove_flag(dots[i], LV_OBJ_FLAG_CLICKABLE);
     }
     if (page_count < 2) lv_obj_add_flag(dots_box, LV_OBJ_FLAG_HIDDEN);
 

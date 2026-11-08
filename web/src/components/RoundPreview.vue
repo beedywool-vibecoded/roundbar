@@ -413,16 +413,18 @@ const image = computed(() => {
 // ---- touchpad: the scroll ring between r 150 and 172 ----
 const touchpad = computed(() => props.page.type === 'touchpad')
 
-// ---- page dots: bottom center, 8 px above the edge, gap 6 ----
+// ---- page dots: along the bottom edge (radius 169), like the device ----
 const dots = computed(() => {
   const n = props.pageCount
   if (n < 2) return []
+  const r = 169
   const widths = Array.from({ length: n }, (_, i) => (i === props.pageIndex ? 18 : 6))
   const total = widths.reduce((a, b) => a + b, 0) + 6 * (n - 1)
-  let x = -total / 2
+  let s = -total / 2
   return widths.map((w, i) => {
-    const d = { x, w, on: i === props.pageIndex }
-    x += w + 6
+    const a = Math.PI / 2 - (s + w / 2) / r
+    const d = { cx: r * Math.cos(a), cy: r * Math.sin(a), w, rot: ((a - Math.PI / 2) * 180) / Math.PI, on: i === props.pageIndex }
+    s += w + 6
     return d
   })
 })
@@ -669,7 +671,7 @@ const dots = computed(() => {
         </template>
       </template>
 
-      <rect v-for="(d, i) in dots" :key="i" :x="d.x" :y="180 - 8 - 6" :width="d.w" height="6" rx="3" :fill="d.on ? p.primary : p.outlineVariant" />
+      <rect v-for="(d, i) in dots" :key="i" :x="-d.w / 2" y="-3" :width="d.w" height="6" rx="3" :transform="`translate(${d.cx} ${d.cy}) rotate(${d.rot})`" :fill="d.on ? p.primary : p.outlineVariant" />
     </g>
   </svg>
 </template>
