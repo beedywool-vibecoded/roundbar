@@ -1,5 +1,7 @@
 package config
 
+func ptr(v int) *int { return &v }
+
 func keys(k string) *Action  { return &Action{Type: "keys", Keys: k} }
 func media(c string) *Action { return &Action{Type: "media", Cmd: c} }
 func btn(id, icon, label, color string, tap *Action) Button {
@@ -24,7 +26,7 @@ func Default() *Config {
 			"error": "#F2B8B5", "errorContainer": "#8C1D18", "onErrorContainer": "#F9DEDC",
 			"outline": "#938F99", "outlineVariant": "#49454F",
 		}},
-		Media:  Media{CoverBackground: true, CoverColors: true},
+		Media:  Media{CoverBackground: true, CoverColors: true, Blur: ptr(60), CoverOpacity: ptr(50)},
 		Device: Device{Brightness: 80, DimAfter: 30, SleepAfter: 300, LongPressMs: 450, KeyboardLayout: "fr"},
 		Profiles: []Profile{
 			{ID: "default", Name: "Default", Match: []string{}, Pages: []Page{

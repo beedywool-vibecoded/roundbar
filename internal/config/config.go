@@ -30,6 +30,16 @@ type Theme struct {
 type Media struct {
 	CoverBackground bool `json:"coverBackground"`
 	CoverColors     bool `json:"coverColors"`
+	Blur            *int `json:"blur,omitempty"`         // 0..100, nil = 60
+	CoverOpacity    *int `json:"coverOpacity,omitempty"` // 0..100, nil = 50
+}
+
+// BlurOrDefault returns the configured blur strength.
+func (m Media) BlurOrDefault() int {
+	if m.Blur == nil {
+		return 60
+	}
+	return *m.Blur
 }
 
 type Device struct {
@@ -60,6 +70,8 @@ type Page struct {
 	Step    int      `json:"step,omitempty"`
 	OnUp    *Action  `json:"onUp,omitempty"`
 	OnDown  *Action  `json:"onDown,omitempty"`
+	// media pages: shapes of the transport buttons, keys prev/next/play/playing
+	Shapes map[string]string `json:"shapes,omitempty"`
 }
 
 type Button struct {
@@ -180,6 +192,8 @@ var (
 	hexRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 )
 
+var Shapes = []string{"circle", "square", "cookie", "clover", "sunny", "flower", "burst"}
+
 var PaletteRoles = []string{
 	"surface", "surfaceContainer", "surfaceContainerHigh", "surfaceContainerHighest", "onSurface", "onSurfaceVariant",
 	"primary", "onPrimary", "primaryContainer", "onPrimaryContainer", "secondaryContainer", "onSecondaryContainer",
@@ -211,6 +225,12 @@ func (c *Config) Validate() error {
 		if !hexRe.MatchString(c.Theme.Palette[r]) {
 			return fail("theme.palette."+r, "must be #RRGGBB")
 		}
+	}
+	if b := c.Media.Blur; b != nil && (*b < 0 || *b > 100) {
+		return fail("media.blur", "must be 0..100")
+	}
+	if o := c.Media.CoverOpacity; o != nil && (*o < 0 || *o > 100) {
+		return fail("media.coverOpacity", "must be 0..100")
 	}
 	d := c.Device
 	switch {
@@ -303,6 +323,14 @@ func (pg *Page) validate(pp string, pageIDs map[string]bool) error {
 			}
 		}
 	case "media":
+		for k, v := range pg.Shapes {
+			if !oneOf(k, "prev", "next", "play", "playing") {
+				return fail(pp+".shapes", "unknown key %q (prev, next, play, playing)", k)
+			}
+			if !oneOf(v, Shapes...) {
+				return fail(pp+".shapes."+k, "unknown shape %q", v)
+			}
+		}
 	case "stats":
 		if len(pg.Items) == 0 || len(pg.Items) > 4 {
 			return fail(pp+".items", "need 1..4 items")
@@ -353,7 +381,7 @@ func (b *Button) validate(bp string, pageIDs map[string]bool) error {
 	if b.Color != "" && !oneOf(b.Color, "primary", "secondary", "tertiary", "error", "surface") {
 		return &Error{Path: bp + ".color", Msg: "unknown color role"}
 	}
-	if b.Shape != "" && !oneOf(b.Shape, "circle", "square", "cookie", "clover", "sunny", "flower", "burst") {
+	if b.Shape != "" && !oneOf(b.Shape, Shapes...) {
 		return &Error{Path: bp + ".shape", Msg: "unknown shape"}
 	}
 	if b.Tap == nil {

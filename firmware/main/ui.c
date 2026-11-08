@@ -46,6 +46,7 @@ static struct {
     int nmic;
     struct {
         lv_obj_t *title, *artist, *player, *play, *play_icon, *cover, *scrim;
+        uint8_t play_shape, playing_shape;
     } media[MAX_LIVE];
     int nmedia;
     struct {
@@ -227,19 +228,6 @@ static void squish_on_press(lv_obj_t *o, int size)
     lv_obj_set_style_transition(o, &tr_press, LV_STATE_PRESSED);
 }
 
-static lv_obj_t *shape_button(lv_obj_t *parent, int size, int radius, lv_color_t bg)
-{
-    lv_obj_t *o = box(parent);
-    lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_size(o, size, size);
-    lv_obj_set_style_bg_color(o, bg, 0);
-    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(o, radius, 0);
-    lv_obj_set_style_bg_color(o, lv_color_mix(lv_color_white(), bg, 30), LV_STATE_PRESSED);
-    squish_on_press(o, size);
-    return o;
-}
-
 // ---- Material 3 Expressive shapes, rasterised once into A8 masks ----------------------
 
 enum { SH_CIRCLE, SH_SQUARE, SH_COOKIE, SH_CLOVER, SH_SUNNY, SH_FLOWER, SH_BURST, SH_COUNT };
@@ -293,11 +281,9 @@ static const lv_draw_buf_t *shape_mask(int shape, int size)
     return buf;
 }
 
-static lv_obj_t *config_button(lv_obj_t *parent, cJSON *b, int size, bool center, const lv_font_t *ifont)
+// A clickable button drawn from a shape mask in `bg`, squishing when pressed.
+static lv_obj_t *mask_button(lv_obj_t *parent, int shape, int size, lv_color_t bg)
 {
-    lv_color_t bg, fg;
-    theme_role(jstr(b, "color"), &bg, &fg);
-    int shape = shape_id(jstr(b, "shape"), center ? SH_SQUARE : SH_CIRCLE);
     lv_obj_t *o = lv_image_create(parent);
     lv_image_set_src(o, shape_mask(shape, size));
     lv_obj_set_size(o, size, size);
@@ -307,6 +293,14 @@ static lv_obj_t *config_button(lv_obj_t *parent, cJSON *b, int size, bool center
     lv_obj_set_style_image_recolor_opa(o, LV_OPA_COVER, 0);
     lv_obj_set_style_image_recolor(o, lv_color_mix(lv_color_white(), bg, 30), LV_STATE_PRESSED);
     squish_on_press(o, size);
+    return o;
+}
+
+static lv_obj_t *config_button(lv_obj_t *parent, cJSON *b, int size, bool center, const lv_font_t *ifont)
+{
+    lv_color_t bg, fg;
+    theme_role(jstr(b, "color"), &bg, &fg);
+    lv_obj_t *o = mask_button(parent, shape_id(jstr(b, "shape"), center ? SH_SQUARE : SH_CIRCLE), size, bg);
     lv_obj_t *ic = text(o, ifont, fg, theme_icon(jstr(b, "icon")));
     lv_obj_center(ic);
     lv_obj_add_event_cb(o, btn_event, LV_EVENT_SHORT_CLICKED, b);
@@ -505,12 +499,10 @@ static void add_level(bool is_mic, lv_obj_t *arc, lv_obj_t *lbl)
 
 // ---- page: media -------------------------------------------------------------------
 
-static void play_morph(lv_obj_t *btn, bool playing)
+static void play_morph(lv_obj_t *btn, int play_shape, int playing_shape, bool playing)
 {
-    // Playing: rounded square. Paused: circle. Same as M3 Expressive media controls.
-    int32_t size = lv_obj_get_style_width(btn, 0);
-    int32_t r = playing ? size * 30 / 100 : size / 2;
-    lv_obj_set_style_radius(btn, r, 0);
+    // The play button switches shape with the playback state (default circle -> rounded square).
+    lv_image_set_src(btn, shape_mask(playing ? playing_shape : play_shape, lv_obj_get_style_width(btn, 0)));
 }
 
 static void media_btn_event(lv_event_t *e)
@@ -523,9 +515,10 @@ static void media_btn_event(lv_event_t *e)
     }
 }
 
-static lv_obj_t *media_btn(lv_obj_t *tile, int size, lv_color_t bg, lv_color_t fg, const char *icon, const lv_font_t *f, const char *cmd)
+static lv_obj_t *media_btn(lv_obj_t *tile, int shape, int size, lv_color_t bg, lv_color_t fg, const char *icon, const lv_font_t *f,
+                           const char *cmd)
 {
-    lv_obj_t *b = shape_button(tile, size, size / 2, bg);
+    lv_obj_t *b = mask_button(tile, shape, size, bg);
     lv_obj_t *ic = text(b, f, fg, theme_icon(icon));
     lv_obj_center(ic);
     lv_obj_add_event_cb(b, media_btn_event, LV_EVENT_CLICKED, (void *)cmd);
@@ -555,7 +548,9 @@ static void build_media_inner(lv_obj_t *tile, cJSON *pg)
     lv_obj_set_size(scrim, LCD_W, LCD_H);
     lv_obj_center(scrim);
     lv_obj_set_style_bg_color(scrim, P.surface, 0);
-    lv_obj_set_style_bg_opa(scrim, LV_OPA_50, 0);
+    cJSON *opa = cJSON_GetObjectItem(cJSON_GetObjectItem(store_config(), "media"), "coverOpacity");
+    int cover_pct = cJSON_IsNumber(opa) ? LV_CLAMP(0, opa->valueint, 100) : 50;
+    lv_obj_set_style_bg_opa(scrim, (lv_opa_t)((100 - cover_pct) * 255 / 100), 0);
     lv_obj_remove_flag(scrim, LV_OBJ_FLAG_CLICKABLE);
     if (cover_set) lv_image_set_src(cover, &cover_dsc);
     else {
@@ -585,14 +580,17 @@ static void build_media_inner(lv_obj_t *tile, cJSON *pg)
     lv_label_set_long_mode(m->artist, LV_LABEL_LONG_DOT);
     lv_obj_align(m->artist, LV_ALIGN_CENTER, 0, -36);
 
-    lv_obj_t *prev = media_btn(tile, 64, P.secc, P.on_secc, "skip_previous", F.icon_m, "prev");
+    cJSON *shapes = cJSON_GetObjectItem(pg, "shapes");
+    m->play_shape = shape_id(jstr(shapes, "play"), SH_CIRCLE);
+    m->playing_shape = shape_id(jstr(shapes, "playing"), SH_SQUARE);
+    lv_obj_t *prev = media_btn(tile, shape_id(jstr(shapes, "prev"), SH_CIRCLE), 64, P.secc, P.on_secc, "skip_previous", F.icon_m, "prev");
     lv_obj_align(prev, LV_ALIGN_CENTER, -94, 44);
-    lv_obj_t *next = media_btn(tile, 64, P.secc, P.on_secc, "skip_next", F.icon_m, "next");
+    lv_obj_t *next = media_btn(tile, shape_id(jstr(shapes, "next"), SH_CIRCLE), 64, P.secc, P.on_secc, "skip_next", F.icon_m, "next");
     lv_obj_align(next, LV_ALIGN_CENTER, 94, 44);
-    m->play = media_btn(tile, 100, P.pc, P.on_pc, m_playing ? "pause" : "play_arrow", F.icon_l, "play_pause");
+    m->play = media_btn(tile, m->play_shape, 100, P.pc, P.on_pc, m_playing ? "pause" : "play_arrow", F.icon_l, "play_pause");
     lv_obj_align(m->play, LV_ALIGN_CENTER, 0, 44);
     m->play_icon = lv_obj_get_child(m->play, 0);
-    play_morph(m->play, m_playing);
+    play_morph(m->play, m->play_shape, m->playing_shape, m_playing);
 }
 
 void ui_media(const char *title, const char *artist, const char *player, bool playing)
@@ -606,7 +604,7 @@ void ui_media(const char *title, const char *artist, const char *player, bool pl
         lv_label_set_text(live.media[i].artist, m_artist);
         lv_label_set_text(live.media[i].player, m_player[0] ? m_player : "Nothing playing");
         lv_label_set_text(live.media[i].play_icon, theme_icon(playing ? "pause" : "play_arrow"));
-        play_morph(live.media[i].play, playing);
+        play_morph(live.media[i].play, live.media[i].play_shape, live.media[i].playing_shape, playing);
     }
 }
 

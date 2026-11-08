@@ -49,7 +49,9 @@ the device keeps a copy in flash so it works without the daemon.
   },
   "media": {
     "coverBackground": true,   // blurred album art behind media pages
-    "coverColors": true        // media pages take a palette derived from the album art
+    "coverColors": true,       // media pages take a palette derived from the album art
+    "blur": 60,                // 0 (nearly sharp) … 100 (very soft); missing = 60
+    "coverOpacity": 50         // how much the art shows through the surface-colored scrim, 0..100; missing = 50
   },
   "device": {
     "brightness": 80,          // 5..100
@@ -76,7 +78,7 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | type | extra fields | what the device shows |
 |---|---|---|
 | `radial` | `center?: Button`, `buttons: Button[]` (1..8) | buttons on a ring, optional big center button |
-| `media` | – | now playing (title, artist, art color), prev / play-pause / next, volume on the edge arc |
+| `media` | `shapes?: {prev?, next?, play?, playing?}` (shape names as for buttons) | now playing (title, artist, album art), prev / play-pause / next, volume on the edge arc. Defaults: prev/next/play `circle`, playing `square` (the play button switches shape with the playback state). |
 | `stats` | `items: ("cpu"\|"cpuTemp"\|"ram"\|"gpu"\|"gpuTemp"\|"vram")[]` (1..4) | M3 expressive gauges |
 | `dial` | `icon`, `label`, `source: "volume"\|"mic"\|"brightness"\|"custom"`, `step?: number` (custom only, 1..20), `onUp?: Action`, `onDown?: Action` (custom only) | one big value arc, drag along the edge |
 

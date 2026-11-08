@@ -88,12 +88,15 @@ func shrink(img image.Image, n int) [][3]float64 {
 	return out
 }
 
-// Blurred renders the background: shrink to 32×32, blur that once, then bilinear back to 360×360
-// (a cheap, very smooth blur), as little-endian RGB565 with ordered dithering.
-func Blurred(img image.Image) []byte {
-	const n = 32
+// Blurred renders the background as little-endian RGB565 with ordered dithering.
+// strength 0..100: the image is shrunk to an n×n grid (n from 90 down to 16),
+// box-blurred 0..3 times there, then scaled back up bilinearly. Cheap and smooth.
+func Blurred(img image.Image, strength int) []byte {
+	strength = max(0, min(100, strength))
+	n := 90 - strength*74/100
+	passes := strength * 3 / 100
 	small := shrink(img, n)
-	for pass := 0; pass < 1; pass++ { // 3×3 box blur on the small grid: Gaussian-like
+	for pass := 0; pass < passes; pass++ { // 3×3 box blur on the small grid: Gaussian-like
 		next := make([][3]float64, n*n)
 		for y := 0; y < n; y++ {
 			for x := 0; x < n; x++ {
@@ -112,11 +115,11 @@ func Blurred(img image.Image) []byte {
 	out := make([]byte, Size*Size*2)
 	bayer := [4][4]float64{{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}}
 	for y := 0; y < Size; y++ {
-		fy := (float64(y)+0.5)*n/Size - 0.5
+		fy := (float64(y)+0.5)*float64(n)/Size - 0.5
 		y0 := int(math.Floor(fy))
 		ty := fy - float64(y0)
 		for x := 0; x < Size; x++ {
-			fx := (float64(x)+0.5)*n/Size - 0.5
+			fx := (float64(x)+0.5)*float64(n)/Size - 0.5
 			x0 := int(math.Floor(fx))
 			tx := fx - float64(x0)
 			at := func(xx, yy int) [3]float64 {

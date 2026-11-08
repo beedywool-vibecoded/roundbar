@@ -422,13 +422,13 @@ func (d *Daemon) sendMedia() {
 // cancelled when the track changes again.
 func (d *Daemon) syncCover(artURL string) {
 	d.mu.Lock()
-	bg, colors := d.cfg.Media.CoverBackground, d.cfg.Media.CoverColors
+	bg, colors, blur := d.cfg.Media.CoverBackground, d.cfg.Media.CoverColors, d.cfg.Media.BlurOrDefault()
 	dark := d.cfg.Theme.Mode != "light"
 	errs := map[string]string{}
 	for _, k := range []string{"error", "errorContainer", "onErrorContainer"} {
 		errs[k] = d.cfg.Theme.Palette[k]
 	}
-	key := fmt.Sprintf("%s|%v|%v|%v", artURL, bg, colors, dark)
+	key := fmt.Sprintf("%s|%v|%v|%v|%d", artURL, bg, colors, dark, blur)
 	if key == d.artSent {
 		d.mu.Unlock()
 		return
@@ -463,7 +463,7 @@ func (d *Daemon) syncCover(artURL string) {
 			d.send(map[string]any{"t": "cover", "seq": seq, "n": 0})
 			return
 		}
-		chunks := cover.Chunks(cover.Blurred(img), 32*1024)
+		chunks := cover.Chunks(cover.Blurred(img, blur), 32*1024)
 		for i, c := range chunks {
 			if ctx.Err() != nil {
 				return

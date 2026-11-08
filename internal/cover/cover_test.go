@@ -21,7 +21,7 @@ func TestPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := Blurred(img)
+	raw := Blurred(img, 60)
 	bg := image.NewRGBA(image.Rect(0, 0, Size+200, Size))
 	for i := 0; i < Size*Size; i++ {
 		v := binary.LittleEndian.Uint16(raw[2*i:])
@@ -52,7 +52,7 @@ func TestGray(t *testing.T) {
 	if len(p) < 17 || p["primary"] == "" {
 		t.Fatal(p)
 	}
-	if len(Blurred(img)) != Size*Size*2 {
+	if len(Blurred(img, 60)) != Size*Size*2 {
 		t.Fatal("size")
 	}
 }
