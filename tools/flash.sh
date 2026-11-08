@@ -4,6 +4,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/../firmware/build"
 
+# Never flash a stale image (e.g. after a failed build).
+if [[ -n $(find ../main ../sdkconfig.defaults ../partitions.csv -newer roundbar.bin -type f 2>/dev/null | head -1) ]]; then
+  echo "firmware sources are newer than build/roundbar.bin: run 'idf.py build' (or make firmware) first" >&2
+  exit 1
+fi
+
 # Any Espressif tty that isn't roundbar itself (303a:4011): USB-Serial-JTAG
 # (303a:1001) or the ROM's USB-OTG download port.
 dl_port() {
