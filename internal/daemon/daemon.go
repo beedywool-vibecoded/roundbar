@@ -25,6 +25,7 @@ import (
 	"github.com/beedywool-vibecoded/roundbar/internal/desktop"
 	"github.com/beedywool-vibecoded/roundbar/internal/device"
 	"github.com/beedywool-vibecoded/roundbar/internal/discord"
+	"github.com/beedywool-vibecoded/roundbar/internal/keymap"
 	"github.com/beedywool-vibecoded/roundbar/internal/obs"
 	"github.com/beedywool-vibecoded/roundbar/internal/stats"
 	"github.com/beedywool-vibecoded/roundbar/internal/steam"
@@ -81,6 +82,9 @@ type Daemon struct {
 	cdp           *discord.CDP
 	iconsSent     map[string]bool
 
+	layout   keymap.Detected // the PC's active keyboard layout
+	layoutMu sync.Mutex      // one detection at a time
+
 	statsStop chan struct{}
 	syncNote  string // last config sync with the board, for the configurator
 	mangoStop chan struct{}
@@ -112,6 +116,7 @@ func (d *Daemon) Run() error {
 		}
 		go d.desktopLoop()
 	}
+	go d.detectLayout(false) // for the configurator; sent to the device on hello
 	go d.audioLoop()
 	go d.clockLoop()
 	go d.discord.Run(d.done, d.discordKick)
@@ -240,6 +245,7 @@ func (d *Daemon) onDeviceMsg(m device.Msg) {
 		d.notify()
 		d.kickClock()
 		go d.sendNotifs("")
+		go d.detectLayout(true)
 	case "view":
 		var v View
 		_ = json.Unmarshal(m.Raw, &v)
@@ -406,7 +412,10 @@ func (d *Daemon) startStats(items []string) {
 	d.statsStop = stop
 	d.mu.Unlock()
 	go func() {
-		d.stats.Sample(want) // primes the CPU delta
+		// Stops helpers such as the nvidia-smi child once the page is gone. If another
+		// stats page already started, its next Sample starts them again.
+		defer d.stats.Stop()
+		d.stats.Sample(want) // primes the CPU delta (and starts nvidia-smi)
 		t := time.NewTicker(statsEvery)
 		defer t.Stop()
 		for {
@@ -440,6 +449,8 @@ func (d *Daemon) desktopLoop() {
 		select {
 		case f := <-d.desk.FocusChanged:
 			d.onFocus(f)
+		case <-d.desk.LayoutChanged:
+			go d.detectLayout(false)
 		case <-d.desk.WindowsChanged:
 			if d.viewKind() == "windows" {
 				d.sendWindows()
@@ -820,14 +831,15 @@ func (d *Daemon) run(a config.Action) {
 // ---- status for the socket ----------------------------------------------
 
 type Status struct {
-	Device     *DeviceStatus   `json:"device"`
-	Focus      desktop.Focus   `json:"focus"`
-	Profile    string          `json:"profile"`
-	RecentApps []desktop.Focus `json:"recentApps"`
-	View       View            `json:"view"`
-	Extension  bool            `json:"extension"`
-	Discord    discord.State   `json:"discord"`
-	OBS        obs.State       `json:"obs"`
+	Device     *DeviceStatus    `json:"device"`
+	Keyboard   *keymap.Detected `json:"keyboard,omitempty"`
+	Focus      desktop.Focus    `json:"focus"`
+	Profile    string           `json:"profile"`
+	RecentApps []desktop.Focus  `json:"recentApps"`
+	View       View             `json:"view"`
+	Extension  bool             `json:"extension"`
+	Discord    discord.State    `json:"discord"`
+	OBS        obs.State        `json:"obs"`
 }
 
 type DeviceStatus struct {
@@ -850,7 +862,12 @@ func (d *Daemon) status() Status {
 	pid, _ := d.profileFor(d.focus)
 	rec := append([]desktop.Focus{}, d.recent...)
 	disc := d.discordStateLocked()
-	return Status{OBS: d.obs.State(), Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
+	var kbd *keymap.Detected
+	if d.layout.ID != "" {
+		k := d.layout
+		kbd = &k
+	}
+	return Status{Keyboard: kbd, OBS: d.obs.State(), Discord: disc, Device: ds, Focus: d.focus, Profile: pid, RecentApps: rec, View: d.view, Extension: d.focus.ID != ""}
 }
 
 // notify wakes every socket watcher (coalesced per watcher).

@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // world clocks validate the same on every machine
+
+	"github.com/beedywool-vibecoded/roundbar/internal/keymap"
 )
 
 type Config struct {
@@ -63,8 +65,8 @@ type Device struct {
 	DimAfter       int    `json:"dimAfter"`
 	SleepAfter     int    `json:"sleepAfter"`
 	LongPressMs    int    `json:"longPressMs"`
-	KeyboardLayout string `json:"keyboardLayout"`
-	Rotation       int    `json:"rotation"` // degrees clockwise: 0, 90, 180, 270
+	KeyboardLayout string `json:"keyboardLayout"` // "auto" (or missing) or a keymap id
+	Rotation       int    `json:"rotation"`       // degrees clockwise: 0, 90, 180, 270
 	FollowPc       *bool  `json:"followPc,omitempty"`
 	EdgeDoubleTap  string `json:"edgeDoubleTap,omitempty"`
 	Notifications  *bool  `json:"notifications,omitempty"`
@@ -283,8 +285,8 @@ func (c *Config) Validate() error {
 		return fail("device.sleepAfter", "must be 0..86400")
 	case d.LongPressMs < 200 || d.LongPressMs > 2000:
 		return fail("device.longPressMs", "must be 200..2000")
-	case !oneOf(d.KeyboardLayout, "fr", "us"):
-		return fail("device.keyboardLayout", "must be fr or us")
+	case d.KeyboardLayout != "" && d.KeyboardLayout != "auto" && keymap.Get(d.KeyboardLayout) == nil:
+		return fail("device.keyboardLayout", "must be auto or a layout from shared/keymaps.json")
 	case !oneOf(d.EdgeDoubleTap, "", "page", "quickSettings", "screenOff", "off"):
 		return fail("device.edgeDoubleTap", "must be page, quickSettings, screenOff or off")
 	case d.Rotation != 0 && d.Rotation != 90 && d.Rotation != 180 && d.Rotation != 270:

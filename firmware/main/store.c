@@ -5,13 +5,16 @@
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "keymap.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "store";
 static cJSON *cfg;
 static char sha[48];
-static char layout[4] = "fr";
+// Static strings from the keymap table, so the HID task can read them without locking.
+static const char *cfg_layout;  // device.keyboardLayout, NULL = auto
+static const char *host_layout; // detected by the daemon (persisted), NULL = never told
 static int brightness = -1;
 
 // Used until the daemon pushes the real one: media, a volume dial and stats.
@@ -23,7 +26,7 @@ static const char *FALLBACK =
     "\"secondaryContainer\":\"#4A4458\",\"onSecondaryContainer\":\"#E8DEF8\",\"tertiary\":\"#EFB8C8\","
     "\"tertiaryContainer\":\"#633B48\",\"onTertiaryContainer\":\"#FFD8E4\",\"error\":\"#F2B8B5\","
     "\"errorContainer\":\"#8C1D18\",\"onErrorContainer\":\"#F9DEDC\",\"outline\":\"#938F99\",\"outlineVariant\":\"#49454F\"}},"
-    "\"device\":{\"brightness\":80,\"dimAfter\":30,\"sleepAfter\":300,\"longPressMs\":450,\"keyboardLayout\":\"fr\"},"
+    "\"device\":{\"brightness\":80,\"dimAfter\":30,\"sleepAfter\":300,\"longPressMs\":450,\"keyboardLayout\":\"auto\"},"
     "\"profiles\":[{\"id\":\"default\",\"name\":\"Default\",\"match\":[],\"pages\":["
     "{\"id\":\"media\",\"type\":\"media\",\"title\":\"Now playing\"},"
     "{\"id\":\"keys\",\"type\":\"radial\",\"title\":\"Desktop\",\"center\":{\"id\":\"ov\",\"icon\":\"apps\",\"label\":\"Overview\",\"color\":\"primary\",\"tap\":{\"type\":\"keys\",\"keys\":\"super\"}},"
@@ -38,8 +41,7 @@ static void *spiram_malloc(size_t n) { return heap_caps_malloc(n, MALLOC_CAP_SPI
 static void refresh_cache(void)
 {
     cJSON *dev = cJSON_GetObjectItem(cfg, "device");
-    const char *l = cJSON_GetStringValue(cJSON_GetObjectItem(dev, "keyboardLayout"));
-    strlcpy(layout, l && !strcmp(l, "us") ? "us" : "fr", sizeof(layout));
+    cfg_layout = keymap_canonical(cJSON_GetStringValue(cJSON_GetObjectItem(dev, "keyboardLayout")));
 }
 
 void store_init(void)
@@ -67,6 +69,12 @@ void store_init(void)
         if (nvs_get_str(h, "sha", sha, &sl) != ESP_OK) sha[0] = 0;
         int32_t b;
         if (nvs_get_i32(h, "bright", &b) == ESP_OK) brightness = b;
+        nvs_close(h);
+    }
+    if (nvs_open_from_partition("cfg", "local", NVS_READONLY, &h) == ESP_OK) {
+        char id[16];
+        size_t il = sizeof(id);
+        if (nvs_get_str(h, "kbd", id, &il) == ESP_OK) host_layout = keymap_canonical(id);
         nvs_close(h);
     }
     if (!cfg) {
@@ -99,7 +107,27 @@ char *store_json_copy(size_t *len)
     return buf;
 }
 const char *store_sha(void) { return sha; }
-const char *store_layout(void) { return layout; }
+const char *store_layout(void)
+{
+    const char *l = cfg_layout ? cfg_layout : host_layout;
+    return l ? l : "us";
+}
+
+bool store_set_host_layout(const char *id)
+{
+    const char *l = keymap_canonical(id);
+    if (!l) return false;
+    if (l == host_layout) return true;
+    host_layout = l;
+    nvs_handle_t h;
+    if (nvs_open_from_partition("cfg", "local", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_str(h, "kbd", l);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    ESP_LOGI(TAG, "host keyboard layout: %s", l);
+    return true;
+}
 
 int store_get_int(const char *key, int def)
 {

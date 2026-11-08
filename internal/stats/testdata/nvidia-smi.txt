@@ -1,0 +1,5 @@
+3, 1043, 8188, 41
+37, 2190, 8188, 54
+100, 7912, 8188, 79
+[N/A], 512, 4096, [N/A]
+[Not Supported], [Not Supported], [Not Supported], [Not Supported]

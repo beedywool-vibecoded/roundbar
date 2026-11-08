@@ -9,7 +9,8 @@ The contract between the four parts. Change it here first, then in code.
 │ LVGL, 360²   │ ◀───────────────────────▶ │ roundbar     │◀── D-Bus ── GNOME extension (focus)
 └──────────────┘                           │  daemon (Go) │◀── D-Bus ── MPRIS players
                                            │              │◀── pulse ── PipeWire (volume, mic)
-                                           │              │◀── sysfs ── /proc, hwmon, amdgpu
+                                           │              │◀── sysfs ── /proc, hwmon, amdgpu, i915/xe
+                                           │              │◀── nvidia-smi (only while a GPU gauge shows)
                                            └──────┬───────┘
                                     unix socket   │
                                            ┌──────┴───────┐
@@ -61,7 +62,10 @@ the device keeps a copy in flash so it works without the daemon.
     "dimAfter": 30,            // seconds idle before dimming to 20 %, 0 = never
     "sleepAfter": 300,         // seconds idle before screen off, 0 = never
     "longPressMs": 450,
-    "keyboardLayout": "fr",    // host layout used to turn characters into HID keycodes: "fr" | "us"
+    "keyboardLayout": "auto",  // host layout used to turn characters into HID keycodes: "auto" (the daemon
+                               // detects the PC's active layout and sends it, see `layout` in §2) or an id from
+                               // shared/keymaps.json: "us" | "us-intl" | "gb" | "fr" | "be" | "de" | "ch" |
+                               // "ch-fr" | "es" | "it" | "se" | "fi" | "no" | "dk"; missing = "auto"
     "rotation": 0,             // screen rotation, degrees clockwise: 0 | 90 | 180 | 270 (touch follows)
     "edgeDoubleTap": "page",   // double tap near the left/right edge: "page" (prev/next, instant) |
                                // "quickSettings" | "screenOff" | "off"; missing = "page"
@@ -125,7 +129,7 @@ Every page has `id` ([a-z0-9-]{1,24}, unique inside its profile), `type`, option
 | type | fields | executed by |
 |---|---|---|
 | `keys` | `keys: "ctrl+shift+t"` (modifiers `ctrl shift alt super` + one key, or one modifier alone like `super`) | device (USB HID) |
-| `text` | `text: "hello"` (≤ 64 chars, printable ASCII + `é è à ç ù`) | device (USB HID, uses `keyboardLayout`) |
+| `text` | `text: "hello"` (≤ 64 chars: newline, tab and any character at least one layout of `shared/keymaps.json` can type, e.g. printable ASCII, accented letters through dead keys, AltGr characters like `€`) | device (USB HID, uses `keyboardLayout`; characters the active layout can't type are skipped and the ack is `ok: false`) |
 | `media` | `cmd: "play_pause"\|"next"\|"prev"\|"vol_up"\|"vol_down"\|"mute"` | device (USB HID consumer) |
 | `page` | `page: "<page id>"` | device |
 | `command` | `cmd: "notify-send hi"` (run with `sh -c`, detached) | daemon |
@@ -139,9 +143,21 @@ Step: `{ "keys": "ctrl+c" } | { "text": "…" } | { "delay": 250 } | { "command"
 Key names (lowercase): `a`–`z`, `0`–`9`, `f1`–`f24`, `enter esc tab space backspace delete insert home end
 pageup pagedown up down left right minus equal leftbracket rightbracket backslash semicolon quote grave
 comma period slash capslock printscreen`. Letter and digit keys name the **character**, not the physical key:
-with `keyboardLayout: "fr"`, `ctrl+a` sends the physical key that types `a` on AZERTY (HID Q). Digits on `fr`
-are sent with the top row as the US positions (GNOME shortcuts like `super+1` expect that), punctuation keys
-name the US physical key.
+with `keyboardLayout: "fr"`, `ctrl+a` sends the physical key that types `a` on AZERTY (HID Q). Digits are sent
+as the top row keys on every layout (GNOME shortcuts like `super+1` expect that, even where the digit itself needs
+Shift), punctuation keys name the US physical key.
+
+### Keyboard layouts (`shared/keymaps.json`)
+
+An array of `{ "id", "name", "xkb": "de" | "ch(fr)", "keys": { "<XKB key name>": [base, shift, altGr, shift+altGr] } }`.
+Keys are the 48 typing keys by XKB name (`TLDE`, `AE01`–`AE12`, `AD01`–`AD12`, `AC01`–`AC11`, `BKSL`, `LSGT`,
+`AB01`–`AB10`), each sent as a fixed HID usage (its US position; `LSGT` is the ISO key, HID 0x64). A level is one
+character, `"dead_<acute|grave|circumflex|tilde|diaeresis|abovering|cedilla|caron>"`, or missing.
+`tools/keymap-from-xkb.py` prints an entry from the local xkeyboard-config; `go run ./tools/gen-keymaps`
+turns the file into the firmware table (`firmware/main/keymaps.h`) and the configurator's (`web/src/lib/layouts.gen.ts`).
+A character is typed with the fewest keystrokes the layout allows: a direct key (fewest modifiers first), else a
+dead key followed by space or by itself (`^`, `~`, `´`…), else a dead key followed by the base letter (`é` on German
+= dead acute, `e`), as in the standard Linux Compose table.
 
 ### Device-only controls (not in the config)
 
@@ -216,6 +232,7 @@ originals), save `config.json`, then push it back once so both sides share the n
 | t | fields | notes |
 |---|---|---|
 | `hello` | – | ask the device to resend `hello` |
+| `layout` | `id` (a `shared/keymaps.json` id) | the PC's active keyboard layout as detected by the daemon, used when `device.keyboardLayout` is `"auto"`. Sent on connect and whenever the active layout changes. The device keeps the last one in flash; until one arrives `auto` means `us`. |
 | `config` | `id`, `cfg: Config`, `sha: "<sha1>"` | sent when the sync rules below say the PC's config goes to the board, or when the file changes. Device stores it and acks. sha1 is over the exact bytes of the config file. |
 | `configGet` | – | device answers with `configDump` chunks |
 | `assetGet` | `name` (device file name) | device answers with `assetDump` chunks |
@@ -226,7 +243,7 @@ originals), save `config.json`, then push it back once so both sides share the n
 | `mediaTheme` | `palette: {role: "#RRGGBB"}` (same roles as theme.palette) or `null` | cover palette for media pages when `media.coverColors` is on; `null` restores the theme |
 | `volume` | `value: 0..100`, `muted: bool` | on change, and once when a page that shows volume becomes visible |
 | `mic` | `muted: bool`, `value: 0..100` | same |
-| `stats` | any of `cpu ram gpu vram` (0..100 %), `cpuTemp gpuTemp` (°C) | every 1.5 s while a `stats` page is visible and the screen is awake |
+| `stats` | any of `cpu ram gpu vram` (0..100 %), `cpuTemp gpuTemp` (°C) | every 1.5 s while a `stats` page is visible and the screen is awake. GPU: a discrete one if any (most VRAM first), else the one driving a display. AMD: sysfs. NVIDIA: a long-lived `nvidia-smi -lms` child, running only while a page with a GPU gauge is shown. Intel (i915/xe): load from the DRM fdinfo of the user's own processes (no root needed), else current/max frequency; temperature from hwmon where exposed (discrete cards); no VRAM. Keys the GPU can't provide are left out. |
 | `hid` | `keys?: string`, `text?: string`, `media?: string` | macro steps and configurator tests, typed by the device. With an `id`, acked once typed. |
 | `show` | `profile`, `page` | configurator preview: jump to a page |
 | `bootloader` | – | reboot into the ROM USB download mode (for flashing) |
@@ -254,7 +271,7 @@ The daemon stops all periodic work when `view.awake` is false or when no device 
 
 JSON lines, request/response, used by `roundbar config` (and `roundbar status`, `roundbar flash`).
 
-- `{"op":"status"}` → `{"device":{"connected":true,"port":"/dev/ttyACM1","fw":"0.1.0","cfg":"…","inSync":true},"focus":{"id":"firefox","name":"Firefox","class":"firefox"},"profile":"browser","recentApps":[{"id":"firefox","name":"Firefox","class":"firefox"},…],"view":{"profile":"…","page":"…","kind":"radial","awake":true},"extension":true}`
+- `{"op":"status"}` → `{"device":{"connected":true,"port":"/dev/ttyACM1","fw":"0.1.0","cfg":"…","inSync":true},"keyboard":{"detected":"de","source":"gnome"},"focus":{"id":"firefox","name":"Firefox","class":"firefox"},"profile":"browser","recentApps":[{"id":"firefox","name":"Firefox","class":"firefox"},…],"view":{"profile":"…","page":"…","kind":"radial","awake":true},"extension":true}`
 - `{"op":"show","profile":"…","page":"…"}` → `{"ok":true}`
 - `{"op":"run","action":Action}` → `{"ok":true}` (test an action from the configurator)
 - `{"op":"reload"}` → re-read config now

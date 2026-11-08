@@ -169,8 +169,8 @@ la pochette**. Précédent, lecture et suivant au centre, **volume sur l'arc du 
 <td valign="top">
 
 ### Système et molettes
-Jauges **CPU, GPU, VRAM, RAM et températures** (AMD via sysfs), relevées seulement quand une page
-de stats est à l'écran. Molettes de **volume**, de **micro**, de **luminosité** ou **personnalisées**,
+Jauges **CPU, GPU, VRAM, RAM et températures** (AMD via sysfs, NVIDIA via `nvidia-smi`, Intel via
+fdinfo), relevées seulement quand une page de stats est à l'écran. Molettes de **volume**, de **micro**, de **luminosité** ou **personnalisées**,
 qu'on tourne en glissant le long du bord.
 
 </td>
@@ -220,7 +220,10 @@ glyphes de 9 Mo construit depuis les polices Noto du système.
 ### Léger et autonome
 Le daemon réagit aux événements, sans scrutation : **~0 % de CPU et ~15 Mo de RAM** au repos.
 La carte garde sa config en flash et se présente comme un **clavier et une souris USB** : les
-raccourcis marchent même sans le logiciel côté PC.
+raccourcis marchent même sans le logiciel côté PC. Elle tape selon la **disposition clavier du PC**,
+détectée automatiquement (GNOME, KDE, X11, sway…) et suivie quand on en change : US, US international,
+UK, AZERTY français et belge, QWERTZ allemand et suisse, suisse romand, espagnol, italien, suédois,
+finnois, norvégien et danois, accents par touches mortes et caractères AltGr compris.
 
 </td>
 </tr>
@@ -332,7 +335,7 @@ du configurateur fait la même chose.
 <tr><td><code>internal/device</code></td><td>Connexion USB CDC et messages JSON avec la carte.</td></tr>
 <tr><td><code>internal/desktop</code></td><td>Focus, fenêtres, notifications et presse-papiers via l'extension GNOME (D-Bus), MPRIS, actions.</td></tr>
 <tr><td><code>internal/audio</code></td><td>Volume, micro et mixeur par app (PipeWire).</td></tr>
-<tr><td><code>internal/stats</code></td><td>CPU, RAM, GPU et températures lus dans <code>/proc</code>, hwmon et amdgpu.</td></tr>
+<tr><td><code>internal/stats</code></td><td>CPU, RAM, GPU et températures lus dans <code>/proc</code>, hwmon, amdgpu, le fdinfo DRM (Intel i915/xe) et un <code>nvidia-smi</code> lancé seulement pendant l'affichage d'une jauge GPU.</td></tr>
 <tr><td><code>internal/cover</code></td><td>Pochettes : fond flouté et palette tirée de l'image.</td></tr>
 <tr><td><code>internal/assets</code></td><td>Images des pages image, rendues au format de la carte.</td></tr>
 <tr><td><code>internal/icons</code></td><td>Icônes des apps envoyées à la carte.</td></tr>
@@ -341,8 +344,10 @@ du configurateur fait la même chose.
 <tr><td><code>internal/ipc</code></td><td>Socket du daemon (<code>$XDG_RUNTIME_DIR/roundbar.sock</code>).</td></tr>
 <tr><td><code>web/</code></td><td>Configurateur Vue 3, Material 3 Expressive, palette Material You générée depuis une couleur de base, embarqué dans le binaire.</td></tr>
 <tr><td><code>gnome-extension/</code></td><td><code>roundbar@beedy</code> : publie le focus, les fenêtres, les notifications et le presse-papiers sur D-Bus, par signaux uniquement, sans scrutation. Sous GNOME Wayland, c'est le seul moyen de connaître la fenêtre active.</td></tr>
+<tr><td><code>internal/keymap</code></td><td>Dispositions clavier : caractère → touches HID (touches mortes, AltGr), détection de la disposition active du PC.</td></tr>
 <tr><td><code>shared/icons.json</code></td><td>Le sous-ensemble de Material Symbols Rounded intégré au firmware.</td></tr>
-<tr><td><code>tools/</code></td><td><code>flash.sh</code>, <code>fontpack</code> (pack de glyphes CJK et emoji), <code>gen-icons.py</code>, <code>readme-assets.py</code>.</td></tr>
+<tr><td><code>shared/keymaps.json</code></td><td>Les dispositions clavier, source unique de la table du firmware, de la validation et du configurateur. Ajouter une disposition : <code>tools/keymap-from-xkb.py</code>, coller l'entrée, puis <code>go run ./tools/gen-keymaps</code>.</td></tr>
+<tr><td><code>tools/</code></td><td><code>flash.sh</code>, <code>fontpack</code> (pack de glyphes CJK et emoji), <code>gen-icons.py</code>, <code>gen-keymaps</code>, <code>keymap-from-xkb.py</code>, <code>readme-assets.py</code>.</td></tr>
 <tr><td><code>deploy/</code></td><td>Règle udev <code>70-roundbar.rules</code>.</td></tr>
 </table>
 

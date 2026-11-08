@@ -53,6 +53,10 @@ func TestValidateRejects(t *testing.T) {
 		{"timezone", ".zones[0].tz", func(c *Config) {
 			c.Profiles[0].Pages = append(c.Profiles[0].Pages[:1], Page{ID: "c", Type: "clock", Zones: []Zone{{TZ: "Mars/Olympus"}}})
 		}},
+		{"layout", "device.keyboardLayout", func(c *Config) { c.Device.KeyboardLayout = "klingon" }},
+		{"untypeable text", ".text", func(c *Config) {
+			radial(c).Buttons[0].Tap = &Action{Type: "text", Text: "snow ☃"}
+		}},
 		{"page type", ".type", func(c *Config) {
 			c.Profiles[0].Pages = append(c.Profiles[0].Pages[:1], Page{ID: "x", Type: "hologram"})
 		}},
@@ -80,6 +84,16 @@ func TestValidateAccepts(t *testing.T) {
 	c.Profiles[0].Pages = append(c.Profiles[0].Pages[:1],
 		Page{ID: "o", Type: "obs"}, Page{ID: "g", Type: "game"},
 		Page{ID: "t", Type: "timer", Minutes: []int{5, 25, 180}})
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range []string{"auto", "", "fr", "us", "de", "ch-fr", "se"} {
+		c.Device.KeyboardLayout = l
+		if err := c.Validate(); err != nil {
+			t.Errorf("layout %q: %v", l, err)
+		}
+	}
+	radial(c).Buttons[0].Tap = &Action{Type: "text", Text: "Grüße, señor! 10 € @ {x|y} çà"}
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}

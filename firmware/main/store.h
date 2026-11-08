@@ -11,7 +11,11 @@ const char *store_sha(void);
 char *store_json_copy(size_t *len); // the stored config bytes (free() it), NULL if none
 // Takes ownership of nothing; copies json. Returns false if it doesn't parse.
 bool store_save(const char *json, const char *sha);
-const char *store_layout(void); // "fr" | "us"
+// Layout id used for typing: device.keyboardLayout, or for "auto" the one the daemon
+// detected (kept in flash), or "us".
+const char *store_layout(void);
+// From the daemon's {"t":"layout"}; false for an unknown id.
+bool store_set_host_layout(const char *id);
 int store_get_int(const char *key, int def); // device.<key>
 // Local brightness override from a brightness dial (-1 = use config).
 int store_brightness(void);

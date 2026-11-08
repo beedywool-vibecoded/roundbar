@@ -17,6 +17,12 @@ const (
 	mprisPath  = "/org/mpris/MediaPlayer2"
 	mprisIface = "org.mpris.MediaPlayer2.Player"
 	mprisPre   = "org.mpris.MediaPlayer2."
+
+	dconfIface  = "ca.desrt.dconf.Writer"
+	inputPrefix = "/org/gnome/desktop/input-sources/"
+	kdeKbdName  = "org.kde.keyboard"
+	kdeKbdPath  = "/Layouts"
+	kdeKbdIface = "org.kde.KeyboardLayouts"
 )
 
 type Focus struct {
@@ -55,6 +61,9 @@ type Desktop struct {
 	// Shell-side lists changed (coalesced). NotifNew carries the id of a new notification.
 	WindowsChanged, ClipsChanged, NotifsChanged chan struct{}
 	NotifNew                                    chan string
+	// The keyboard layout may have changed: GNOME input sources were written in dconf,
+	// or KDE switched layouts (coalesced).
+	LayoutChanged chan struct{}
 
 	mu      sync.Mutex
 	players map[string]*player // by owner
@@ -68,7 +77,7 @@ func Connect() (*Desktop, error) {
 	}
 	d := &Desktop{conn: conn, FocusChanged: make(chan Focus, 4), MediaChanged: make(chan struct{}, 1), players: map[string]*player{},
 		WindowsChanged: make(chan struct{}, 1), ClipsChanged: make(chan struct{}, 1), NotifsChanged: make(chan struct{}, 1),
-		NotifNew: make(chan string, 4)}
+		NotifNew: make(chan string, 4), LayoutChanged: make(chan struct{}, 1)}
 	if err := conn.AddMatchSignal(dbus.WithMatchInterface(focusIface), dbus.WithMatchObjectPath(focusPath)); err != nil {
 		return nil, err
 	}
@@ -80,6 +89,9 @@ func Connect() (*Desktop, error) {
 		dbus.WithMatchArg0Namespace("org.mpris.MediaPlayer2")); err != nil {
 		return nil, err
 	}
+	// Best effort: neither is required.
+	_ = conn.AddMatchSignal(dbus.WithMatchInterface(dconfIface), dbus.WithMatchMember("Notify"))
+	_ = conn.AddMatchSignal(dbus.WithMatchInterface(kdeKbdIface), dbus.WithMatchObjectPath(kdeKbdPath))
 	sig := make(chan *dbus.Signal, 16)
 	conn.Signal(sig)
 	go d.loop(sig)
@@ -96,6 +108,13 @@ func Connect() (*Desktop, error) {
 }
 
 func (d *Desktop) Close() { d.conn.Close() }
+
+// KDELayoutIndex asks KDE which entry of its layout list is active.
+func (d *Desktop) KDELayoutIndex() (int, bool) {
+	var i uint32
+	err := d.conn.Object(kdeKbdName, kdeKbdPath).Call(kdeKbdIface+".getLayout", dbus.FlagNoAutoStart).Store(&i)
+	return int(i), err == nil
+}
 
 // CurrentFocus asks the extension directly (used at startup).
 func (d *Desktop) CurrentFocus() (Focus, bool) {
@@ -116,6 +135,20 @@ func (d *Desktop) loop(sig chan *dbus.Signal) {
 			case d.FocusChanged <- f:
 			default: // consumer is slow; it will get the next one
 			}
+		case s.Name == dconfIface+".Notify" && len(s.Body) >= 2:
+			prefix, _ := s.Body[0].(string)
+			changes, _ := s.Body[1].([]string)
+			if len(changes) == 0 {
+				changes = []string{""}
+			}
+			for _, c := range changes {
+				if p := prefix + c; strings.HasPrefix(p, inputPrefix) || strings.HasPrefix(inputPrefix, p) {
+					kick(d.LayoutChanged)
+					break
+				}
+			}
+		case strings.HasPrefix(s.Name, kdeKbdIface+"."):
+			kick(d.LayoutChanged)
 		case s.Name == focusIface+".WindowsChanged":
 			kick(d.WindowsChanged)
 		case s.Name == focusIface+".ClipboardChanged":

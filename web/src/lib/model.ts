@@ -1,5 +1,6 @@
 // Labels, defaults, id generation and validation for the config (docs/spec.md section 1).
 import { comboError } from './keys'
+import { validText } from './layouts'
 import { BUTTON_SHAPES, type ButtonShape } from './shapes'
 import { DEFAULT_SEED, devicePalette, validHex } from './theme'
 import {
@@ -305,7 +306,7 @@ export function starterConfig(): Config {
     theme: { seed: DEFAULT_SEED, mode: 'dark', palette: devicePalette(DEFAULT_SEED, 'dark') },
     media: { coverBackground: true, coverColors: true, ...MEDIA_DEFAULTS },
     device: {
-      brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'fr',
+      brightness: 80, rotation: 0, dimAfter: 30, sleepAfter: 300, longPressMs: 450, keyboardLayout: 'auto',
       followPc: true,
       edgeDoubleTap: 'page',
       notifications: true,
@@ -427,11 +428,7 @@ export interface Issue {
   message: string
 }
 
-const TEXT_RE = /^[\x20-\x7e éèàçù]*$/
-
-export function validText(s: string): boolean {
-  return TEXT_RE.test(s)
-}
+export { validText }
 
 function checkStep(s: Step, path: string, out: Issue[]) {
   if ('keys' in s) {
@@ -440,7 +437,7 @@ function checkStep(s: Step, path: string, out: Issue[]) {
   } else if ('text' in s) {
     if (!s.text) out.push({ path, message: 'Text is empty' })
     else if (s.text.length > LIMITS.text) out.push({ path, message: `Text is longer than ${LIMITS.text} characters` })
-    else if (!validText(s.text)) out.push({ path, message: 'Text has characters the device cannot type' })
+    else if (!validText(s.text)) out.push({ path, message: 'Text has characters no keyboard layout can type' })
   } else if ('delay' in s) {
     if (!Number.isInteger(s.delay) || s.delay < 0 || s.delay > LIMITS.delay)
       out.push({ path, message: `Delay must be 0 to ${LIMITS.delay} ms` })
@@ -459,7 +456,7 @@ export function checkAction(a: Action, pages: Page[], path: string, out: Issue[]
     case 'text':
       if (!a.text) out.push({ path, message: 'Text is empty' })
       else if (a.text.length > LIMITS.text) out.push({ path, message: `Text is longer than ${LIMITS.text} characters` })
-      else if (!validText(a.text)) out.push({ path, message: 'Text has characters the device cannot type (ASCII and é è à ç ù only)' })
+      else if (!validText(a.text)) out.push({ path, message: 'Text has characters no keyboard layout can type' })
       break
     case 'page':
       if (!pages.some((p) => p.id === a.page)) out.push({ path, message: 'Pick a page of this profile' })

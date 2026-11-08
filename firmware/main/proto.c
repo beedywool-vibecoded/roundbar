@@ -233,6 +233,8 @@ static void handle(cJSON *m)
             ui_reload();
             lvgl_port_unlock();
         }
+    } else if (!strcmp(t, "layout")) {
+        store_set_host_layout(str(m, "id"));
     } else if (!strcmp(t, "profile")) {
         lvgl_port_lock(0);
         ui_set_profile(str(m, "id"));

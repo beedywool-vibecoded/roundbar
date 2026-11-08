@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/beedywool-vibecoded/roundbar/internal/keymap"
 	"github.com/beedywool-vibecoded/roundbar/shared"
 )
 
@@ -64,7 +65,7 @@ func ValidText(s string) error {
 		return fmt.Errorf("must be 1..64 chars")
 	}
 	for _, r := range s {
-		if (r < 0x20 || r > 0x7e) && !strings.ContainsRune("éèàçù\n\t", r) {
+		if !keymap.Typeable(r) {
 			return fmt.Errorf("character %q can't be typed", r)
 		}
 	}

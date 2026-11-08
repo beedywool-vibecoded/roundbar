@@ -1,4 +1,5 @@
 // Config, status and action types, mirroring docs/spec.md sections 1, 3 and 4.
+import type { LayoutId } from './layouts.gen'
 import type { ButtonShape } from './shapes'
 
 export type { ButtonShape }
@@ -36,7 +37,8 @@ export interface Theme {
   palette: Palette
 }
 
-export type KeyboardLayout = 'fr' | 'us'
+// 'auto': the layout the daemon detects on the PC; otherwise an id from shared/keymaps.json
+export type KeyboardLayout = 'auto' | LayoutId
 
 export type Rotation = 0 | 90 | 180 | 270
 
@@ -280,6 +282,8 @@ export interface Status {
   recentApps?: App[]
   view?: View | null
   extension?: boolean
+  /** The PC's active keyboard layout, used by the device when keyboardLayout is 'auto' */
+  keyboard?: { detected: LayoutId; source: string }
   /** Discord RPC session of the daemon */
   discord?: DiscordStatus
   /** obs-websocket session of the daemon */
