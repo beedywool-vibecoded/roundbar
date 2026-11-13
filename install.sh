@@ -167,12 +167,41 @@ fi
 say ""
 run "$BIN_DIR/roundbar" install --no-udev
 
+# ---- does this PC need a log out / restart? --------------------------------
+# Decided from what the running daemon reports, not guessed from the distro:
+# GNOME only loads a newly installed extension at the next login (Wayland and
+# X11 alike); KDE, wlroots compositors and X11 desktops need nothing. The udev
+# rule applies immediately (uaccess + udevadm trigger), so it never needs one.
+relogin=""
+cmd="roundbar"
+if [ "$DRY_RUN" = 0 ]; then
+	status=""
+	i=0
+	while [ $i -lt 10 ]; do # the daemon just (re)started: give it a few seconds
+		status="$("$BIN_DIR/roundbar" status 2>/dev/null | tr -d ' \n' || true)"
+		case "$status" in *'"extension":true'*) break ;; esac
+		sleep 0.5
+		i=$((i + 1))
+	done
+	case "$status" in
+	*'"backend":"gnome"'*'"extension":false'* | *'"extension":false'*'"backend":"gnome"'*)
+		relogin="GNOME loads Roundbar's extension (it tells Roundbar which app you're using) only at your next login." ;;
+	esac
+fi
 case ":$PATH:" in
 *":$BIN_DIR:"*) ;;
 *)
-	say ""
-	say "note: $BIN_DIR is not in your PATH. Add this line to ~/.profile (or your shell's rc file):"
-	say "  export PATH=\"$BIN_DIR:\$PATH\""
+	if grep -qs '\.local/bin' "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.zprofile"; then
+		# Debian, Ubuntu, Fedora…: ~/.profile adds ~/.local/bin at login if it exists.
+		cmd="$BIN_DIR/roundbar"
+		relogin="${relogin:+$relogin
+  }The short 'roundbar' command works in terminals after that login."
+	else
+		cmd="$BIN_DIR/roundbar"
+		say ""
+		say "note: $BIN_DIR is not in your PATH. To type just 'roundbar', add this line to ~/.profile:"
+		say "  export PATH=\"$BIN_DIR:\$PATH\""
+	fi
 	;;
 esac
 
@@ -183,7 +212,27 @@ Next steps
   2. Board still on its factory firmware? Flash roundbar from your browser
      (Chrome or Edge): $WEB_INSTALLER
      Later updates install from the configurator (Device page, Firmware card).
-  3. Open the configurator: "roundbar" in your app launcher, or run: roundbar config
+  3. Open the configurator: "Roundbar" in your app menu, or run: $cmd config
 
-Uninstall: roundbar uninstall   (or this script with --uninstall)
+Uninstall: $cmd uninstall   (or this script with --uninstall)
 EOF
+
+if [ -n "$relogin" ]; then
+	cat <<EOF
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  ⚠  Log out and back in (or restart) to finish installing.           │
+└──────────────────────────────────────────────────────────────────────┘
+  $relogin
+  Until then the board, its shortcuts and the configurator already work.
+EOF
+elif [ "$DRY_RUN" = 0 ]; then
+	say ""
+	say "✓ No restart needed."
+fi
+case "${status:-}" in
+*'"error":"permission"'*)
+	say ""
+	say "⚠  The board is plugged in but Roundbar can't open it yet: run '$cmd udev' (asks your password once)."
+	;;
+esac
