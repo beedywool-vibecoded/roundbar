@@ -184,9 +184,17 @@ named `<stem>-c2.jpg` / `<stem>-f2.jpg` (`.gif` likewise; the digit is the devic
 JFIF APP0 segment), and copies the ones the device lacks to its `assets`
 partition (see §2).
 
-## 2. Serial protocol (USB CDC, both directions)
+## 2. Serial protocol (USB CDC or USB MIDI, both directions)
 
 - One JSON object per line, `\n` terminated, UTF-8, ≤ 64 KiB per line (the `config` message is the big one).
+- Two links carry the same lines. The **CDC serial port** is the usual one. The board is also a **USB MIDI device**:
+  on Linux the logged-in user may open sound devices without any rule (systemd's `70-uaccess.rules`), so when the
+  serial port can't be opened (no udev rule, no sudo) the daemon opens `/dev/snd/midiC*D*` of the board instead
+  (found through sysfs by VID/PID). There each line is one SysEx message `F0 7D <payload> F7`: the line's bytes
+  in groups of 7, each group sent as one byte holding their top bits (bit i = top bit of byte i) followed by the
+  7 bytes' low 7 bits. The board answers on the link the last line came in on. `ROUNDBAR_LINK=midi` in the
+  daemon's environment forces the MIDI link (testing, diagnosis). The board shows up as a "Roundbar" MIDI device
+  in music apps; it ignores any MIDI traffic that isn't its own SysEx.
 - Every message has `"t"` (type). Unknown types are ignored. The device is the source of truth for what is on screen.
 
 ### Device → PC

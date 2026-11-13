@@ -40,8 +40,8 @@ curl -fsSL https://raw.githubusercontent.com/beedywool-vibecoded/roundbar/master
 The script:
 
 - downloads the app for your PC to `~/.local/bin` and checks it against the release checksums,
-- asks once for your password to install a small permission rule, so your user can talk to the board over
-  USB (without it you'd get "permission denied"),
+- talks to the board without any admin rights (through the board's USB MIDI link). If you can use sudo, it
+  offers an optional permission rule for the board's serial port; saying no is fine,
 - starts Roundbar's background service, which also starts with your session from now on.
 
 **On Arch** you can use the AUR package `roundbar-bin` instead. Every release also has `.deb` (Debian,
@@ -96,8 +96,8 @@ enough power; avoid unpowered hubs.
 
 **The PC doesn't see the board** (the configurator says it's not connected).
 - Try another cable: charge-only cables are the most common cause.
-- Linux: run `roundbar status`. If it mentions **permission**, run `roundbar udev` (asks for your password),
-  then unplug and replug the board.
+- Linux: unplug the board and plug it back in. If `roundbar status` still mentions **permission**, run
+  `roundbar udev` (needs your password) and replug the board again.
 - Make sure the board runs Roundbar: if its screen is black or shows something else, redo
   [step 1](#1-put-roundbar-on-the-board).
 

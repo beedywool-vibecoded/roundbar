@@ -114,19 +114,22 @@ func installUdev(prompt bool) error {
 		return nil
 	}
 	fmt.Print(`
-roundbar talks to the board over a USB serial port (/dev/ttyACM*). Linux only
-lets root open it until a udev rule grants access to the person logged in at
-the desktop. Installing that rule (` + etcUdevRule + `) needs your password once.
+Optional: Roundbar reaches the board through its USB MIDI link, which needs no
+password. A udev rule (` + etcUdevRule + `) also opens the board's serial port to
+the person logged in at the desktop; installing it needs your password once.
+Without it, everything still works.
 `)
 	if prompt {
 		yes, ok := ask("Install the udev rule now?", true)
 		if !ok || !yes {
-			fmt.Println("skipped. To do it later, run: roundbar udev")
+			fmt.Println("skipped: Roundbar uses the MIDI link. To add the rule later, run: roundbar udev")
 			return nil
 		}
 	}
 	if err := asRoot(udev.Script, deploy.UdevRule); err != nil {
-		return fmt.Errorf("installing the udev rule failed (%v); run `roundbar udev` to try again", err)
+		// no sudo/pkexec, wrong password, not an admin: the MIDI link works anyway
+		fmt.Printf("the udev rule wasn't installed (%v): no problem, Roundbar uses the MIDI link\n", err)
+		return nil
 	}
 	fmt.Println("installed", etcUdevRule)
 	udev.RestartDaemon()

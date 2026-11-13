@@ -269,8 +269,9 @@ button while plugging it in. Later updates happen from the app, in one click.
 curl -fsSL https://raw.githubusercontent.com/beedywool-vibecoded/roundbar/master/install.sh | sh
 ```
 
-It installs the app in `~/.local/bin`, checks its checksum, asks once for your password to let you use the
-board's USB port, and starts the background service. Arch: AUR package `roundbar-bin`. Every release also has
+It installs the app in `~/.local/bin`, checks its checksum and starts the background service. **No admin
+rights needed**: the app reaches the board through its USB MIDI link, which any logged-in user may open. If
+you can use sudo, it also offers an optional rule for the board's serial port. Arch: AUR package `roundbar-bin`. Every release also has
 `.deb` and `.rpm` packages.
 
 </td>

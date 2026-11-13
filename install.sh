@@ -145,23 +145,35 @@ run mkdir -p "$BIN_DIR"
 run mv -f "$tmp/$name" "$BIN_DIR/roundbar"
 say "installed $BIN_DIR/roundbar"
 
-if [ "$UDEV" = 1 ] && ! udev_rule_installed; then
-	cat <<'EOF'
+# Can this user become root at all? (sudo missing, or "may not run sudo")
+can_sudo() {
+	command -v sudo >/dev/null 2>&1 || return 1
+	! sudo -n -l 2>&1 | grep -qi 'may not run sudo'
+}
 
-roundbar talks to the board over a USB serial port (/dev/ttyACM*). Linux only
-lets root open it until a udev rule grants access to whoever is logged in at
-the desktop. Installing that rule (/etc/udev/rules.d/70-roundbar.rules) needs
-your password once (sudo).
+if [ "$UDEV" = 1 ] && ! udev_rule_installed; then
+	if ! can_sudo; then
+		say ""
+		say "No admin rights here: that's fine. Roundbar reaches the board through its USB"
+		say "MIDI link, which any logged-in user may open. Nothing else to do."
+	else
+		cat <<'EOF'
+
+Optional: Roundbar reaches the board through its USB MIDI link, which needs no
+password. A udev rule (/etc/udev/rules.d/70-roundbar.rules) also opens the
+board's serial port to whoever is logged in at the desktop; installing it needs
+your password once (sudo). Without it, everything still works.
 EOF
-	set +e
-	ask "Install the udev rule now?"
-	rc=$?
-	set -e
-	case $rc in
-	0) run "$BIN_DIR/roundbar" udev --yes || say "the udev rule wasn't installed; run 'roundbar udev' later" ;;
-	1) say "skipped. Run 'roundbar udev' later if the board shows 'No access to the device'." ;;
-	*) say "no terminal to ask on: run 'roundbar udev' afterwards to install the udev rule." ;;
-	esac
+		set +e
+		ask "Install the udev rule now?"
+		rc=$?
+		set -e
+		case $rc in
+		0) run "$BIN_DIR/roundbar" udev --yes || say "the udev rule wasn't installed: no problem, Roundbar uses the MIDI link" ;;
+		1) say "skipped: Roundbar uses the MIDI link." ;;
+		*) say "no terminal to ask on: skipped, Roundbar uses the MIDI link." ;;
+		esac
+	fi
 fi
 
 say ""
@@ -233,6 +245,7 @@ fi
 case "${status:-}" in
 *'"error":"permission"'*)
 	say ""
-	say "⚠  The board is plugged in but Roundbar can't open it yet: run '$cmd udev' (asks your password once)."
+	say "⚠  The board is plugged in but Roundbar can't open it: unplug it and plug it back in."
+	say "   If that doesn't help, '$cmd udev' installs a rule for its serial port (asks your password once)."
 	;;
 esac

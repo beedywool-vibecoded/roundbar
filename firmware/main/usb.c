@@ -22,13 +22,15 @@ static const char *TAG = "usb";
 
 #define RX_LINE_MAX (64 * 1024 + 256)
 
-enum { ITF_CDC = 0, ITF_CDC_DATA, ITF_HID, ITF_TOTAL };
+enum { ITF_CDC = 0, ITF_CDC_DATA, ITF_HID, ITF_MIDI, ITF_MIDI_STREAMING, ITF_TOTAL };
 enum { RID_KBD = 1, RID_CONSUMER = 2, RID_MOUSE = 3 };
 #define EP_CDC_NOTIF 0x81
 #define EP_CDC_OUT   0x02
 #define EP_CDC_IN    0x82
 #define EP_HID       0x83
-#define CFG_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_HID_DESC_LEN)
+#define EP_MIDI_OUT  0x04
+#define EP_MIDI_IN   0x84
+#define CFG_LEN (TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_HID_DESC_LEN + TUD_MIDI_DESC_LEN)
 
 static const uint8_t hid_report[] = {
     TUD_HID_REPORT_DESC_KEYBOARD(HID_REPORT_ID(RID_KBD)),
@@ -40,6 +42,10 @@ static const uint8_t cfg_desc[] = {
     TUD_CONFIG_DESCRIPTOR(1, ITF_TOTAL, 0, CFG_LEN, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
     TUD_CDC_DESCRIPTOR(ITF_CDC, 4, EP_CDC_NOTIF, 8, EP_CDC_OUT, EP_CDC_IN, 64),
     TUD_HID_DESCRIPTOR(ITF_HID, 5, HID_ITF_PROTOCOL_NONE, sizeof(hid_report), EP_HID, 16, 5),
+    // Also a USB MIDI device: Linux lets the logged-in user open sound devices
+    // without any udev rule, so the PC app can reach us even without sudo
+    // (JSON lines as SysEx, docs/spec.md §2).
+    TUD_MIDI_DESCRIPTOR(ITF_MIDI, 6, EP_MIDI_OUT, EP_MIDI_IN, 64),
 };
 
 static const tusb_desc_device_t dev_desc = {
@@ -61,7 +67,7 @@ static const tusb_desc_device_t dev_desc = {
 
 static char serial[13];
 static const char *strings[] = {
-    "\x09\x04", "roundbar", "roundbar", serial, "roundbar link", "roundbar keys",
+    "\x09\x04", "roundbar", "roundbar", serial, "roundbar link", "roundbar keys", "Roundbar",
 };
 
 static QueueHandle_t line_q;
@@ -69,6 +75,13 @@ static char *line_buf;
 static size_t line_len;
 static bool line_overflow;
 static volatile bool dtr;
+// The link the PC app last talked to us on: replies go back the same way.
+enum { LINK_CDC, LINK_MIDI };
+static volatile int link = LINK_CDC;
+static volatile bool midi_peer; // a MIDI host has sent us a line
+static char *midi_buf;           // packed SysEx payload being received
+static size_t midi_len;
+static bool midi_in, midi_head;
 static SemaphoreHandle_t tx_mu;
 
 typedef struct {
@@ -176,6 +189,7 @@ static void cdc_rx(int itf, cdcacm_event_t *event)
                 if (s) {
                     memcpy(s, line_buf, line_len);
                     s[line_len] = 0;
+                    link = LINK_CDC;
                     if (xQueueSend(line_q, &s, 0) != pdTRUE) free(s);
                 }
             }
@@ -194,6 +208,7 @@ static void cdc_line_state(int itf, cdcacm_event_t *event)
     if (now && !dtr) {
         // A host just opened the port: introduce ourselves.
         dtr = true;
+        link = LINK_CDC;
         char *s = strdup("{\"t\":\"hello\"}");
         if (s && xQueueSend(line_q, &s, 0) != pdTRUE) free(s);
     }
@@ -206,16 +221,109 @@ static void cdc_line_coding(int itf, cdcacm_event_t *event)
     if (event->line_coding_changed_data.p_line_coding->bit_rate == 1200) usb_reboot_to_bootloader();
 }
 
-bool usb_host_listening(void) { return dtr; }
+bool usb_host_listening(void) { return dtr || midi_peer; }
+
+// ---- MIDI (SysEx transport) ---------------------------------------------------
+
+static void midi_line(void)
+{
+    // unpack 8-byte groups (top bits first) into the original bytes
+    size_t n = 0;
+    for (size_t i = 0; i < midi_len; i += 8) {
+        uint8_t msb = (uint8_t)midi_buf[i];
+        for (size_t j = 1; j < 8 && i + j < midi_len; j++) midi_buf[n++] = (char)(midi_buf[i + j] | (((msb >> (j - 1)) & 1) << 7));
+    }
+    if (n == 0) return;
+    char *s = malloc(n + 1);
+    if (!s) return;
+    memcpy(s, midi_buf, n);
+    s[n] = 0;
+    link = LINK_MIDI;
+    midi_peer = true;
+    if (xQueueSend(line_q, &s, 0) != pdTRUE) free(s);
+}
+
+void tud_midi_rx_cb(uint8_t itf)
+{
+    uint8_t chunk[64];
+    uint32_t n;
+    while ((n = tud_midi_stream_read(chunk, sizeof(chunk))) > 0) {
+        for (uint32_t i = 0; i < n; i++) {
+            uint8_t b = chunk[i];
+            if (b >= 0xF8) continue; // real-time bytes
+            if (b == 0xF0) {
+                midi_in = midi_head = true;
+                midi_len = 0;
+            } else if (!midi_in) {
+            } else if (b == 0xF7) {
+                midi_in = false;
+                if (!midi_head) midi_line();
+            } else if (b & 0x80) {
+                midi_in = false; // another status byte: unfinished message
+            } else if (midi_head) {
+                midi_head = false;
+                if (b != 0x7D) midi_in = false; // not ours
+            } else if (midi_len < RX_LINE_MAX) {
+                midi_buf[midi_len++] = (char)b;
+            } else {
+                midi_in = false; // too long
+            }
+        }
+    }
+}
+
+// Writes bytes into the MIDI stream, waiting for room (bounded).
+static void midi_write(const uint8_t *p, size_t n)
+{
+    int spins = 0;
+    while (n > 0 && spins < 200 && tud_mounted()) {
+        uint32_t w = tud_midi_stream_write(0, p, n);
+        p += w;
+        n -= w;
+        if (n > 0) {
+            vTaskDelay(pdMS_TO_TICKS(1));
+            spins++;
+        }
+    }
+}
+
+static void midi_send_line(const char *json)
+{
+    static const uint8_t head[2] = {0xF0, 0x7D}, tail[1] = {0xF7};
+    midi_write(head, 2);
+    size_t len = strlen(json);
+    for (size_t i = 0; i < len; i += 7) {
+        uint8_t group[8] = {0};
+        size_t k = len - i < 7 ? len - i : 7;
+        for (size_t j = 0; j < k; j++) {
+            uint8_t b = (uint8_t)json[i + j];
+            group[0] |= (b >> 7) << j;
+            group[1 + j] = b & 0x7F;
+        }
+        midi_write(group, 1 + k);
+    }
+    midi_write(tail, 1);
+}
 
 static volatile bool suspended;
-void tud_suspend_cb(bool remote_wakeup_en) { suspended = true; }
+void tud_suspend_cb(bool remote_wakeup_en)
+{
+    suspended = true;
+    midi_peer = false; // the PC app says hello again once the PC is back
+}
 void tud_resume_cb(void) { suspended = false; }
 bool usb_suspended(void) { return suspended || !tud_mounted(); }
 
 void usb_send_line(const char *json)
 {
-    if (!dtr || !tud_mounted()) return;
+    if (!tud_mounted()) return;
+    if (link == LINK_MIDI && midi_peer && tud_midi_mounted()) {
+        xSemaphoreTake(tx_mu, portMAX_DELAY);
+        midi_send_line(json);
+        xSemaphoreGive(tx_mu);
+        return;
+    }
+    if (!dtr) return;
     xSemaphoreTake(tx_mu, portMAX_DELAY);
     size_t len = strlen(json), off = 0;
     int spins = 0;
@@ -367,6 +475,7 @@ void usb_init(QueueHandle_t lines)
 {
     line_q = lines;
     line_buf = heap_caps_malloc(RX_LINE_MAX, MALLOC_CAP_SPIRAM);
+    midi_buf = heap_caps_malloc(RX_LINE_MAX, MALLOC_CAP_SPIRAM);
     tx_mu = xSemaphoreCreateMutex();
     hid_q = xQueueCreate(16, sizeof(hid_job_t));
 

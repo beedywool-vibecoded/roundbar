@@ -160,7 +160,24 @@ func (d *Daemon) deviceLoop() {
 			device.WaitHotplug(d.done)
 			continue
 		}
-		p, err := device.Open(path)
+		var p *device.Port
+		var err error
+		if os.Getenv("ROUNDBAR_LINK") == "midi" { // testing and diagnosis: skip the serial port
+			err = os.ErrPermission
+		} else {
+			p, err = device.Open(path)
+		}
+		if err != nil && errors.Is(err, os.ErrPermission) {
+			// No udev rule (no sudo here?): the board is also a USB MIDI device,
+			// which the logged-in user can open without one.
+			if m := device.FindMIDI(); m != "" {
+				if mp, merr := device.OpenMIDI(m); merr == nil {
+					p, err, path = mp, nil, m
+				} else {
+					log.Printf("open %s: %v", m, merr)
+				}
+			}
+		}
 		if err != nil {
 			why := ""
 			if errors.Is(err, os.ErrPermission) { // EACCES/EPERM, or access denied on Windows
