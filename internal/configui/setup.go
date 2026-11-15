@@ -146,10 +146,17 @@ func (s *server) getAppIcon(w http.ResponseWriter, r *http.Request) {
 	jsonErr(w, http.StatusNotFound, "no icon", "")
 }
 
-// getVesktop: {installs: [{kind, path, enabled}], port}.
+// getVesktop: {installs: [{kind, path, enabled}], port, running, withPort}.
+// running && !withPort: Vesktop must be restarted to open the port.
 func (s *server) getVesktop(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"installs": vesktopInstalls(), "port": discord.CDPPort})
+	running, withPort := vesktopRunning()
+	writeJSON(w, map[string]any{"installs": vesktopInstalls(), "port": discord.CDPPort, "running": running, "withPort": withPort})
 }
+
+var (
+	vesktopRunning   = discord.VesktopRunning
+	vesktopLaunchers = discord.PatchVesktopLaunchers
+)
 
 var vesktopInstalls = discord.VesktopInstalls
 
@@ -186,5 +193,13 @@ func (s *server) postVesktop(w http.ResponseWriter, r *http.Request) {
 		}
 		changed = changed || ch
 	}
-	writeJSON(w, map[string]any{"ok": true, "changed": changed, "installs": vesktopInstalls()})
+	// the flags file alone isn't read by every Vesktop: its launchers get the flag too
+	files, err := vesktopLaunchers(*body.Enable)
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, err.Error(), "")
+		return
+	}
+	changed = changed || len(files) > 0
+	running, withPort := vesktopRunning()
+	writeJSON(w, map[string]any{"ok": true, "changed": changed, "installs": vesktopInstalls(), "running": running, "withPort": withPort})
 }

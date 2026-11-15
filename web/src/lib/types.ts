@@ -374,6 +374,9 @@ export interface VesktopInstall {
 export interface VesktopInfo {
   installs: VesktopInstall[]
   port: number
+  /** Vesktop runs; withPort: with the DevTools port (else it needs a restart) */
+  running?: boolean
+  withPort?: boolean
 }
 
 // SSE `flash` events during a firmware update

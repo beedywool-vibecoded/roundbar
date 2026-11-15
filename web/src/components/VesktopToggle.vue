@@ -23,13 +23,15 @@ onMounted(async () => {
 })
 
 const enabled = computed(() => !!info.value?.installs.length && info.value.installs.every((i) => i.enabled))
+// turned on, but the Vesktop that's running was started without the port
+const needsRestart = computed(() => enabled.value && !!info.value?.running && !info.value?.withPort)
 
 async function set(on: boolean) {
   if (busy.value) return
   busy.value = true
   try {
     const r = await api.setVesktop(on)
-    info.value = { installs: r.installs, port: r.port }
+    info.value = { installs: r.installs, port: r.port, running: r.running, withPort: r.withPort }
     if (r.changed) restart.value = true
   } catch (e) {
     toastError(e)
@@ -56,7 +58,7 @@ async function set(on: boolean) {
         it is on, any program running as you could read your Discord session through it. Turn it off here any time.
       </span>
     </p>
-    <p v-if="restart" class="restart small" role="status">
+    <p v-if="restart || needsRestart" class="restart small" role="status">
       <Icon name="restart_alt" :size="16" />
       {{ enabled ? 'Done. Quit Vesktop completely and start it again to turn it on.' : 'Turned off. Restart Vesktop to close the port.' }}
     </p>

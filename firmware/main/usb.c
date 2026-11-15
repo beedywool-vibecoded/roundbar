@@ -312,7 +312,9 @@ void tud_suspend_cb(bool remote_wakeup_en)
     midi_peer = false; // the PC app says hello again once the PC is back
 }
 void tud_resume_cb(void) { suspended = false; }
-bool usb_suspended(void) { return suspended || !tud_mounted(); }
+// TinyUSB clears its suspended state on bus reset too (a PC booting from cold),
+// which our own flag (set/cleared by suspend/resume) would miss.
+bool usb_suspended(void) { return tud_suspended() || !tud_mounted(); }
 
 void usb_send_line(const char *json)
 {

@@ -3325,10 +3325,14 @@ static void screen_off(void)
 
 static void power_tick(lv_timer_t *t)
 {
-    // Follow the PC: dark ~8 s after the host side goes away, back when it returns.
+    // Follow the PC: dark ~8 s after the PC goes away (shut down, asleep, unplugged),
+    // back as soon as it returns. "The PC is there" means it has set us up on its
+    // USB bus and isn't suspending it, so this works before anyone logs in too.
+    // Starting as "there" makes a board that boots without a PC (some PCs cut
+    // USB power for a moment at shutdown) go dark as well.
     static uint32_t host_gone_at;
-    static bool host_was;
-    bool host = usb_host_listening() && !usb_suspended();
+    static bool host_was = true;
+    bool host = !usb_suspended();
     if (store_get_bool("followPc", true)) {
         if (!host && host_was) host_gone_at = lv_tick_get();
         if (!host && host_gone_at && lv_tick_get() - host_gone_at > 8000) {
