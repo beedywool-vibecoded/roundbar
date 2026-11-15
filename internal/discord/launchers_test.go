@@ -9,8 +9,8 @@ import (
 
 func TestWithFlag(t *testing.T) {
 	for in, want := range map[string]string{
-		"Exec=/usr/lib/vesktop/vesktop":                          "Exec=/usr/lib/vesktop/vesktop " + VesktopFlag,
-		"Exec=/usr/bin/vesktop %U":                               "Exec=/usr/bin/vesktop " + VesktopFlag + " %U",
+		"Exec=/usr/lib/vesktop/vesktop":                           "Exec=/usr/lib/vesktop/vesktop " + VesktopFlag,
+		"Exec=/usr/bin/vesktop %U":                                "Exec=/usr/bin/vesktop " + VesktopFlag + " %U",
 		"Exec=flatpak run --branch=stable dev.vencord.Vesktop %U": "Exec=flatpak run --branch=stable dev.vencord.Vesktop " + VesktopFlag + " %U",
 	} {
 		got := withFlag(in, true)
