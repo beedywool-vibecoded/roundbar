@@ -167,6 +167,7 @@ const DOTS = Array.from({ length: 6 }, (_, k) => {
 }
 .nav-item.active {
   color: var(--on-surface);
+  font-weight: 600;
 }
 .nav-item.active .pill {
   background: var(--secc);
@@ -261,11 +262,12 @@ const DOTS = Array.from({ length: 6 }, (_, k) => {
     left: 0;
     right: 0;
     z-index: 10;
-    height: 80px;
+    height: calc(64px + env(safe-area-inset-bottom));
     flex-direction: row;
     justify-content: space-around;
+    align-items: center;
     gap: 0;
-    padding: 12px 0 0;
+    padding: 6px 0 env(safe-area-inset-bottom);
     border-right: none;
     background: var(--sc);
   }
@@ -276,20 +278,25 @@ const DOTS = Array.from({ length: 6 }, (_, k) => {
     width: auto;
     flex: 1;
     min-width: 0;
+    gap: 2px;
+    padding: 0;
     font-size: 11px;
   }
   .pill {
-    width: 48px;
+    width: 52px;
+    height: 30px;
   }
   .main-col {
-    padding: 0 16px 112px;
+    padding: 0 16px 96px;
   }
   .topbar {
     margin: 0 -16px 16px;
     padding: 12px 16px 10px;
     gap: 8px;
   }
-  .brand,
+  .brand {
+    font-size: 22px;
+  }
   .focus {
     display: none;
   }

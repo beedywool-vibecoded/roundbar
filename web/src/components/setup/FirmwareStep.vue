@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // Step 2: the release check and update of the Firmware card (lib/firmware.ts).
+import M3Expand from '../M3Expand.vue'
 import { computed, watchEffect } from 'vue'
 import Icon from '../Icon.vue'
 import ShapeLoader from '../ShapeLoader.vue'
@@ -84,10 +85,10 @@ watchEffect(() => {
     <p v-if="result === false" class="err small" role="alert">
       <Icon name="error" :size="16" /> The update didn't finish. Your board still works; try again, or later from the Device page.
     </p>
-    <details v-if="lines.length" class="log-wrap">
-      <summary class="small">Details</summary>
+    <M3Expand v-if="lines.length" class="log-wrap">
+      <template #summary><span class="small">Details</span></template>
       <pre class="log">{{ lines.join('\n') }}</pre>
-    </details>
+    </M3Expand>
   </div>
 </template>
 
@@ -124,10 +125,6 @@ watchEffect(() => {
   justify-self: center;
   color: var(--on-sv);
   font-size: 14px;
-}
-.log-wrap summary {
-  cursor: pointer;
-  color: var(--on-sv);
 }
 .log {
   margin: 8px 0 0;
