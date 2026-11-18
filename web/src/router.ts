@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { config, dirty } from './lib/store'
+import { reloadOnStaleChunks } from './lib/staleChunks'
 
 // Hash history: the Go server only has to serve index.html at `/`, and the token arrives
 // in the hash anyway (lib/token.ts clears it first).
@@ -29,3 +30,5 @@ window.addEventListener('beforeunload', (e) => {
     e.returnValue = ''
   }
 })
+
+reloadOnStaleChunks(router)
