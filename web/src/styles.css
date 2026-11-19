@@ -644,3 +644,24 @@ h3 {
   padding: 32px 16px;
   text-align: center;
 }
+
+/* Linked rows (M3 Expressive connected list): rows that belong together (switch rows, option
+   rows) sit 2 px apart, 20 px corners on the outer ends, 6 px between rows, like SectionList.
+   Rows read their corners from --row-radius (SwitchRow does). */
+.linked {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.linked > * {
+  --row-radius: 6px;
+}
+.linked > :first-child {
+  --row-radius: 20px 20px 6px 6px;
+}
+.linked > :last-child {
+  --row-radius: 6px 6px 20px 20px;
+}
+.linked > :only-child {
+  --row-radius: 20px;
+}

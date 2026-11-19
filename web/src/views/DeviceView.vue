@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import Icon from '@/components/Icon.vue'
 import M3Shape from '@/components/M3Shape.vue'
 import M3Slider from '@/components/M3Slider.vue'
-import M3Switch from '@/components/M3Switch.vue'
+import SwitchRow from '@/components/SwitchRow.vue'
 import M3Select from '@/components/M3Select.vue'
 import NumField from '@/components/NumField.vue'
 import ImageList from '@/components/ImageList.vue'
@@ -236,26 +236,10 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
             </div>
             <p class="muted small" style="margin: 0">0 means never.</p>
           </div>
-          <div class="setting">
-            <div class="grow">
-              <div>Follow the PC</div>
-              <div class="muted small">Turn the screen off when the PC shuts down or sleeps, and back on when it starts</div>
-            </div>
-            <M3Switch v-model="dev.followPc" label="Follow the PC" />
-          </div>
-          <div class="setting">
-            <div class="grow">
-              <div>Notification panel</div>
-              <div class="muted small">Pull up from the bottom edge of the device to see your notifications</div>
-            </div>
-            <M3Switch v-model="dev.notifications" label="Notification panel" />
-          </div>
-          <div class="setting">
-            <div class="grow">
-              <div>Show new notifications</div>
-              <div class="muted small">New notifications from the PC pop up briefly on the screen</div>
-            </div>
-            <M3Switch v-model="dev.notifToast" label="Show new notifications" />
+          <div class="linked">
+            <SwitchRow v-model="dev.followPc" label="Follow the PC" hint="Turn the screen off when the PC shuts down or sleeps, and back on when it starts" />
+            <SwitchRow v-model="dev.notifications" label="Notification panel" hint="Pull up from the bottom edge of the device to see your notifications" />
+            <SwitchRow v-model="dev.notifToast" label="Show new notifications" hint="New notifications from the PC pop up briefly on the screen" />
           </div>
 
           <div class="card-head" style="margin-top: 12px"><h2>Input</h2></div>
