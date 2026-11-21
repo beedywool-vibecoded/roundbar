@@ -1,4 +1,4 @@
-// v-tip: M3 plain tooltip on hover and focus, replacing title tooltips. One shared element.
+// v-tip: M3 plain tooltip on mouse hover and keyboard focus (never on touch), replacing title tooltips. One shared element.
 import type { Directive } from 'vue'
 
 let el: HTMLDivElement | null = null
@@ -41,9 +41,12 @@ export const vTip: Directive<HTMLElement, string | undefined> = {
   mounted(target, binding) {
     target.dataset.tip = binding.value ?? ''
     if (binding.value && !target.getAttribute('aria-label')) target.setAttribute('aria-label', binding.value)
-    target.addEventListener('pointerenter', () => show(target))
+    // Mouse hover and keyboard focus only: on a phone a tap is both a "hover" and a focus, and a
+    // tooltip popping up after every tap only gets in the way (the label is read out anyway)
+    target.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && show(target))
     target.addEventListener('pointerleave', hide)
-    target.addEventListener('focus', () => show(target))
+    target.addEventListener('pointerdown', (e) => e.pointerType !== 'mouse' && hide())
+    target.addEventListener('focus', () => target.matches(':focus-visible') && show(target))
     target.addEventListener('blur', hide)
   },
   updated(target, binding) {
