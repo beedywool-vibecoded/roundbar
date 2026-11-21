@@ -113,21 +113,25 @@ a {
 }
 
 /* Thin rounded scrollbars in the theme colors instead of the browser's */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--outline-v) transparent;
-}
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 8px;
-  background: var(--outline-v) padding-box;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
+/* Only with a mouse: on a touch screen, any scrollbar style turns Chrome's overlay scrollbar (shown
+   while scrolling, then gone) into a permanent bar down the side of pages and dialogs */
+@media (hover: hover) and (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--outline-v) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 8px;
+    background: var(--outline-v) padding-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 /* M3 plain tooltip (lib/tooltip.ts) */
