@@ -134,6 +134,21 @@ a {
   }
 }
 
+/* Touch screens: popups never draw a scrollbar (a finger scrolls them, like an Android sheet). Left
+   to Chrome, the scrolling card of a large dialog can keep a bar down its rounded side */
+@media (hover: none), (pointer: coarse) {
+  dialog,
+  dialog *,
+  .dialog-scroll {
+    scrollbar-width: none;
+  }
+  dialog::-webkit-scrollbar,
+  dialog *::-webkit-scrollbar,
+  .dialog-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* M3 plain tooltip (lib/tooltip.ts) */
 .m3-tooltip {
   position: fixed;
