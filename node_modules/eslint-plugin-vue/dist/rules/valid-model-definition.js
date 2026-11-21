@@ -1,0 +1,38 @@
+const require_index = require("../utils/index.js");
+// lib/rules/valid-model-definition.ts
+/**
+* @fileoverview Requires valid keys in model option.
+* @author Alex Sokolov
+*/
+const VALID_MODEL_KEYS = /* @__PURE__ */ new Set(["prop", "event"]);
+var valid_model_definition_default = {
+	meta: {
+		type: "problem",
+		docs: {
+			description: "require valid keys in model option",
+			categories: ["vue2-essential"],
+			url: "https://eslint.vuejs.org/rules/valid-model-definition.html"
+		},
+		fixable: null,
+		deprecated: true,
+		schema: [],
+		messages: { invalidKey: "Invalid key '{{name}}' in model option." }
+	},
+	create(context) {
+		return require_index.default.executeOnVue(context, (obj) => {
+			const modelProperty = require_index.default.findProperty(obj, "model");
+			if (!modelProperty || modelProperty.value.type !== "ObjectExpression") return;
+			for (const p of modelProperty.value.properties) {
+				if (p.type !== "Property") continue;
+				const name = require_index.default.getStaticPropertyName(p);
+				if (!name) continue;
+				if (!VALID_MODEL_KEYS.has(name)) context.report({
+					node: p,
+					messageId: "invalidKey",
+					data: { name }
+				});
+			}
+		});
+	}
+};
+exports.default = valid_model_definition_default;

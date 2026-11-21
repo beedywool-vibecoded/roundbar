@@ -1,0 +1,40 @@
+const require_runtime = require("../_virtual/_rolldown/runtime.js");
+const require_index = require("../utils/index.js");
+let xml_name_validator = require("xml-name-validator");
+xml_name_validator = require_runtime.__toESM(xml_name_validator);
+// lib/rules/valid-attribute-name.ts
+/**
+* @author Doug Wade <douglas.b.wade@gmail.com>
+* See LICENSE file in root directory for full license.
+*/
+var valid_attribute_name_default = {
+	meta: {
+		type: "problem",
+		docs: {
+			description: "require valid attribute names",
+			categories: ["vue3-essential", "vue2-essential"],
+			url: "https://eslint.vuejs.org/rules/valid-attribute-name.html"
+		},
+		fixable: null,
+		schema: [],
+		messages: { attribute: "Attribute name {{name}} is not valid." }
+	},
+	create(context) {
+		const getName = (key) => typeof key === "string" ? key : key.name;
+		return require_index.default.defineTemplateBodyVisitor(context, { VAttribute(node) {
+			if (require_index.default.isCustomComponent(node.parent.parent)) return;
+			const name = getName(node.key.name);
+			if (name === "bind" && node.directive && node.key.argument && node.key.argument.type === "VIdentifier" && !xml_name_validator.default.name(node.key.argument.name)) context.report({
+				node,
+				messageId: "attribute",
+				data: { name: node.key.argument.name }
+			});
+			if (!node.directive && !xml_name_validator.default.name(name)) context.report({
+				node,
+				messageId: "attribute",
+				data: { name }
+			});
+		} });
+	}
+};
+exports.default = valid_attribute_name_default;

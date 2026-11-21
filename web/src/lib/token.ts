@@ -1,31 +1,31 @@
 // The configurator is opened as `/#t=<token>`. The token is read once, kept for the tab in
 // sessionStorage, and the hash is cleared before the router reads it. Imported first.
 
-const KEY = 'roundbar.token'
+const KEY = 'roundbar.token';
 
 function capture(): string {
-  const m = /(?:^#|[#&])t=([^&]+)/.exec(location.hash)
-  if (m?.[1]) {
-    const t = decodeURIComponent(m[1])
-    try {
-      sessionStorage.setItem(KEY, t)
-    } catch {
-      // storage blocked: the token lasts until the tab reloads
+    const m = /(?:^#|[#&])t=([^&]+)/.exec(location.hash);
+    if (m?.[1]) {
+        const t = decodeURIComponent(m[1]);
+        try {
+            sessionStorage.setItem(KEY, t);
+        } catch {
+            // storage blocked: the token lasts until the tab reloads
+        }
+        // Optional `&r=/device` opens a given route after the token is taken out.
+        const r = /[#&]r=([^&]+)/.exec(location.hash)?.[1];
+        const route = r && decodeURIComponent(r).startsWith('/') ? decodeURIComponent(r) : '/';
+        history.replaceState(null, '', `${location.pathname}${location.search}#${route}`);
+        return t;
     }
-    // Optional `&r=/device` opens a given route after the token is taken out.
-    const r = /[#&]r=([^&]+)/.exec(location.hash)?.[1]
-    const route = r && decodeURIComponent(r).startsWith('/') ? decodeURIComponent(r) : '/'
-    history.replaceState(null, '', `${location.pathname}${location.search}#${route}`)
-    return t
-  }
-  try {
-    return sessionStorage.getItem(KEY) ?? ''
-  } catch {
-    return ''
-  }
+    try {
+        return sessionStorage.getItem(KEY) ?? '';
+    } catch {
+        return '';
+    }
 }
 
-export const token = capture()
+export const token = capture();
 
 // `?mock` serves sample data from the page itself, for working on the UI without the Go side.
-export const mockMode = new URLSearchParams(location.search).has('mock')
+export const mockMode = new URLSearchParams(location.search).has('mock');

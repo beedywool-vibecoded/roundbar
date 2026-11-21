@@ -1,0 +1,74 @@
+const require_index = require("../utils/index.js");
+let eslint = require("eslint");
+// lib/rules/max-lines-per-block.ts
+/**
+* @author lsdsjy
+* @fileoverview Rule for checking the maximum number of lines in Vue SFC blocks.
+*/
+function isEmptyLine(text) {
+	return !text.trim();
+}
+var max_lines_per_block_default = {
+	meta: {
+		type: "problem",
+		docs: {
+			description: "enforce maximum number of lines in Vue SFC blocks",
+			categories: void 0,
+			url: "https://eslint.vuejs.org/rules/max-lines-per-block.html"
+		},
+		fixable: null,
+		schema: [{
+			type: "object",
+			properties: {
+				style: {
+					type: "integer",
+					minimum: 1
+				},
+				template: {
+					type: "integer",
+					minimum: 1
+				},
+				script: {
+					type: "integer",
+					minimum: 1
+				},
+				skipBlankLines: { type: "boolean" }
+			},
+			additionalProperties: false
+		}],
+		messages: { tooManyLines: "Block has too many lines ({{lineCount}}). Maximum allowed is {{limit}}." }
+	},
+	create(context) {
+		const option = context.options[0] || {};
+		const limits = {
+			template: option.template,
+			script: option.script,
+			style: option.style
+		};
+		const sourceCode = context.sourceCode;
+		const documentFragment = sourceCode.parserServices.getDocumentFragment && sourceCode.parserServices.getDocumentFragment();
+		function getTopLevelHTMLElements() {
+			return documentFragment ? documentFragment.children.filter(require_index.default.isVElement) : [];
+		}
+		return { Program(node) {
+			if (require_index.default.hasInvalidEOF(node)) return;
+			for (const block of getTopLevelHTMLElements()) {
+				if (!limits[block.name]) continue;
+				let lineCount = block.loc.end.line - block.loc.start.line - 1;
+				if (option.skipBlankLines) {
+					const lines = eslint.SourceCode.splitLines(sourceCode.getText(block));
+					lineCount -= lines.filter(isEmptyLine).length;
+				}
+				if (lineCount > limits[block.name]) context.report({
+					node: block,
+					messageId: "tooManyLines",
+					data: {
+						limit: limits[block.name],
+						lineCount
+					}
+				});
+			}
+		} };
+	}
+};
+exports.default = max_lines_per_block_default;

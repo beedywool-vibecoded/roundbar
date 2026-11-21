@@ -1,13 +1,16 @@
 // Loaded into KWin by the roundbar daemon: reports the active window and the
 // window list to dev.roundbar.Daemon on the session bus, on change only.
 // Works with the Plasma 6 (windows) and Plasma 5 (clients) APIs.
-const S = "dev.roundbar.Daemon", P = "/dev/roundbar/Daemon", I = "dev.roundbar.Daemon";
-const P6 = typeof workspace.windowList === "function";
+const S = 'dev.roundbar.Daemon',
+    P = '/dev/roundbar/Daemon',
+    I = 'dev.roundbar.Daemon';
+const P6 = typeof workspace.windowList === 'function';
 
 function str(v) {
-    if (v instanceof ArrayBuffer) // Plasma 5 hands QByteArray properties over as ArrayBuffer
+    if (v instanceof ArrayBuffer)
+        // Plasma 5 hands QByteArray properties over as ArrayBuffer
         return String.fromCharCode.apply(null, new Uint8Array(v));
-    return v ? String(v) : "";
+    return v ? String(v) : '';
 }
 
 function info(w) {
@@ -24,17 +27,14 @@ function info(w) {
 function windows(gone) {
     const list = P6 ? workspace.windowList() : workspace.clientList();
     const out = [];
-    for (const w of list)
-        if (w !== gone && w.normalWindow && !w.skipTaskbar)
-            out.push(info(w));
-    callDBus(S, P, I, "Windows", JSON.stringify(out));
+    for (const w of list) if (w !== gone && w.normalWindow && !w.skipTaskbar) out.push(info(w));
+    callDBus(S, P, I, 'Windows', JSON.stringify(out));
 }
 
 function focus(w) {
-    if (!w)
-        return;
+    if (!w) return;
     const i = info(w);
-    callDBus(S, P, I, "Focus", i.id, i.app, i.class, i.name, i.title);
+    callDBus(S, P, I, 'Focus', i.id, i.app, i.class, i.name, i.title);
 }
 
 if (P6) {

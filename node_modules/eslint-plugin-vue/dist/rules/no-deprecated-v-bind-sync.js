@@ -1,0 +1,34 @@
+const require_index = require("../utils/index.js");
+// lib/rules/no-deprecated-v-bind-sync.ts
+/**
+* @author Przemyslaw Falowski (@przemkow)
+* @fileoverview Disallow use of deprecated `.sync` modifier on `v-bind` directive (in Vue.js 3.0.0+)
+*/
+var no_deprecated_v_bind_sync_default = {
+	meta: {
+		type: "problem",
+		docs: {
+			description: "disallow use of deprecated `.sync` modifier on `v-bind` directive (in Vue.js 3.0.0+)",
+			categories: ["vue3-essential"],
+			url: "https://eslint.vuejs.org/rules/no-deprecated-v-bind-sync.html"
+		},
+		fixable: "code",
+		schema: [],
+		messages: { syncModifierIsDeprecated: "'.sync' modifier on 'v-bind' directive is deprecated. Use 'v-model:propName' instead." }
+	},
+	create(context) {
+		return require_index.default.defineTemplateBodyVisitor(context, { "VAttribute[directive=true][key.name.name='bind']"(node) {
+			if (node.key.modifiers.map((mod) => mod.name).includes("sync")) context.report({
+				node,
+				loc: node.loc,
+				messageId: "syncModifierIsDeprecated",
+				fix(fixer) {
+					if (node.key.argument == null || node.key.modifiers.length > 1) return null;
+					const bindArgument = context.sourceCode.getText(node.key.argument);
+					return fixer.replaceText(node.key, `v-model:${bindArgument}`);
+				}
+			});
+		} });
+	}
+};
+exports.default = no_deprecated_v_bind_sync_default;

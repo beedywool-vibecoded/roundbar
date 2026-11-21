@@ -23,7 +23,7 @@ This guide takes you from a bare board to a working Roundbar, without developer 
 4. When it's done, the board restarts and shows Roundbar.
 
 **The board isn't in the list?** Unplug it, **hold the BOOT button**, plug it back in, release the button,
-and click *Install Roundbar* again.
+and click _Install Roundbar_ again.
 
 You only do this once. Later firmware updates come from the PC app, in one click.
 
@@ -56,7 +56,7 @@ active on GNOME). GNOME only loads new extensions at login: **log out and back i
 1. Download **`roundbar-setup-windows-amd64.exe`** from the
    [latest release](https://github.com/beedywool-vibecoded/roundbar/releases/latest).
 2. Run it. It installs for your user only, so no admin rights are needed. Windows SmartScreen may warn
-   about an unknown publisher: click *More info*, then *Run anyway*.
+   about an unknown publisher: click _More info_, then _Run anyway_.
 3. Roundbar starts and adds a tray icon (bottom right; it may hide behind the `^` arrow). It also starts
    with Windows from now on. Click the icon to open the configurator.
 
@@ -95,6 +95,7 @@ You can skip any step and run the wizard again from the configurator's **Device*
 enough power; avoid unpowered hubs.
 
 **The PC doesn't see the board** (the configurator says it's not connected).
+
 - Try another cable: charge-only cables are the most common cause.
 - Linux: unplug the board and plug it back in. If `roundbar status` still mentions **permission**, run
   `roundbar udev` (needs your password) and replug the board again.
@@ -107,6 +108,7 @@ back, unplug it, hold **BOOT** while plugging it in, and run the update again fr
 the web installer).
 
 **The pages don't follow the active app.**
+
 - GNOME: log out and back in once after installing (GNOME loads the extension at login). Then check
   `gnome-extensions info roundbar@beedy` says it's enabled.
 - Other desktops: the configurator's **Device** page shows which desktop backend Roundbar uses and what it
@@ -116,15 +118,16 @@ the web installer).
   matched apps (the configurator suggests the app currently in focus).
 
 **The board types the wrong characters** (for example `q` instead of `a`). The board types like a keyboard,
-so it must know your layout. In the configurator, **Device → Keyboard layout**, check that *Automatic* shows
+so it must know your layout. In the configurator, **Device → Keyboard layout**, check that _Automatic_ shows
 the right layout, or pick yours.
 
 **Discord voice doesn't show up.**
+
 - Official Discord app: set up the Discord connection in the configurator (**Device → Discord**).
 - Vesktop on Linux: turn on live voice in the configurator, then restart Vesktop. Note that while it's on,
   programs running as you on this PC could read your Discord session through a local-only port.
-- Vesktop on Windows: right-click the Vesktop shortcut → *Properties*, and add ` --remote-debugging-port=9337`
-  at the end of *Target* (after the closing quote), then start Vesktop from that shortcut. Same note as above.
+- Vesktop on Windows: right-click the Vesktop shortcut → _Properties_, and add ` --remote-debugging-port=9337`
+  at the end of _Target_ (after the closing quote), then start Vesktop from that shortcut. Same note as above.
 
 **OBS page says it isn't connected.** In OBS, open **Tools → WebSocket Server Settings**, enable the server,
 copy the password, and paste it in the configurator (**Device → OBS**). OBS must be running.
@@ -143,6 +146,6 @@ on [GitHub](https://github.com/beedywool-vibecoded/roundbar/issues) with what it
 
 - **Linux:** `roundbar uninstall` removes the app, the service and the desktop integration, and offers to
   remove the USB permission rule. Your settings stay in `~/.config/roundbar`.
-- **Windows:** uninstall *Roundbar* from **Settings → Apps**. Your settings stay in `%APPDATA%\roundbar`.
+- **Windows:** uninstall _Roundbar_ from **Settings → Apps**. Your settings stay in `%APPDATA%\roundbar`.
 
 The board keeps its firmware and your setup; it still works as a shortcut keyboard on any computer.

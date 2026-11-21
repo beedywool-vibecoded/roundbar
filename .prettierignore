@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+.next/
+coverage/
+
+# Generated or vendored code, kept exactly as shipped
+vendor/
+**/externalDependencies/
+
+# Generated files (lockfiles, build metadata, caches)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.min.js
+*.min.css
+
+# Translation / data files maintained by tooling
+# locales/
+# data/
+
+# Every dot file and folder (.github, .vscode, editor and tooling state)
+.*
+
+# Not source
+assets/
+
+# Test fixtures: captured pages and API answers, parsed byte for byte
+**/fixtures/
+
+# This repo: runtime data, reference screenshots
+server/data/
+docs/reference/

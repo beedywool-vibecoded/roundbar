@@ -1,0 +1,142 @@
+const require_index = require("../utils/index.js");
+let _eslint_community_eslint_utils = require("@eslint-community/eslint-utils");
+// lib/rules/no-unused-emit-declarations.ts
+/**
+* Check if the given node is a reference of setup context
+*/
+function hasReferenceId(value, setupContext) {
+	const { contextReferenceIds, emitReferenceIds } = setupContext;
+	return value.type === "Identifier" && (emitReferenceIds.has(value) || contextReferenceIds.has(value));
+}
+var no_unused_emit_declarations_default = {
+	meta: {
+		type: "suggestion",
+		docs: {
+			description: "disallow unused emit declarations",
+			categories: void 0,
+			url: "https://eslint.vuejs.org/rules/no-unused-emit-declarations.html"
+		},
+		fixable: null,
+		schema: [],
+		messages: { unused: "`{{name}}` is defined as emit but never used." }
+	},
+	create(context) {
+		const emitDeclarations = /* @__PURE__ */ new Map();
+		const emitCalls = /* @__PURE__ */ new Map();
+		const setupContexts = /* @__PURE__ */ new Map();
+		const programNode = context.sourceCode.ast;
+		let emitParamName = "";
+		function addEmitCall(node) {
+			const nameParamNode = require_index.default.getNameParamNode(node);
+			if (nameParamNode) emitCalls.set(nameParamNode.name, node);
+		}
+		function clearEmits() {
+			emitCalls.clear();
+			emitDeclarations.clear();
+		}
+		function hasExpressionReference(expression, setupContext) {
+			if (expression.type === "MemberExpression") {
+				if (hasReferenceId(require_index.default.skipChainExpression(expression.object), setupContext)) {
+					clearEmits();
+					return true;
+				}
+			}
+			if (hasReferenceId(expression, setupContext)) {
+				clearEmits();
+				return true;
+			}
+			return false;
+		}
+		function hasArgumentsReferences(args, setupContext) {
+			for (const argument of args) {
+				if (argument.type === "ObjectExpression") {
+					for (const property of argument.properties) if (property.type === "Property" && hasExpressionReference(property.value, setupContext)) return true;
+				} else if (argument.type === "ArrayExpression" && argument.elements.some((element) => element && hasExpressionReference(element, setupContext))) return true;
+				if (hasExpressionReference(argument, setupContext)) return true;
+			}
+			return false;
+		}
+		function addEmitCallByReference(callee, referenceIds, node) {
+			if (callee.type === "Identifier" && referenceIds.has(callee)) addEmitCall(node);
+		}
+		const callVisitor = { CallExpression(node, info) {
+			const callee = require_index.default.skipChainExpression(node.callee);
+			let emit = null;
+			if (callee.type === "MemberExpression") {
+				const name = require_index.default.getStaticPropertyName(callee);
+				if (name === "emit" || name === "$emit") emit = {
+					name,
+					member: callee
+				};
+			}
+			const vueDefineNode = info ? info.node : programNode;
+			const setupContext = setupContexts.get(vueDefineNode);
+			if (setupContext) {
+				if (callee.parent.type === "CallExpression" && callee.parent.arguments && hasArgumentsReferences(callee.parent.arguments, setupContext)) return;
+				const { contextReferenceIds, emitReferenceIds } = setupContext;
+				addEmitCallByReference(callee, emitReferenceIds, node);
+				if (emit && emit.name === "emit") addEmitCallByReference(require_index.default.skipChainExpression(emit.member.object), contextReferenceIds, node);
+			}
+			if (emit && emit.name === "$emit") {
+				const memObject = require_index.default.skipChainExpression(emit.member.object);
+				if (require_index.default.isThis(memObject, context)) addEmitCall(node);
+			}
+			if (callee.type === "Identifier" && (callee.name === "$emit" || callee.name === emitParamName)) addEmitCall(node);
+		} };
+		return require_index.default.compositingVisitors(require_index.default.defineTemplateBodyVisitor(context, callVisitor), require_index.default.defineVueVisitor(context, {
+			...callVisitor,
+			onVueObjectEnter(node) {
+				for (const emit of require_index.default.getComponentEmitsFromOptions(node)) if (emit.emitName) emitDeclarations.set(emit.emitName, emit);
+			},
+			onSetupFunctionEnter(node, { node: vueNode }) {
+				const contextParam = node.params[1];
+				if (!contextParam || contextParam.type === "RestElement" || contextParam.type === "ArrayPattern") return;
+				const contextReferenceIds = /* @__PURE__ */ new Set();
+				const emitReferenceIds = /* @__PURE__ */ new Set();
+				if (contextParam.type === "ObjectPattern") {
+					const emitProperty = require_index.default.findAssignmentProperty(contextParam, "emit");
+					if (!emitProperty) return;
+					const emitParam = emitProperty.value;
+					const variable = emitParam.type === "Identifier" ? (0, _eslint_community_eslint_utils.findVariable)(require_index.default.getScope(context, emitParam), emitParam) : null;
+					if (!variable) return;
+					for (const reference of variable.references) emitReferenceIds.add(reference.identifier);
+				} else if (contextParam.type === "Identifier") {
+					const variable = (0, _eslint_community_eslint_utils.findVariable)(require_index.default.getScope(context, contextParam), contextParam);
+					for (const reference of variable.references) contextReferenceIds.add(reference.identifier);
+				}
+				setupContexts.set(vueNode, {
+					contextReferenceIds,
+					emitReferenceIds
+				});
+			}
+		}), require_index.default.defineScriptSetupVisitor(context, {
+			onDefineEmitsEnter(node, emits) {
+				for (const emit of emits) if (emit.emitName) emitDeclarations.set(emit.emitName, emit);
+				if (!node.parent || node.parent.type !== "VariableDeclarator" || node.parent.init !== node) return;
+				const emitParam = node.parent.id;
+				if (emitParam.type !== "Identifier") return;
+				emitParamName = emitParam.name;
+				const variable = (0, _eslint_community_eslint_utils.findVariable)(require_index.default.getScope(context, emitParam), emitParam);
+				if (!variable) return;
+				const emitReferenceIds = /* @__PURE__ */ new Set();
+				for (const reference of variable.references) emitReferenceIds.add(reference.identifier);
+				setupContexts.set(programNode, {
+					contextReferenceIds: /* @__PURE__ */ new Set(),
+					emitReferenceIds
+				});
+			},
+			onDefineModelEnter(node, model) {
+				if (node.parent && node.parent.type === "VariableDeclarator" && node.parent.init === node) emitCalls.set(`update:${model.name.modelName}`, node);
+			},
+			...callVisitor
+		}), { "Program:exit"() {
+			for (const [name, emit] of emitDeclarations) if (!emitCalls.has(name) && emit.node) context.report({
+				node: emit.node,
+				loc: emit.node.loc,
+				messageId: "unused",
+				data: { name }
+			});
+		} });
+	}
+};
+exports.default = no_unused_emit_declarations_default;

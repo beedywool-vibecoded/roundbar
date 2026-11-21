@@ -1,367 +1,457 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import Icon from '@/components/Icon.vue'
-import M3Shape from '@/components/M3Shape.vue'
-import M3Slider from '@/components/M3Slider.vue'
-import SwitchRow from '@/components/SwitchRow.vue'
-import M3Select from '@/components/M3Select.vue'
-import NumField from '@/components/NumField.vue'
-import ImageList from '@/components/ImageList.vue'
-import DiscordCard from '@/components/DiscordCard.vue'
-import FirmwareCard from '@/components/FirmwareCard.vue'
-import ObsCard from '@/components/ObsCard.vue'
-import BackupCard from '@/components/BackupCard.vue'
-import type { ImageBinding } from '@/lib/assets'
-import { LIMITS, PAGE_TYPES, ROTATIONS } from '@/lib/model'
-import { config, daemonUp, findProfile, issuesUnder, live, onWindows } from '@/lib/store'
-import type { EdgeDoubleTap, KeyboardLayout } from '@/lib/types'
-import { LAYOUTS, layoutName } from '@/lib/layouts'
+import { computed, nextTick, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
+import Icon from '@/components/Icon.vue';
+import M3Shape from '@/components/M3Shape.vue';
+import M3Slider from '@/components/M3Slider.vue';
+import SwitchRow from '@/components/SwitchRow.vue';
+import M3Select from '@/components/M3Select.vue';
+import NumField from '@/components/NumField.vue';
+import ImageList from '@/components/ImageList.vue';
+import DiscordCard from '@/components/DiscordCard.vue';
+import FirmwareCard from '@/components/FirmwareCard.vue';
+import ObsCard from '@/components/ObsCard.vue';
+import BackupCard from '@/components/BackupCard.vue';
+import type { ImageBinding } from '@/lib/assets';
+import { LIMITS, PAGE_TYPES, ROTATIONS } from '@/lib/model';
+import { config, daemonUp, findProfile, issuesUnder, live, onWindows } from '@/lib/store';
+import type { EdgeDoubleTap, KeyboardLayout } from '@/lib/types';
+import { LAYOUTS, layoutName } from '@/lib/layouts';
 
-const dev = computed(() => config.value!.device)
+const dev = computed(() => config.value!.device);
 
 // Linked from page editors: /device#discord, /device#obs, /device#firmware, /device#backup
-const ANCHORS = ['discord', 'obs', 'firmware', 'backup']
-const route = useRoute()
+const ANCHORS = ['discord', 'obs', 'firmware', 'backup'];
+const route = useRoute();
 onMounted(async () => {
-  const id = route.hash.slice(1)
-  if (!ANCHORS.includes(id)) return
-  await nextTick()
-  setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250)
-})
+    const id = route.hash.slice(1);
+    if (!ANCHORS.includes(id)) return;
+    await nextTick();
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250);
+});
 
-const st = computed(() => live.status)
+const st = computed(() => live.status);
 
 const backendNames: Record<string, string> = {
-  gnome: 'GNOME (extension)',
-  kde: 'KDE Plasma (KWin script)',
-  wayland: 'Wayland (foreign toplevel)',
-  x11: 'X11 (EWMH)',
-  windows: 'Windows',
-  none: 'unsupported',
-}
+    gnome: 'GNOME (extension)',
+    kde: 'KDE Plasma (KWin script)',
+    wayland: 'Wayland (foreign toplevel)',
+    x11: 'X11 (EWMH)',
+    windows: 'Windows',
+    none: 'unsupported',
+};
 const missing = computed(() => {
-  const d = st.value?.desktop
-  if (!d) return []
-  const out: string[] = []
-  if (!d.windows) out.push('window list')
-  if (!d.notifications) out.push('notifications')
-  if (!d.clipboard) out.push('clipboard history')
-  return out
-})
+    const d = st.value?.desktop;
+    if (!d) return [];
+    const out: string[] = [];
+    if (!d.windows) out.push('window list');
+    if (!d.notifications) out.push('notifications');
+    if (!d.clipboard) out.push('clipboard history');
+    return out;
+});
 
 const EDGE_TAPS: { id: EdgeDoubleTap; label: string }[] = [
-  { id: 'page', label: 'Change page' },
-  { id: 'quickSettings', label: 'Quick settings' },
-  { id: 'screenOff', label: 'Screen off' },
-  { id: 'off', label: 'Off' },
-]
+    { id: 'page', label: 'Change page' },
+    { id: 'quickSettings', label: 'Quick settings' },
+    { id: 'screenOff', label: 'Screen off' },
+    { id: 'off', label: 'Off' },
+];
 
 // Older configs may lack the field: missing means auto.
 const layout = computed<KeyboardLayout>({
-  get: () => dev.value.keyboardLayout || 'auto',
-  set: (v) => (dev.value.keyboardLayout = v),
-})
+    get: () => dev.value.keyboardLayout || 'auto',
+    set: (v) => (dev.value.keyboardLayout = v),
+});
 const layoutOptions = computed<{ value: KeyboardLayout; label: string; hint?: string }[]>(() => {
-  const det = st.value?.keyboard?.detected
-  return [
-    {
-      value: 'auto',
-      label: det ? `Automatic (detected: ${layoutName(det)})` : 'Automatic',
-      hint: det ? undefined : daemonUp.value ? 'not detected, types as US' : 'needs the daemon',
-    },
-    ...LAYOUTS.map((l) => ({ value: l.id as KeyboardLayout, label: l.name, hint: l.xkb })),
-  ]
-})
+    const det = st.value?.keyboard?.detected;
+    return [
+        {
+            value: 'auto',
+            label: det ? `Automatic (detected: ${layoutName(det)})` : 'Automatic',
+            hint: det ? undefined : daemonUp.value ? 'not detected, types as US' : 'needs the daemon',
+        },
+        ...LAYOUTS.map((l) => ({ value: l.id as KeyboardLayout, label: l.name, hint: l.xkb })),
+    ];
+});
 
 const view = computed(() => {
-  const v = st.value?.view
-  if (!v) return null
-  const prof = findProfile(v.profile)
-  const page = prof?.pages.find((p) => p.id === v.page)
-  return {
-    profile: prof?.name ?? v.profile,
-    page: page?.title || PAGE_TYPES.find((t) => t.value === v.kind)?.label || v.page,
-    awake: v.awake,
-    to: prof && page ? `/profiles/${prof.id}/pages/${page.id}` : null,
-  }
-})
+    const v = st.value?.view;
+    if (!v) return null;
+    const prof = findProfile(v.profile);
+    const page = prof?.pages.find((p) => p.id === v.page);
+    return {
+        profile: prof?.name ?? v.profile,
+        page: page?.title || PAGE_TYPES.find((t) => t.value === v.kind)?.label || v.page,
+        awake: v.awake,
+        to: prof && page ? `/profiles/${prof.id}/pages/${page.id}` : null,
+    };
+});
 
-const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`)
+const seconds = (s: number) =>
+    s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`;
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-title"><h1>Device</h1></div>
+    <div class="page">
+        <div class="page-title"><h1>Device</h1></div>
 
-    <div class="cols">
-      <div class="left">
-        <section class="card status" :class="{ off: !daemonUp || !st?.device?.connected }">
-          <div class="card-head">
-            <h2>Status</h2>
-            <RouterLink to="/setup" class="btn btn-text st"><Icon name="restart_alt" :size="18" /> Run setup again</RouterLink>
-          </div>
+        <div class="cols">
+            <div class="left">
+                <section class="card status" :class="{ off: !daemonUp || !st?.device?.connected }">
+                    <div class="card-head">
+                        <h2>Status</h2>
+                        <RouterLink to="/setup" class="btn btn-text st"
+                            ><Icon name="restart_alt" :size="18" /> Run setup again</RouterLink
+                        >
+                    </div>
 
-          <div v-if="!live.connected && st" class="state">
-            <M3Shape kind="clover" :size="72" fill="var(--ec)" />
-            <div>
-              <div class="big">Configurator offline</div>
-              <p class="muted small">The connection to <code>roundbar config</code> dropped. Reconnecting… If it stopped, run it again.</p>
-            </div>
-          </div>
+                    <div v-if="!live.connected && st" class="state">
+                        <M3Shape kind="clover" :size="72" fill="var(--ec)" />
+                        <div>
+                            <div class="big">Configurator offline</div>
+                            <p class="muted small">
+                                The connection to <code>roundbar config</code> dropped. Reconnecting… If it stopped, run
+                                it again.
+                            </p>
+                        </div>
+                    </div>
 
-          <div v-else-if="!st" class="state">
-            <M3Shape kind="cookie" :size="72" fill="var(--sch)" />
-            <div class="big">Connecting…</div>
-          </div>
+                    <div v-else-if="!st" class="state">
+                        <M3Shape kind="cookie" :size="72" fill="var(--sch)" />
+                        <div class="big">Connecting…</div>
+                    </div>
 
-          <div v-else-if="!daemonUp" class="state">
-            <M3Shape kind="clover" :size="72" fill="var(--tc)" />
-            <div>
-              <div class="big">The daemon isn't running</div>
-              <p v-if="onWindows" class="muted small">
-                You can still edit and save: the daemon picks the config up when it starts. Start <b>Roundbar</b> from the Start menu:
-                it lives in the notification area and starts at every login.
-              </p>
-              <template v-else>
-                <p class="muted small">
-                  You can still edit and save: the daemon picks the config up when it starts. To start it now and at every login:
-                </p>
-                <pre class="cmd"><code>systemctl --user enable --now roundbar</code></pre>
-              </template>
-            </div>
-          </div>
+                    <div v-else-if="!daemonUp" class="state">
+                        <M3Shape kind="clover" :size="72" fill="var(--tc)" />
+                        <div>
+                            <div class="big">The daemon isn't running</div>
+                            <p v-if="onWindows" class="muted small">
+                                You can still edit and save: the daemon picks the config up when it starts. Start
+                                <b>Roundbar</b> from the Start menu: it lives in the notification area and starts at
+                                every login.
+                            </p>
+                            <template v-else>
+                                <p class="muted small">
+                                    You can still edit and save: the daemon picks the config up when it starts. To start
+                                    it now and at every login:
+                                </p>
+                                <pre class="cmd"><code>systemctl --user enable --now roundbar</code></pre>
+                            </template>
+                        </div>
+                    </div>
 
-          <template v-else>
-            <div class="state">
-              <M3Shape :kind="st.device?.connected ? 'sunny' : 'cookie'" :size="72" :fill="st.device?.connected ? 'var(--pc)' : 'var(--sch)'">
-                <text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-size="44" class="sym" :fill="st.device?.connected ? 'var(--on-pc)' : 'var(--on-sv)'">
-                  {{ st.device?.connected ? 'usb' : 'link_off' }}
-                </text>
-              </M3Shape>
-              <div>
-                <div class="big">{{ st.device?.connected ? 'Connected' : st.device?.error === 'permission' ? 'No access to the device' : 'No device' }}</div>
-                <p v-if="st.device?.error === 'permission'" class="muted small">
-                  The Roundbar is plugged in, but this account isn't allowed to open its USB port. Run
-                  <code class="plain">roundbar udev</code> in a terminal (it asks for your password once).
-                </p>
-                <p v-else-if="!st.device?.connected" class="muted small">Plug the Roundbar in over USB. Settings are sent as soon as it shows up.</p>
-              </div>
-            </div>
-            <dl class="facts">
-              <template v-if="st.device?.connected">
-                <dt>Port</dt>
-                <dd><code class="plain">{{ st.device.port ?? '—' }}</code></dd>
-                <dt>Firmware</dt>
-                <dd>{{ st.device.fw ?? '—' }}</dd>
-                <dt>Config</dt>
-                <dd>
-                  <span v-if="st.device.inSync === false" class="warn-text">Syncing with the board…</span>
-                  <span v-else>Up to date</span>
-                  <code v-if="st.device.cfg" class="plain muted small" style="margin-left: 8px">{{ st.device.cfg.slice(0, 8) }}</code>
-                  <div v-if="st.device.syncNote" class="muted small" style="margin-top: 4px">{{ st.device.syncNote }}</div>
-                </dd>
-                <dt>On screen</dt>
-                <dd>
-                  <template v-if="view">
-                    <RouterLink v-if="view.to" :to="view.to">{{ view.profile }} · {{ view.page }}</RouterLink>
-                    <span v-else>{{ view.profile }} · {{ view.page }}</span>
-                    <span class="chip chip-outline" style="margin-left: 8px">{{ view.awake ? 'awake' : 'asleep' }}</span>
-                  </template>
-                  <span v-else class="muted">—</span>
-                </dd>
-              </template>
-              <dt>Focused app</dt>
-              <dd>
-                <template v-if="st.focus">
-                  {{ st.focus.name }} <code class="plain muted">{{ st.focus.id }}</code>
-                  <code v-if="st.focus.class && st.focus.class !== st.focus.id" class="plain muted"> · class {{ st.focus.class }}</code>
-                </template>
-                <span v-else-if="st.desktop?.backend === 'gnome' && st.extension === false" class="warn-text">The GNOME extension is off: enable it in Extensions.</span>
-                <span v-else-if="st.desktop && !st.desktop.focus" class="warn-text">This desktop can’t tell the focused window: profiles stay on Default.</span>
-                <span v-else class="muted">—</span>
-              </dd>
-              <template v-if="st.desktop">
-                <dt>Desktop</dt>
-                <dd>
-                  {{ backendNames[st.desktop.backend] ?? st.desktop.backend }}
-                  <span v-if="missing.length" class="muted small" style="margin-left: 8px">no {{ missing.join(', ') }} here</span>
-                </dd>
-              </template>
-            </dl>
-          </template>
-        </section>
+                    <template v-else>
+                        <div class="state">
+                            <M3Shape
+                                :kind="st.device?.connected ? 'sunny' : 'cookie'"
+                                :size="72"
+                                :fill="st.device?.connected ? 'var(--pc)' : 'var(--sch)'"
+                            >
+                                <text
+                                    x="50"
+                                    y="50"
+                                    text-anchor="middle"
+                                    dominant-baseline="central"
+                                    font-size="44"
+                                    class="sym"
+                                    :fill="st.device?.connected ? 'var(--on-pc)' : 'var(--on-sv)'"
+                                >
+                                    {{ st.device?.connected ? 'usb' : 'link_off' }}
+                                </text>
+                            </M3Shape>
+                            <div>
+                                <div class="big">
+                                    {{
+                                        st.device?.connected
+                                            ? 'Connected'
+                                            : st.device?.error === 'permission'
+                                              ? 'No access to the device'
+                                              : 'No device'
+                                    }}
+                                </div>
+                                <p v-if="st.device?.error === 'permission'" class="muted small">
+                                    The Roundbar is plugged in, but this account isn't allowed to open its USB port. Run
+                                    <code class="plain">roundbar udev</code> in a terminal (it asks for your password
+                                    once).
+                                </p>
+                                <p v-else-if="!st.device?.connected" class="muted small">
+                                    Plug the Roundbar in over USB. Settings are sent as soon as it shows up.
+                                </p>
+                            </div>
+                        </div>
+                        <dl class="facts">
+                            <template v-if="st.device?.connected">
+                                <dt>Port</dt>
+                                <dd>
+                                    <code class="plain">{{ st.device.port ?? '—' }}</code>
+                                </dd>
+                                <dt>Firmware</dt>
+                                <dd>{{ st.device.fw ?? '—' }}</dd>
+                                <dt>Config</dt>
+                                <dd>
+                                    <span v-if="st.device.inSync === false" class="warn-text"
+                                        >Syncing with the board…</span
+                                    >
+                                    <span v-else>Up to date</span>
+                                    <code v-if="st.device.cfg" class="plain muted small" style="margin-left: 8px">{{
+                                        st.device.cfg.slice(0, 8)
+                                    }}</code>
+                                    <div v-if="st.device.syncNote" class="muted small" style="margin-top: 4px">
+                                        {{ st.device.syncNote }}
+                                    </div>
+                                </dd>
+                                <dt>On screen</dt>
+                                <dd>
+                                    <template v-if="view">
+                                        <RouterLink v-if="view.to" :to="view.to"
+                                            >{{ view.profile }} · {{ view.page }}</RouterLink
+                                        >
+                                        <span v-else>{{ view.profile }} · {{ view.page }}</span>
+                                        <span class="chip chip-outline" style="margin-left: 8px">{{
+                                            view.awake ? 'awake' : 'asleep'
+                                        }}</span>
+                                    </template>
+                                    <span v-else class="muted">—</span>
+                                </dd>
+                            </template>
+                            <dt>Focused app</dt>
+                            <dd>
+                                <template v-if="st.focus">
+                                    {{ st.focus.name }} <code class="plain muted">{{ st.focus.id }}</code>
+                                    <code v-if="st.focus.class && st.focus.class !== st.focus.id" class="plain muted">
+                                        · class {{ st.focus.class }}</code
+                                    >
+                                </template>
+                                <span
+                                    v-else-if="st.desktop?.backend === 'gnome' && st.extension === false"
+                                    class="warn-text"
+                                    >The GNOME extension is off: enable it in Extensions.</span
+                                >
+                                <span v-else-if="st.desktop && !st.desktop.focus" class="warn-text"
+                                    >This desktop can’t tell the focused window: profiles stay on Default.</span
+                                >
+                                <span v-else class="muted">—</span>
+                            </dd>
+                            <template v-if="st.desktop">
+                                <dt>Desktop</dt>
+                                <dd>
+                                    {{ backendNames[st.desktop.backend] ?? st.desktop.backend }}
+                                    <span v-if="missing.length" class="muted small" style="margin-left: 8px"
+                                        >no {{ missing.join(', ') }} here</span
+                                    >
+                                </dd>
+                            </template>
+                        </dl>
+                    </template>
+                </section>
 
-        <FirmwareCard />
-        <ObsCard />
-        <BackupCard />
+                <FirmwareCard />
+                <ObsCard />
+                <BackupCard />
+            </div>
 
-      </div>
+            <div class="right">
+                <section class="card">
+                    <div class="card-head"><h2>Screen</h2></div>
+                    <div class="setting col">
+                        <div class="row-head">
+                            <span>Brightness</span>
+                            <span class="muted">{{ dev.brightness }} %</span>
+                        </div>
+                        <M3Slider
+                            v-model="dev.brightness"
+                            label="Brightness"
+                            :min="5"
+                            :max="100"
+                            :step="5"
+                            :format="(v) => `${v} %`"
+                        />
+                    </div>
+                    <div class="setting">
+                        <div class="grow">
+                            <div>Screen rotation</div>
+                            <div class="muted small">Turn the screen to match how the device is mounted</div>
+                        </div>
+                        <div class="seg" role="radiogroup" aria-label="Screen rotation">
+                            <button
+                                v-for="r in ROTATIONS"
+                                :key="r"
+                                type="button"
+                                role="radio"
+                                class="st"
+                                :class="{ on: dev.rotation === r }"
+                                :aria-checked="dev.rotation === r"
+                                @click="dev.rotation = r"
+                            >
+                                <Icon v-if="dev.rotation === r" name="check" :size="18" />
+                                {{ r }}°
+                            </button>
+                        </div>
+                    </div>
+                    <div class="setting col">
+                        <div class="form-row">
+                            <NumField
+                                v-model="dev.dimAfter"
+                                label="Dim after"
+                                suffix="s"
+                                :min="0"
+                                :help="`Idle time before dimming to 20 %: ${seconds(dev.dimAfter)}`"
+                            />
+                            <NumField
+                                v-model="dev.sleepAfter"
+                                label="Screen off after"
+                                suffix="s"
+                                :min="0"
+                                :help="`Idle time before the screen turns off: ${seconds(dev.sleepAfter)}`"
+                            />
+                        </div>
+                        <p class="muted small" style="margin: 0">0 means never.</p>
+                    </div>
+                    <div class="linked">
+                        <SwitchRow
+                            v-model="dev.followPc"
+                            label="Follow the PC"
+                            hint="Turn the screen off when the PC shuts down or sleeps, and back on when it starts"
+                        />
+                        <SwitchRow
+                            v-model="dev.notifications"
+                            label="Notification panel"
+                            hint="Pull up from the bottom edge of the device to see your notifications"
+                        />
+                        <SwitchRow
+                            v-model="dev.notifToast"
+                            label="Show new notifications"
+                            hint="New notifications from the PC pop up briefly on the screen"
+                        />
+                    </div>
 
-      <div class="right">
-        <section class="card">
-          <div class="card-head"><h2>Screen</h2></div>
-          <div class="setting col">
-            <div class="row-head">
-              <span>Brightness</span>
-              <span class="muted">{{ dev.brightness }} %</span>
+                    <div class="card-head" style="margin-top: 12px"><h2>Input</h2></div>
+                    <div class="setting col">
+                        <div class="row-head">
+                            <span>Long press</span>
+                            <span class="muted">{{ dev.longPressMs }} ms</span>
+                        </div>
+                        <M3Slider
+                            v-model="dev.longPressMs"
+                            label="Long press"
+                            :min="200"
+                            :max="1500"
+                            :step="25"
+                            :format="(v) => `${v} ms`"
+                        />
+                        <p class="muted small" style="margin: 0">
+                            How long a button is held before its long-press action runs.
+                        </p>
+                    </div>
+                    <div class="setting">
+                        <div class="grow">
+                            <div>Double tap on the edge</div>
+                            <div class="muted small">Two quick taps near the left or right edge.</div>
+                        </div>
+                        <div class="seg" role="radiogroup" aria-label="Double tap on the edge">
+                            <button
+                                v-for="g in EDGE_TAPS"
+                                :key="g.id"
+                                type="button"
+                                role="radio"
+                                class="st"
+                                :class="{ on: dev.edgeDoubleTap === g.id }"
+                                :aria-checked="dev.edgeDoubleTap === g.id"
+                                @click="dev.edgeDoubleTap = g.id"
+                            >
+                                <Icon v-if="dev.edgeDoubleTap === g.id" name="check" :size="18" />
+                                {{ g.label }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="setting">
+                        <div class="grow">
+                            <div>Keyboard layout</div>
+                            <div class="muted small">Automatic follows the PC’s active layout.</div>
+                        </div>
+                        <div class="layout-pick">
+                            <M3Select v-model="layout" :options="layoutOptions" label="Keyboard layout" />
+                        </div>
+                    </div>
+                </section>
+                <DiscordCard />
             </div>
-            <M3Slider v-model="dev.brightness" label="Brightness" :min="5" :max="100" :step="5" :format="(v) => `${v} %`" />
-          </div>
-          <div class="setting">
-            <div class="grow">
-              <div>Screen rotation</div>
-              <div class="muted small">Turn the screen to match how the device is mounted</div>
-            </div>
-            <div class="seg" role="radiogroup" aria-label="Screen rotation">
-              <button
-                v-for="r in ROTATIONS"
-                :key="r"
-                type="button"
-                role="radio"
-                class="st"
-                :class="{ on: dev.rotation === r }"
-                :aria-checked="dev.rotation === r"
-                @click="dev.rotation = r"
-              >
-                <Icon v-if="dev.rotation === r" name="check" :size="18" />
-                {{ r }}°
-              </button>
-            </div>
-          </div>
-          <div class="setting col">
-            <div class="form-row">
-              <NumField v-model="dev.dimAfter" label="Dim after" suffix="s" :min="0" :help="`Idle time before dimming to 20 %: ${seconds(dev.dimAfter)}`" />
-              <NumField v-model="dev.sleepAfter" label="Screen off after" suffix="s" :min="0" :help="`Idle time before the screen turns off: ${seconds(dev.sleepAfter)}`" />
-            </div>
-            <p class="muted small" style="margin: 0">0 means never.</p>
-          </div>
-          <div class="linked">
-            <SwitchRow v-model="dev.followPc" label="Follow the PC" hint="Turn the screen off when the PC shuts down or sleeps, and back on when it starts" />
-            <SwitchRow v-model="dev.notifications" label="Notification panel" hint="Pull up from the bottom edge of the device to see your notifications" />
-            <SwitchRow v-model="dev.notifToast" label="Show new notifications" hint="New notifications from the PC pop up briefly on the screen" />
-          </div>
-
-          <div class="card-head" style="margin-top: 12px"><h2>Input</h2></div>
-          <div class="setting col">
-            <div class="row-head">
-              <span>Long press</span>
-              <span class="muted">{{ dev.longPressMs }} ms</span>
-            </div>
-            <M3Slider v-model="dev.longPressMs" label="Long press" :min="200" :max="1500" :step="25" :format="(v) => `${v} ms`" />
-            <p class="muted small" style="margin: 0">How long a button is held before its long-press action runs.</p>
-          </div>
-          <div class="setting">
-            <div class="grow">
-              <div>Double tap on the edge</div>
-              <div class="muted small">Two quick taps near the left or right edge.</div>
-            </div>
-            <div class="seg" role="radiogroup" aria-label="Double tap on the edge">
-              <button
-                v-for="g in EDGE_TAPS"
-                :key="g.id"
-                type="button"
-                role="radio"
-                class="st"
-                :class="{ on: dev.edgeDoubleTap === g.id }"
-                :aria-checked="dev.edgeDoubleTap === g.id"
-                @click="dev.edgeDoubleTap = g.id"
-              >
-                <Icon v-if="dev.edgeDoubleTap === g.id" name="check" :size="18" />
-                {{ g.label }}
-              </button>
-            </div>
-          </div>
-          <div class="setting">
-            <div class="grow">
-              <div>Keyboard layout</div>
-              <div class="muted small">
-                Automatic follows the PC’s active layout.
-              </div>
-            </div>
-            <div class="layout-pick">
-              <M3Select v-model="layout" :options="layoutOptions" label="Keyboard layout" />
-            </div>
-          </div>
-        </section>
-        <DiscordCard />
-      </div>
+        </div>
     </div>
-  </div>
 </template>
 
 <style scoped>
 .layout-pick {
-  width: 280px;
-  max-width: 100%;
-  flex-shrink: 0;
+    width: 280px;
+    max-width: 100%;
+    flex-shrink: 0;
 }
 .cols {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
 }
 .left,
 .right {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
 }
 .state {
-  display: flex;
-  align-items: center;
-  gap: 18px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
 }
 .state p {
-  margin: 4px 0 0;
+    margin: 4px 0 0;
 }
 .big {
-  font-size: 22px;
-  font-weight: 500;
+    font-size: 22px;
+    font-weight: 500;
 }
 .cmd {
-  margin: 10px 0 0;
+    margin: 10px 0 0;
 }
 .cmd code {
-  display: inline-block;
-  padding: 8px 12px;
-  border: 1px solid var(--code-border);
-  border-radius: 10px;
-  background: var(--code-bg);
-  font-size: 13px;
-  user-select: all;
+    display: inline-block;
+    padding: 8px 12px;
+    border: 1px solid var(--code-border);
+    border-radius: 10px;
+    background: var(--code-bg);
+    font-size: 13px;
+    user-select: all;
 }
 .facts {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 10px 20px;
-  margin: 20px 0 0;
-  font-size: 14px;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 10px 20px;
+    margin: 20px 0 0;
+    font-size: 14px;
 }
 .facts dt {
-  color: var(--on-sv);
+    color: var(--on-sv);
 }
 .facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
+    margin: 0;
+    overflow-wrap: anywhere;
 }
 .warn-text {
-  color: var(--warn);
+    color: var(--warn);
 }
 .row-head {
-  display: flex;
-  justify-content: space-between;
+    display: flex;
+    justify-content: space-between;
 }
 .sym {
-  font-family: 'Material Symbols Rounded';
-  font-feature-settings: 'liga';
-  font-variation-settings: 'FILL' 1;
+    font-family: 'Material Symbols Rounded';
+    font-feature-settings: 'liga';
+    font-variation-settings: 'FILL' 1;
 }
 @media (max-width: 1000px) {
-  .cols {
-    grid-template-columns: minmax(0, 1fr);
-  }
+    .cols {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 </style>

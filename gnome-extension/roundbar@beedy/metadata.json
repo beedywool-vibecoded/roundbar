@@ -1,7 +1,7 @@
 {
-  "uuid": "roundbar@beedy",
-  "name": "Roundbar",
-  "description": "Connects the Roundbar controller to GNOME: focused app, open windows, notifications and clipboard history. Signals only, no polling.",
-  "shell-version": ["47", "48", "49", "50", "51"],
-  "url": "https://github.com/beedywool-vibecoded/roundbar"
+    "uuid": "roundbar@beedy",
+    "name": "Roundbar",
+    "description": "Connects the Roundbar controller to GNOME: focused app, open windows, notifications and clipboard history. Signals only, no polling.",
+    "shell-version": ["47", "48", "49", "50", "51"],
+    "url": "https://github.com/beedywool-vibecoded/roundbar"
 }

@@ -1,0 +1,10 @@
+{
+    "//": "Format on save + ESLint autofix on save. Requires the Prettier and ESLint VS Code extensions.",
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit"
+    },
+    "prettier.requireConfig": true,
+    "eslint.validate": ["javascript", "typescript", "vue"]
+}

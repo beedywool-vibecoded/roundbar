@@ -1,0 +1,40 @@
+const require_index = require("../utils/index.js");
+// lib/rules/html-end-tags.ts
+/**
+* @author Toru Nagashima
+* @copyright 2017 Toru Nagashima. All rights reserved.
+* See LICENSE file in root directory for full license.
+*/
+var html_end_tags_default = {
+	meta: {
+		type: "suggestion",
+		docs: {
+			description: "enforce end tag style",
+			categories: ["vue3-strongly-recommended", "vue2-strongly-recommended"],
+			url: "https://eslint.vuejs.org/rules/html-end-tags.html"
+		},
+		fixable: "code",
+		schema: [],
+		messages: { missingEndTag: "'<{{name}}>' should have end tag." }
+	},
+	create(context) {
+		let hasInvalidEOF = false;
+		return require_index.default.defineTemplateBodyVisitor(context, { VElement(node) {
+			if (hasInvalidEOF) return;
+			const name = node.name;
+			const isVoid = require_index.default.isHtmlVoidElementName(name);
+			const isSelfClosing = node.startTag.selfClosing;
+			const hasEndTag = node.endTag != null;
+			if (!isVoid && !hasEndTag && !isSelfClosing) context.report({
+				node: node.startTag,
+				loc: node.startTag.loc,
+				messageId: "missingEndTag",
+				data: { name },
+				fix: (fixer) => fixer.insertTextAfter(node, `</${name}>`)
+			});
+		} }, { Program(node) {
+			hasInvalidEOF = require_index.default.hasInvalidEOF(node);
+		} });
+	}
+};
+exports.default = html_end_tags_default;

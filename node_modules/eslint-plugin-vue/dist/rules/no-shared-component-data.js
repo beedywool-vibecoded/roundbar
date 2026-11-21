@@ -1,0 +1,60 @@
+const require_index = require("../utils/index.js");
+// lib/rules/no-shared-component-data.ts
+/**
+* @fileoverview Enforces component's data property to be a function.
+* @author Armano
+*/
+function isOpenParen(token) {
+	return token.type === "Punctuator" && token.value === "(";
+}
+function isCloseParen(token) {
+	return token.type === "Punctuator" && token.value === ")";
+}
+function getFirstAndLastTokens(node, sourceCode) {
+	let first = sourceCode.getFirstToken(node);
+	let last = sourceCode.getLastToken(node);
+	while (true) {
+		const prev = sourceCode.getTokenBefore(first);
+		const next = sourceCode.getTokenAfter(last);
+		if (isOpenParen(prev) && isCloseParen(next)) {
+			first = prev;
+			last = next;
+		} else return {
+			first,
+			last
+		};
+	}
+}
+var no_shared_component_data_default = {
+	meta: {
+		type: "problem",
+		docs: {
+			description: "enforce component's data property to be a function",
+			categories: ["vue3-essential", "vue2-essential"],
+			url: "https://eslint.vuejs.org/rules/no-shared-component-data.html"
+		},
+		fixable: "code",
+		schema: [],
+		messages: { dataPropertyMustBeFunction: "`data` property in component must be a function." }
+	},
+	create(context) {
+		const sourceCode = context.sourceCode;
+		const validPropertyTypes = /* @__PURE__ */ new Set([
+			"FunctionExpression",
+			"ArrowFunctionExpression",
+			"Identifier"
+		]);
+		return require_index.default.executeOnVueComponent(context, (objectExpression) => {
+			const invalidData = require_index.default.findProperty(objectExpression, "data", (property) => !validPropertyTypes.has(property.value.type));
+			if (invalidData) context.report({
+				node: invalidData,
+				messageId: "dataPropertyMustBeFunction",
+				fix(fixer) {
+					const tokens = getFirstAndLastTokens(invalidData.value, sourceCode);
+					return [fixer.insertTextBefore(tokens.first, "function() {\nreturn "), fixer.insertTextAfter(tokens.last, ";\n}")];
+				}
+			});
+		});
+	}
+};
+exports.default = no_shared_component_data_default;

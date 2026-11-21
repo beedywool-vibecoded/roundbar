@@ -1,0 +1,61 @@
+const require_index = require("../utils/index.js");
+// lib/rules/require-emit-validator.ts
+var require_emit_validator_default = {
+	meta: {
+		type: "suggestion",
+		docs: {
+			description: "require type definitions in emits",
+			categories: void 0,
+			url: "https://eslint.vuejs.org/rules/require-emit-validator.html"
+		},
+		fixable: null,
+		hasSuggestions: true,
+		schema: [],
+		messages: {
+			missing: "Emit \"{{name}}\" should define at least its validator function.",
+			skipped: "Emit \"{{name}}\" should not skip validation, or you may define a validator function with no parameters.",
+			emptyValidation: "Replace with a validator function with no parameters."
+		}
+	},
+	create(context) {
+		function checker(emit) {
+			let value = null;
+			let hasType = false;
+			if (emit.type === "object") {
+				value = emit.value;
+				hasType = [
+					"ArrowFunctionExpression",
+					"FunctionExpression",
+					"Identifier"
+				].includes(value.type);
+			} else if (emit.type !== "array") return;
+			if (hasType) return;
+			const { node, emitName } = emit;
+			const name = emitName || node.type === "Identifier" && node.name || "Unknown emit";
+			if (value && value.type === "Literal" && value.value === null) {
+				const valueNode = value;
+				context.report({
+					node,
+					messageId: "skipped",
+					data: { name },
+					suggest: [{
+						messageId: "emptyValidation",
+						fix: (fixer) => fixer.replaceText(valueNode, "() => true")
+					}]
+				});
+				return;
+			}
+			context.report({
+				node,
+				messageId: "missing",
+				data: { name }
+			});
+		}
+		return require_index.default.compositingVisitors(require_index.default.executeOnVue(context, (obj) => {
+			for (const emit of require_index.default.getComponentEmitsFromOptions(obj)) checker(emit);
+		}), require_index.default.defineScriptSetupVisitor(context, { onDefineEmitsEnter(_node, emits) {
+			for (const emit of emits) checker(emit);
+		} }));
+	}
+};
+exports.default = require_emit_validator_default;
