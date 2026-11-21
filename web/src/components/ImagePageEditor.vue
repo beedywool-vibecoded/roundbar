@@ -52,7 +52,7 @@ const fit = computed({
       gif
       required
       title="Drop pictures or a GIF here"
-      hint="Pictures are scaled to fit 360 × 360. Several make a slideshow, a GIF plays alone."
+      hint="Fit to 360 × 360. Several make a slideshow."
     />
 
     <div v-if="stills >= 2" class="setting col" style="margin-top: 8px">

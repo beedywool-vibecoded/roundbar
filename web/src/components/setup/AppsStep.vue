@@ -62,11 +62,11 @@ defineExpose({ beforeNext, nextLabel })
     </template>
     <template v-else-if="!offers.length">
       <p class="lead">
-        No apps with a ready-made profile here. The Default profile works everywhere, and you can make your own in Profiles.
+        No ready-made profiles here. Default works everywhere.
       </p>
     </template>
     <template v-else>
-      <p class="lead">The board switches to a profile when you use its app. Pick the ones you want; you can change everything later.</p>
+      <p class="lead">The board switches profile with the app you use.</p>
       <ul class="offers" role="group" aria-label="Ready-made profiles">
         <li v-for="o in offers" :key="o.preset.id">
           <button

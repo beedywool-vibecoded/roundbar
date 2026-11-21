@@ -137,7 +137,7 @@ export const PRESETS: Preset[] = [
     id: 'games',
     name: 'Games',
     icon: 'sports_esports',
-    hint: 'The game you are playing: art, session time, Steam overlay, screenshot, and system load',
+    hint: 'The game you’re playing, with Steam shortcuts',
     detect: { ids: ['steam', 'com.valvesoftware.steam'] },
     suggested: true,
     fixedMatch: true,

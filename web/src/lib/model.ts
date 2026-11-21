@@ -92,7 +92,7 @@ export const PAGE_TYPES: { value: PageType; label: string; icon: string; hint: s
     value: 'touchpad',
     label: 'Touchpad',
     icon: 'mouse',
-    hint: 'Use the screen as a mouse: drag to move, tap to click, hold to right-click, slide the ring to scroll',
+    hint: 'The screen as a mouse: drag, tap, hold to right-click',
   },
 ]
 export const pageTypeInfo = (t: PageType) => PAGE_TYPES.find((p) => p.value === t)!

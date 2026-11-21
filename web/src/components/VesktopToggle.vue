@@ -44,7 +44,7 @@ async function set(on: boolean) {
     <div class="row-top">
       <div class="grow">
         <div class="title">Live voice in Vesktop</div>
-        <div class="muted small">Shows who is talking and lets you mute, deafen or leave from the device. No Discord app setup needed.</div>
+        <div class="muted small">See who’s talking; mute, deafen or leave from the device.</div>
       </div>
       <ShapeLoader v-if="busy" small label="Saving" />
       <M3Switch :model-value="enabled" label="Live voice in Vesktop" :disabled="busy" @update:model-value="set" />
@@ -52,8 +52,7 @@ async function set(on: boolean) {
     <p class="note small">
       <Icon name="info" :size="16" />
       <span>
-        This starts Vesktop with a debugging port on this PC only (port {{ info.port }}, not reachable from the network). While
-        it is on, any program running as you could read your Discord session through it. Turn it off here any time.
+        Starts Vesktop with a local debugging port ({{ info.port }}). While on, any program running as you could read your Discord session.
       </span>
     </p>
     <p v-if="restart" class="restart small" role="status">

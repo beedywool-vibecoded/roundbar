@@ -56,14 +56,14 @@ const shown = computed(() => samples.value[Math.min(sample.value, samples.value.
           <div class="setting col">
             <div>
               <div>Seed color</div>
-              <div class="muted small">The device palette is generated from it with Material You's tonal spot scheme. This configurator follows it too.</div>
+              <div class="muted small">The device palette comes from it, like Material You.</div>
             </div>
             <SeedPicker v-model="theme.seed" label="Seed color" />
           </div>
           <div class="setting">
             <div class="grow">
               <div>Mode</div>
-              <div class="muted small">For the device only. This page follows your system's dark or light setting. Profile colors follow this mode too.</div>
+              <div class="muted small">For the device. Profile colors follow it too.</div>
             </div>
             <div class="seg" role="radiogroup" aria-label="Device mode">
               <button

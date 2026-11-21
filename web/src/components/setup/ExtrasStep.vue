@@ -34,7 +34,7 @@ function addMango() {
   <div class="step">
     <SetupHero icon="widgets" kind="clover" />
     <h1>Extras for your apps</h1>
-    <p class="lead">Roundbar can talk to a few apps directly. Set up the ones you use, or skip them for now.</p>
+    <p class="lead">Set up the apps you use, or skip for now.</p>
   </div>
 
   <div class="extras">
@@ -46,8 +46,7 @@ function addMango() {
         <div class="grow">
           <h2>Steam games</h2>
           <p class="muted small">
-            Nothing to set up. Start a game and the game page shows its art, how long you've played, and buttons for the
-            Steam overlay and screenshots.
+            Nothing to set up: start a game.
           </p>
           <p v-if="!games" class="small warn">Tick the Games profile in the previous step to get it.</p>
         </div>

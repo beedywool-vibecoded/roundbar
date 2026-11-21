@@ -37,7 +37,7 @@ watchEffect(() => (wiz.auto.desktop = !daemonUp.value || allOk.value))
     <SetupHero icon="desktop_windows" kind="sunny" :tone="allOk ? 'primary' : 'tertiary'" />
     <template v-if="!d">
       <h1>Your desktop</h1>
-      <p class="lead">Start Roundbar's helper to see what works on this desktop. You can come back to this later.</p>
+      <p class="lead">Start Roundbar’s helper to see what works here.</p>
     </template>
     <template v-else>
       <h1>You're on {{ NAMES[d.backend] ?? d.backend }}</h1>

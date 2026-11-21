@@ -329,34 +329,32 @@ function show() {
             </template>
 
             <p v-else-if="page.type === 'image'" class="muted small" style="margin: 0">
-              Fills the screen with a picture. Several pictures cross-fade as a slideshow; a GIF plays on its own.
+              A picture, or a slideshow of several.
             </p>
 
             <p v-else-if="page.type === 'clock'" class="muted small" style="margin: 0">
-              The time in large, from the PC clock. Optional weather and world clocks below it.
+              The time, with optional weather and world clocks.
             </p>
 
             <p v-else-if="page.type === 'timer'" class="muted small" style="margin: 0">
-              A countdown: turn the bezel ring to set the minutes, tap the center to start.
+              A countdown: turn the ring, tap to start.
             </p>
 
             <p v-else-if="page.type === 'mixer'" class="muted small" style="margin: 0">
-              The output devices as chips (tap one to switch), then one volume slider per app playing sound. Tap an app's icon to mute it. Nothing to set up.
+              Output devices and one volume per app. Tap an icon to mute.
             </p>
 
             <p v-else-if="page.type === 'windows'" class="muted small" style="margin: 0">
-              The open windows as icons on a ring, most recent first (up to 8). Tap one to bring it to the front. Needs a desktop that lists its windows (Windows; on Linux GNOME with the extension, KDE, X11, wlroots compositors). Nothing to set up.
+              Open windows on a ring (up to 8). Tap one to bring it forward.
             </p>
 
             <p v-else-if="page.type === 'clipboard'" class="muted small" style="margin: 0">
-              The last 10 texts you copied on the PC, as a scrolling list. Tap one to paste it into the focused app. Nothing to set up.
+              Your last 10 copies. Tap one to paste it.
             </p>
 
             <div v-else-if="page.type === 'discord'" class="form" style="gap: 8px">
               <p class="muted small" style="margin: 0">
-                Your current Discord voice channel: members around the ring (a green ring while they talk, a mic or headset badge when muted or deafened), the channel and server in the middle, and three small buttons under them: mute, deafen and leave
-                (through Vesktop's local DevTools link, or the official client's RPC).
-                Shows "Not in a voice channel" otherwise. Nothing to set up on the page.
+                Your Discord voice channel: who’s talking, with mute, deafen and leave.
               </p>
               <p v-if="!live.status?.discord?.connected" class="warn-line small">
                 <Icon name="link_off" :size="16" />
@@ -366,8 +364,7 @@ function show() {
 
             <div v-else-if="page.type === 'obs'" class="form" style="gap: 8px">
               <p class="muted small" style="margin: 0">
-                Live OBS: the center starts and stops recording (with the elapsed time), the ring shows your OBS scenes with the current one highlighted (tap to switch, up to 8),
-                and a LIVE label in the record button while streaming. OBS is only contacted while this page is on screen or an OBS button is pressed. Nothing to set up on the page.
+                Live OBS: record from the center, switch scenes on the ring.
               </p>
               <p v-if="!live.status?.obs?.connected" class="warn-line small">
                 <Icon name="link_off" :size="16" />
@@ -384,7 +381,7 @@ function show() {
 
             <p v-else-if="page.type === 'mangohud' && onWindows" class="warn-line small" style="margin: 0">
               <Icon name="warning" :size="16" />
-              <span>Not available on Windows: MangoHud only exists on Linux. The page stays empty here.</span>
+              <span>Linux only (MangoHud).</span>
             </p>
 
             <p v-else-if="page.type === 'mangohud'" class="muted small" style="margin: 0">
@@ -395,7 +392,7 @@ function show() {
             </p>
 
             <p v-else-if="page.type === 'media'" class="muted small" style="margin: 0">
-              Shows the current player (MPRIS on Linux, the media session Windows shows in its volume flyout) with previous, play / pause and next, and the volume on the edge arc.
+              The current player, with volume on the edge.
             </p>
 
             <template v-else-if="page.type === 'stats'">
@@ -461,7 +458,7 @@ function show() {
                 @update:model-value="setMediaShape(b.key, $event)"
               />
             </div>
-            <p class="tf-help" style="margin: 0">The play button takes its paused or playing shape with the player state. Click it in the preview to switch.</p>
+            <p class="tf-help" style="margin: 0">Click play in the preview to switch states.</p>
           </div>
         </div>
 

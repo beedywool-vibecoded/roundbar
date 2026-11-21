@@ -185,7 +185,7 @@ function create() {
           @update:model-value="((newId = $event), (idEdited = true))"
         />
         <p v-if="preset" class="muted small" style="margin: 0">{{ preset.hint }}. {{ preset.setup ?? '' }}</p>
-        <p v-else class="muted small" style="margin: 0">It starts with one page of buttons. Add the window classes it should match on the next screen.</p>
+        <p v-else class="muted small" style="margin: 0">Starts with one page of buttons.</p>
         <button type="submit" class="sr-only" tabindex="-1">Create</button>
       </form>
       <template #actions>

@@ -32,7 +32,7 @@ const pageKey = computed(() => route.path)
     <h1>{{ authProblem === 'missing' ? 'Open the configurator from the terminal' : 'This session has ended' }}</h1>
     <p class="muted">
       Run <code>roundbar config</code>: it starts the configurator and opens it with a one-time key in the address.
-      {{ authProblem === 'expired' ? 'The key in this tab is no longer valid, probably because the configurator was restarted.' : '' }}
+      {{ authProblem === 'expired' ? 'This tab’s key expired: the configurator was restarted.' : '' }}
     </p>
   </div>
   <AppShell v-else-if="ready">

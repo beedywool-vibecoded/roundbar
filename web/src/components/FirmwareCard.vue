@@ -70,7 +70,7 @@ function install() {
         <Icon :name="result ? 'check' : 'error'" :size="16" /> {{ result ? 'Update finished' : 'Update failed' }}
       </span>
       <span v-else-if="!connected && release?.version" class="muted small grow">
-        Not connected: you can still install, holding BOOT while plugging the board in.
+        Not connected: hold BOOT while plugging the board in.
       </span>
       <span v-else class="grow" />
       <button v-if="canBuild" class="btn btn-text st" type="button" :disabled="busy || starting" @click="buildAndFlash">

@@ -39,7 +39,7 @@ watchEffect(() => {
     <template v-else-if="state === 'busy'">
       <SetupHero icon="download" kind="flower" />
       <h1>Updating your Roundbar</h1>
-      <p class="lead">Keep it plugged in. It restarts a couple of times; this takes about a minute.</p>
+      <p class="lead">Keep it plugged in, about a minute.</p>
       <div class="bar" role="progressbar" :aria-valuenow="progress ?? undefined" aria-valuemin="0" aria-valuemax="100">
         <span :class="{ indeterminate: progress === null }" :style="progress !== null ? { width: `${progress}%` } : {}" />
       </div>
@@ -64,7 +64,7 @@ watchEffect(() => {
     <template v-else-if="state === 'offline'">
       <SetupHero icon="cloud" kind="clover" tone="neutral" />
       <h1>Couldn't check for updates</h1>
-      <p class="lead">This computer couldn't reach GitHub right now. That's fine: you can update later from the Device page.</p>
+      <p class="lead">Couldn’t reach GitHub. Update later from Device.</p>
     </template>
 
     <template v-else-if="state === 'nodevice'">
@@ -83,7 +83,7 @@ watchEffect(() => {
     </template>
 
     <p v-if="result === false" class="err small" role="alert">
-      <Icon name="error" :size="16" /> The update didn't finish. Your board still works; try again, or later from the Device page.
+      <Icon name="error" :size="16" /> The update didn’t finish. Your board still works.
     </p>
     <M3Expand v-if="lines.length" class="log-wrap">
       <template #summary><span class="small">Details</span></template>

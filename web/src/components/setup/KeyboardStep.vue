@@ -27,7 +27,7 @@ const options = computed<{ value: KeyboardLayout; label: string; hint?: string }
     <SetupHero icon="keyboard" kind="flower" />
     <h1>Your keyboard layout</h1>
     <p class="lead">
-      The board presses keys like a keyboard, so it needs your layout for shortcuts and text to come out right.
+      The board types like a keyboard, so it needs your layout.
       <template v-if="detected">Automatic follows the layout you use on this PC, also when you switch.</template>
     </p>
     <div class="pick">

@@ -65,7 +65,7 @@ const pretty = (n: string) => n.replace(/_/g, ' ')
         <Icon :name="name" :size="28" :fill="model === name" />
         <span class="name">{{ pretty(name) }}</span>
       </button>
-      <p v-if="!shown.length" class="muted">No icon matches "{{ q }}". Only the icons built into the firmware can be used.</p>
+      <p v-if="!shown.length" class="muted">No icon matches "{{ q }}".</p>
     </div>
   </M3Dialog>
 </template>

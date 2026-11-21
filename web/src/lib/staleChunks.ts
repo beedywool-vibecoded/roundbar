@@ -23,6 +23,6 @@ export function reloadOnStaleChunks(router: Router) {
   router.onError((err: unknown, to) => {
     const msg = err instanceof Error ? err.message : String(err)
     if (!STALE.test(msg)) return
-    if (!reloadOnce(to.fullPath)) toast('This page could not open. Check your connection, then try again.', true)
+    if (!reloadOnce(to.fullPath)) toast('This page could not open. Check your connection.', true)
   })
 }

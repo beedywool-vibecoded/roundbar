@@ -61,7 +61,7 @@ async function show() {
   <div class="step">
     <SetupHero icon="celebration" kind="burst" />
     <h1>You're all set</h1>
-    <p class="lead">Use your apps as usual: the board switches profiles with them. Change anything later in Profiles and Device.</p>
+    <p class="lead">The board follows your apps. Change anything in Profiles and Device.</p>
     <ul class="summary">
       <li v-for="r in rows" :key="r.text" :class="{ off: !r.ok }">
         <Icon :name="r.icon" :size="20" />

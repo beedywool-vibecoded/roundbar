@@ -70,7 +70,7 @@ async function connect() {
           <span v-if="obs!.current" class="muted">Scene: {{ obs!.current }}</span>
         </div>
         <div v-else-if="state === 'error'" class="err-text small">{{ obs!.error }}</div>
-        <div v-else class="muted small">OBS buttons and pages talk to OBS directly, so they work even when it isn't focused.</div>
+        <div v-else class="muted small">Works even when OBS isn’t focused.</div>
       </div>
     </div>
 

@@ -64,7 +64,7 @@ const label = computed({
     <div class="setting col">
       <div>
         <div>Presets <span class="muted small">({{ minutes.length }} / {{ LIMITS.timerPresets }})</span></div>
-        <div class="muted small">Chips at the bottom of the screen. Turning the ring sets any other duration.</div>
+        <div class="muted small">The ring sets any other duration.</div>
       </div>
       <div class="chips">
         <span v-for="m in minutes" :key="m" class="fchip on preset">
@@ -87,13 +87,13 @@ const label = computed({
     <div class="setting">
       <div class="grow">
         <div>Pomodoro</div>
-        <div class="muted small">Alternates 25 min of work and 5 min breaks, with a 15 min break after the fourth</div>
+        <div class="muted small">25 min of work, 5 min breaks, 15 min after the fourth</div>
       </div>
       <M3Switch v-model="pomodoro" label="Pomodoro" />
     </div>
     <div class="setting col">
       <TextField v-model="label" label="Label (optional)" placeholder="Shown under the time, like Focus or Tea" :max="LIMITS.timerLabel" :error="label.length > LIMITS.timerLabel ? `At most ${LIMITS.timerLabel} characters` : null" />
-      <p class="muted small" style="margin: 0">Tap the center to start or pause, hold to reset. When time is up the screen pulses and the PC shows a notification.</p>
+      <p class="muted small" style="margin: 0">Tap the center to start or pause, hold to reset.</p>
     </div>
   </div>
 </template>

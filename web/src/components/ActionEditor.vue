@@ -350,12 +350,12 @@ function test() {
           </div>
         </li>
       </ol>
-      <p v-else class="muted small" style="margin: 0">No steps yet. Key and text steps are typed by the device, commands run on the PC.</p>
+      <p v-else class="muted small" style="margin: 0">No steps yet.</p>
       <div v-if="recording" class="rec-bar" role="status">
         <span class="rec-dot" aria-hidden="true" />
         <span class="grow">
           <span class="rec-title">Recording · {{ recorded }} step{{ recorded === 1 ? '' : 's' }}</span>
-          <span class="muted small">Press keys and combos; pauses become delays. Esc or 10 s without a key stops.</span>
+          <span class="muted small">Pauses become delays. Esc or 10 s idle stops.</span>
         </span>
         <button class="btn btn-filled st stop" type="button" @click="stopRecording"><Icon name="stop" :size="18" fill /> Stop</button>
       </div>

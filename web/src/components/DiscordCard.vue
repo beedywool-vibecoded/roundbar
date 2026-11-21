@@ -57,7 +57,7 @@ async function connect() {
         </div>
         <div v-if="state === 'ok'" class="muted small">{{ discord!.channel ? `In ${discord!.channel}` : 'Not in a voice channel' }}</div>
         <div v-else-if="state === 'error'" class="err-text small">{{ discord!.error }}</div>
-        <div v-else class="muted small">With the official Discord app, voice pages need your own Discord application. It takes two minutes:</div>
+        <div v-else class="muted small">The official Discord app needs your own Discord application (two minutes):</div>
       </div>
     </div>
 

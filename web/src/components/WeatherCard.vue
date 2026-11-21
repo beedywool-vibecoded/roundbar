@@ -60,7 +60,7 @@ async function search(term: string) {
   } catch (e) {
     if (mine !== ctl || (e instanceof DOMException && e.name === 'AbortError')) return
     results.value = []
-    error.value = 'The city search is not reachable. Check the internet connection of this PC.'
+    error.value = 'City search unreachable. Check the connection.'
   } finally {
     if (mine === ctl) searching.value = false
   }
@@ -91,7 +91,7 @@ const UNITS: { id: WeatherUnits; label: string }[] = [
   <section id="weather" class="card">
     <div class="card-head"><h2>Weather</h2></div>
     <div class="form">
-      <p class="muted small" style="margin: 0">For clock pages. The daemon gets the forecast from Open-Meteo for this place; nothing else leaves your PC.</p>
+      <p class="muted small" style="margin: 0">For clock pages. Forecast from Open-Meteo.</p>
 
       <div v-if="weather" class="current">
         <span class="badge"><Icon name="partly_cloudy_day" :size="24" fill /></span>

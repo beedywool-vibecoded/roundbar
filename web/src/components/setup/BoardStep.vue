@@ -58,8 +58,7 @@ async function allow() {
       <SetupHero icon="power_settings_new" kind="clover" tone="tertiary" />
       <h1>Roundbar's helper isn't running</h1>
       <p class="lead">
-        A small background service talks to the board. It starts by itself at login once it is enabled. Paste this in a
-        terminal to start it now:
+        A background service talks to the board. To start it now:
       </p>
       <pre class="cmd"><code>systemctl --user enable --now roundbar</code></pre>
       <p class="muted small">This page notices as soon as it runs.</p>
@@ -69,8 +68,7 @@ async function allow() {
       <SetupHero board tone="tertiary" />
       <h1>Almost there: allow access</h1>
       <p class="lead">
-        Your Roundbar is plugged in, but Linux doesn't let your account talk to it yet. Allow it once; your computer asks for
-        your password.
+        Linux doesn’t let your account use it yet. Allow it once.
       </p>
       <div class="actions">
         <button class="btn btn-filled btn-lg st" type="button" :disabled="fixing" @click="allow">
@@ -88,12 +86,12 @@ async function allow() {
     <template v-else-if="state === 'waiting'">
       <SetupHero board waiting tone="neutral" />
       <h1>Plug in your Roundbar</h1>
-      <p class="lead">Connect it to this computer with a USB-C cable. This page moves on by itself when it shows up.</p>
+      <p class="lead">Plug it in with a USB-C cable.</p>
       <div class="wait"><ShapeLoader small label="Waiting for the board" /> Waiting for the board…</div>
       <ul class="tips">
         <li>
           <Icon name="usb" :size="20" />
-          <span>Nothing happens? Some cables only charge. Try another cable, and a port on the computer itself rather than a hub.</span>
+          <span>Nothing? Some cables only charge. Try another, without a hub.</span>
         </li>
         <li>
           <Icon name="rocket_launch" :size="20" />
@@ -115,7 +113,7 @@ async function allow() {
         <Icon name="restore" :size="24" />
         <div class="grow">
           <div class="strong">Loaded the setup stored on your Roundbar</div>
-          <div class="muted small">Its profiles, pages and colors came along with it. You can finish right away, or keep going to check the rest.</div>
+          <div class="muted small">Its profiles, pages and colors came with it. Finish now, or check the rest.</div>
         </div>
         <button class="btn btn-tonal st" type="button" @click="emit('finish')">Finish now</button>
       </div>

@@ -82,7 +82,7 @@ async function restore() {
   <section id="backup" class="card">
     <div class="card-head"><h2>Backup</h2></div>
     <p class="muted small" style="margin: 0">
-      One file with your profiles, settings and images. Restore it after a reinstall or on another PC.
+      Your profiles, settings and images in one file.
     </p>
     <div class="actions">
       <button class="btn btn-tonal st" type="button" :disabled="downloading" @click="download">

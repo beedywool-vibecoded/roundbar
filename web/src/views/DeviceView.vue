@@ -177,8 +177,8 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
                   {{ st.focus.name }} <code class="plain muted">{{ st.focus.id }}</code>
                   <code v-if="st.focus.class && st.focus.class !== st.focus.id" class="plain muted"> · class {{ st.focus.class }}</code>
                 </template>
-                <span v-else-if="st.desktop?.backend === 'gnome' && st.extension === false" class="warn-text">The GNOME extension isn't running, so profiles can't follow the focused window. Enable it in Extensions.</span>
-                <span v-else-if="st.desktop && !st.desktop.focus" class="warn-text">This desktop doesn't tell other programs which window is focused, so profiles stay on Default.</span>
+                <span v-else-if="st.desktop?.backend === 'gnome' && st.extension === false" class="warn-text">The GNOME extension is off: enable it in Extensions.</span>
+                <span v-else-if="st.desktop && !st.desktop.focus" class="warn-text">This desktop can’t tell the focused window: profiles stay on Default.</span>
                 <span v-else class="muted">—</span>
               </dd>
               <template v-if="st.desktop">
@@ -254,7 +254,7 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
           <div class="setting">
             <div class="grow">
               <div>Double tap on the edge</div>
-              <div class="muted small">Two quick taps near the left or right edge of the screen. "Change page" jumps to the previous / next page instantly.</div>
+              <div class="muted small">Two quick taps near the left or right edge.</div>
             </div>
             <div class="seg" role="radiogroup" aria-label="Double tap on the edge">
               <button
@@ -276,8 +276,7 @@ const seconds = (s: number) => (s === 0 ? 'never' : s < 60 ? `${s} s` : s % 60 ?
             <div class="grow">
               <div>Keyboard layout</div>
               <div class="muted small">
-                The layout set on this PC, so typed text and shortcuts come out right. Automatic follows the layout
-                active on the PC, also when you switch layouts.
+                Automatic follows the PC’s active layout.
               </div>
             </div>
             <div class="layout-pick">
