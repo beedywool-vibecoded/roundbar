@@ -1,4 +1,7 @@
-// v-tip: M3 plain tooltip on mouse hover and keyboard focus (never on touch), replacing title tooltips. One shared element.
+// v-tip: M3 plain tooltip on mouse hover and keyboard focus, in place of the browser's
+// title tooltip. One shared element, positioned above (or below) the target. Never on a touch
+// screen: no tooltip from a tap (its focus), a touch's pointer, or on a device without hover; the
+// aria-label it sets still names the button for screen readers.
 import type { Directive } from 'vue'
 
 let el: HTMLDivElement | null = null
@@ -37,16 +40,28 @@ function hide() {
   el?.classList.remove('show')
 }
 
+const canHover = () => typeof matchMedia !== 'function' || matchMedia('(hover: hover) and (pointer: fine)').matches
+// The last input was a touch: a focus that follows it is the tap's, not the keyboard's
+let touched = false
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointerdown', (e) => {
+    touched = e.pointerType !== 'mouse'
+    if (touched) hide()
+  }, { capture: true, passive: true })
+  window.addEventListener('keydown', () => (touched = false), { capture: true, passive: true })
+}
+
 export const vTip: Directive<HTMLElement, string | undefined> = {
   mounted(target, binding) {
     target.dataset.tip = binding.value ?? ''
     if (binding.value && !target.getAttribute('aria-label')) target.setAttribute('aria-label', binding.value)
-    // Mouse hover and keyboard focus only: on a phone a tap is both a "hover" and a focus, and a
-    // tooltip popping up after every tap only gets in the way (the label is read out anyway)
-    target.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && show(target))
+    target.addEventListener('pointerenter', (e) => {
+      if (e.pointerType === 'mouse' && canHover()) show(target)
+    })
     target.addEventListener('pointerleave', hide)
-    target.addEventListener('pointerdown', (e) => e.pointerType !== 'mouse' && hide())
-    target.addEventListener('focus', () => target.matches(':focus-visible') && show(target))
+    target.addEventListener('focus', () => {
+      if (!touched && target.matches(':focus-visible')) show(target)
+    })
     target.addEventListener('blur', hide)
   },
   updated(target, binding) {
