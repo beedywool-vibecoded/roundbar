@@ -134,18 +134,21 @@ a {
   }
 }
 
-/* Touch screens: popups never draw a scrollbar (a finger scrolls them, like an Android sheet). Left
-   to Chrome, the scrolling card of a large dialog can keep a bar down its rounded side */
+/* Touch screens: a popup keeps a visible scrollbar (people need to see there is more), but its track
+   stops 28 px from the top and bottom, the radius of the card, so the bar never runs over the
+   rounded corners. Only on popups: elsewhere Chrome's overlay scrollbar is left as it is */
 @media (hover: none), (pointer: coarse) {
-  dialog,
-  dialog *,
-  .dialog-scroll {
-    scrollbar-width: none;
+  dialog::-webkit-scrollbar {
+    width: 8px;
   }
-  dialog::-webkit-scrollbar,
-  dialog *::-webkit-scrollbar,
-  .dialog-scroll::-webkit-scrollbar {
-    display: none;
+  dialog::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: var(--outline-v) padding-box;
+  }
+  dialog::-webkit-scrollbar-track {
+    margin-block: 28px;
+    background: transparent;
   }
 }
 
